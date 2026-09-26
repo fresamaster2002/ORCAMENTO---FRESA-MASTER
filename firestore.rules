@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Only authorized Fresa Master email (fresamaster0@gmail.com)
+    function isMasterAdmin() {
+      return isSignedIn() && 
+        request.auth.token.email == 'fresamaster0@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    // Admin collection rules
+    match /admins/{adminId} {
+      allow read: if isMasterAdmin();
+      allow write: if isMasterAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isMasterAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if isMasterAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+  }
+}

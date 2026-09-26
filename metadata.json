@@ -1,0 +1,10 @@
+{
+  "name": "Orçamentos Fresa Master",
+  "description": "Fresa Master - Orçamentos por voz para fresas router CNC, cálculo de frete Melhor Envio/Sedex e exportação de dados para Bling ERP e NF-e.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

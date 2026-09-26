@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width="100%" height="100%">
+  <defs>
+    <!-- Metallic Chrome Gradients -->
+    <linearGradient id="chromeLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#e2e8f0"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="70%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+
+    <linearGradient id="chromeDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#94a3b8"/>
+      <stop offset="40%" stop-color="#475569"/>
+      <stop offset="70%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <linearGradient id="chromeBevel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#cbd5e1" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#1e293b" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <!-- Copper / Machining Bronze Gradient -->
+    <linearGradient id="copperGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fdba74"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+
+    <filter id="logoGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Group Logo Content -->
+  <g filter="url(#logoGlow)">
+    <!-- 1. CROWN / 3-FLUTE SHARP CNC CUTTER EMBLEM -->
+    <g transform="translate(40, 20)">
+      <!-- Base Outer Chevron / Hull -->
+      <polygon points="100,195 20,135 20,95 100,155 180,95 180,135" fill="url(#chromeDark)"/>
+      <polygon points="100,185 30,132 30,105 100,150 170,105 170,132" fill="url(#chromeLight)"/>
+
+      <!-- Inner Chevron Step 2 -->
+      <polygon points="100,165 40,118 40,88 100,135 160,88 160,118" fill="url(#chromeDark)"/>
+      <polygon points="100,155 48,115 48,96 100,132 152,96 152,115" fill="url(#chromeLight)"/>
+
+      <!-- Outer Flutes Left & Right -->
+      <polygon points="35,110 35,38 52,50 52,122" fill="url(#chromeDark)"/>
+      <polygon points="52,122 52,50 68,62 68,135" fill="url(#chromeLight)"/>
+
+      <polygon points="165,110 165,38 148,50 148,122" fill="url(#chromeLight)"/>
+      <polygon points="148,122 148,50 132,62 132,135" fill="url(#chromeDark)"/>
+
+      <!-- Center Massive Milling Cutter Column / Spike -->
+      <!-- Left side of center spire -->
+      <polygon points="100,0 72,130 100,145" fill="url(#chromeLight)"/>
+      <!-- Right side of center spire -->
+      <polygon points="100,0 128,130 100,145" fill="url(#chromeDark)"/>
+
+      <!-- Razor / Helical groove notches on center spire -->
+      <polygon points="98,35 88,48 95,50 100,42" fill="#ffffff" opacity="0.9"/>
+      <polygon points="100,42 95,50 105,52 102,40" fill="#334155"/>
+      <polygon points="98,65 82,82 90,84 100,74" fill="#ffffff" opacity="0.9"/>
+      <polygon points="100,74 90,84 102,86 102,72" fill="#334155"/>
+      
+      <!-- Central metallic sharp tip edge highlight -->
+      <line x1="100" y1="0" x2="100" y2="145" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
+
+    <!-- 2. TYPOGRAPHY: FRESA MASTER -->
+    <!-- 'FRESA' ROW -->
+    <g transform="translate(265, 30)">
+      <!-- F -->
+      <path d="M 0,0 L 52,0 L 52,15 L 16,15 L 16,33 L 46,33 L 46,47 L 16,47 L 16,80 L 0,80 Z" fill="url(#chromeLight)"/>
+      <!-- R -->
+      <path d="M 64,0 L 112,0 C 124,0 130,7 130,20 C 130,30 124,38 112,40 L 132,80 L 114,80 L 96,44 L 80,44 L 80,80 L 64,80 Z M 80,14 L 80,31 L 108,31 C 113,31 115,28 115,23 C 115,17 113,14 108,14 Z" fill="url(#chromeLight)"/>
+      <!-- E -->
+      <path d="M 142,0 L 194,0 L 194,15 L 158,15 L 158,32 L 188,32 L 188,46 L 158,46 L 158,65 L 194,65 L 194,80 L 142,80 Z" fill="url(#chromeLight)"/>
+      <!-- S -->
+      <path d="M 206,12 L 221,12 C 221,7 225,5 233,5 C 242,5 246,8 246,14 C 246,20 240,23 227,27 C 211,31 206,38 206,49 C 206,60 216,68 233,68 C 251,68 261,58 261,46 L 246,46 C 246,53 241,56 233,56 C 225,56 221,52 221,47 C 221,41 226,38 238,34 C 254,30 260,24 260,14 C 260,3 250,-2 233,-2 C 216,-2 206,5 206,12 Z" transform="translate(0, 12)" fill="url(#chromeLight)"/>
+      <!-- A -->
+      <path d="M 295,0 L 322,80 L 305,80 L 298,59 L 274,59 L 267,80 L 250,80 L 277,0 Z M 286,22 L 278,46 L 294,46 Z" fill="url(#chromeLight)"/>
+    </g>
+
+    <!-- 'MASTER' ROW -->
+    <g transform="translate(265, 120)">
+      <!-- M -->
+      <path d="M 0,0 L 18,0 L 38,44 L 58,0 L 76,0 L 76,68 L 61,68 L 61,22 L 44,60 L 32,60 L 15,22 L 15,68 L 0,68 Z" fill="url(#chromeLight)"/>
+      <!-- A -->
+      <path d="M 112,0 L 136,68 L 121,68 L 115,50 L 95,50 L 89,68 L 74,68 L 98,0 Z M 105,18 L 98,38 L 112,38 Z" fill="url(#chromeLight)"/>
+      <!-- S -->
+      <path d="M 145,10 L 158,10 C 158,6 161,4 168,4 C 175,4 179,7 179,12 C 179,17 174,19 163,23 C 149,26 145,32 145,42 C 145,51 153,58 168,58 C 183,58 192,50 192,39 L 179,39 C 179,45 175,47 168,47 C 161,47 158,44 158,40 C 158,35 162,32 173,29 C 187,25 192,20 192,12 C 192,2 183,-2 168,-2 C 153,-2 145,4 145,10 Z" transform="translate(0, 10)" fill="url(#chromeLight)"/>
+      <!-- T -->
+      <path d="M 200,0 L 244,0 L 244,14 L 230,14 L 230,68 L 214,68 L 214,14 L 200,14 Z" fill="url(#chromeLight)"/>
+      <!-- E -->
+      <path d="M 252,0 L 294,0 L 294,13 L 267,13 L 267,27 L 290,27 L 290,39 L 267,39 L 267,55 L 294,55 L 294,68 L 252,68 Z" fill="url(#chromeLight)"/>
+      <!-- R -->
+      <path d="M 302,0 L 338,0 C 348,0 354,6 354,17 C 354,26 348,32 338,34 L 356,68 L 340,68 L 324,37 L 316,37 L 316,68 L 302,68 Z M 316,12 L 316,26 L 335,26 C 339,26 341,23 341,19 C 341,15 339,12 335,12 Z" fill="url(#chromeLight)"/>
+    </g>
+
+    <!-- 3. CNC MACHINING (COPPER / ORANGE GLOW) -->
+    <text x="268" y="222" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" font-size="25" font-weight="900" fill="url(#copperGrad)" letter-spacing="8">
+      CNC MACHINING
+    </text>
+  </g>
+</svg>

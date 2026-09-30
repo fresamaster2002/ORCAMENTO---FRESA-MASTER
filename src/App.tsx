@@ -176,6 +176,100 @@ const createEmptyQuote = (): QuoteData => ({
   notesForClient: '',
 });
 
+const normalizeSavedQuote = (value: unknown): QuoteData | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const saved = value as Record<string, any>;
+  if (typeof saved.id !== 'string' || !saved.id) return null;
+
+  const defaults = createEmptyQuote();
+  const items = (Array.isArray(saved.items) ? saved.items : []).map((item: Record<string, any>, index: number) => {
+    const quantity = Number(item.quantity) || 1;
+    const unitPrice = Number(item.unitPrice) || 0;
+    return {
+      ...item,
+      id: String(item.id || `saved-item-${index}`),
+      description: String(item.description || ''),
+      sku: String(item.sku || ''),
+      ncm: String(item.ncm || '8207.70.00'),
+      category: String(item.category || 'Fresas Router CNC'),
+      quantity,
+      unit: String(item.unit || 'un'),
+      unitPrice,
+      totalPrice: Number(item.totalPrice ?? quantity * unitPrice),
+    };
+  });
+
+  const savedShipping = saved.shipping && typeof saved.shipping === 'object' ? saved.shipping : {};
+  const legacyServiceByMode: Record<string, string> = {
+    SEDEX: 'SEDEX',
+    PAC: 'PAC',
+    RETIRADA: 'RETIRADA',
+    MOTOBOY: 'MOTOBOY',
+  };
+  const legacyService = legacyServiceByMode[String(saved.shippingMode || '').toUpperCase()];
+  const selectedOption = savedShipping.selectedOption || (legacyService ? {
+    service: legacyService,
+    name: String(saved.shippingMode),
+    carrier: legacyService === 'MOTOBOY' ? 'Motoboy' : legacyService === 'RETIRADA' ? 'Balcão' : 'Correios',
+    price: Number(saved.shippingValue) || 0,
+    deliveryDays: 0,
+    selected: true,
+    insuranceCost: 0,
+    withInsurancePrice: Number(saved.shippingValue) || 0,
+    withoutInsurancePrice: Number(saved.shippingValue) || 0,
+  } : undefined);
+  const shippingOptions = Array.isArray(savedShipping.options)
+    ? savedShipping.options.map((option: Record<string, any>) => ({
+        ...option,
+        selected: option.service === selectedOption?.service,
+      }))
+    : defaults.shipping.options.map((option) => ({
+        ...option,
+        selected: option.service === selectedOption?.service,
+      }));
+  if (selectedOption && !shippingOptions.some((option: { service: string }) => option.service === selectedOption.service)) {
+    shippingOptions.push(selectedOption);
+  }
+
+  const subtotal = Number(saved.financials?.subtotal ?? items.reduce((sum: number, item: QuoteData['items'][number]) => sum + item.totalPrice, 0));
+  const shippingAmount = Number(saved.financials?.shippingAmount ?? selectedOption?.price ?? 0);
+
+  return {
+    ...defaults,
+    ...saved,
+    id: saved.id,
+    status: ['draft', 'sent', 'approved', 'rejected'].includes(saved.status) ? saved.status : 'draft',
+    createdAt: String(saved.createdAt || new Date().toISOString()),
+    client: {
+      ...defaults.client,
+      ...(saved.client || {}),
+      name: String(saved.client?.name ?? saved.clientName ?? ''),
+      email: String(saved.client?.email ?? saved.clientEmail ?? ''),
+      cep: String(saved.client?.cep ?? saved.cep ?? ''),
+    },
+    project: { ...defaults.project, ...(saved.project || {}) },
+    items,
+    shipping: {
+      ...defaults.shipping,
+      ...savedShipping,
+      destinationCep: String(savedShipping.destinationCep ?? saved.cep ?? defaults.shipping.destinationCep),
+      packageDimensions: { ...defaults.shipping.packageDimensions, ...(savedShipping.packageDimensions || {}) },
+      selectedOption,
+      options: shippingOptions,
+    },
+    financials: {
+      ...defaults.financials,
+      ...(saved.financials || {}),
+      subtotal,
+      shippingAmount,
+      totalAmount: Number(saved.financials?.totalAmount ?? subtotal + shippingAmount),
+    },
+    observations: Array.isArray(saved.observations) ? saved.observations : defaults.observations,
+    notesForClient: String(saved.notesForClient ?? saved.notes ?? defaults.notesForClient),
+  };
+};
+
 const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
   const cep = extractCepFromText(text) || currentQuote.client.cep || '';
   const prices = extractUnitPricesFromText(text);
@@ -327,8 +421,8 @@ export default function App() {
         if (error) throw error;
 
         const savedQuotes = (data || [])
-          .map((row) => row.quote as QuoteData)
-          .filter((savedQuote) => Boolean(savedQuote?.id));
+          .map((row) => normalizeSavedQuote(row.quote))
+          .filter((savedQuote): savedQuote is QuoteData => savedQuote !== null);
         if (!active) return;
         setRecentQuotes(savedQuotes);
         setQuote(savedQuotes[0] || createEmptyQuote());

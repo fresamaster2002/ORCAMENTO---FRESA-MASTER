@@ -1,71 +1,65 @@
-# Fresa Master - Sistema de Orçamentos, Frete & Bling ERP
+# Fresa Master
 
-Aplicativo oficial da **Fresa Master** para automação comercial, cotação de fretes em tempo real e integração com Bling ERP e WhatsApp.
+Aplicativo de orçamento para a Fresa Master com foco no mínimo necessário para funcionar bem em desenvolvimento local:
 
----
+- VS Code para código
+- GitHub para versionamento
+- Supabase para autenticação e dados
+- Frontend React para interface do usuário
 
-## 🚀 Como Rodar Localmente no VS Code
+A ideia principal é manter a stack enxuta, sem depender de integrações pesadas de IA, Cloud Run, Firebase, Bling ERP ou Melhor Envio para o uso básico do sistema.
 
-### 1. Pré-requisitos
-- [Node.js](https://nodejs.org/) versão 18 ou superior instalada.
-- [Git](https://git-scm.com/) instalado no seu computador.
-- [Visual Studio Code](https://code.visualstudio.com/).
+## Como rodar localmente
 
-### 2. Instalação das Dependências
-Abra o terminal na pasta do projeto e execute:
+### 1. Instale as dependências
 ```bash
 npm install
 ```
 
-### 3. Configuração das Variáveis de Ambiente
-Copie o arquivo de exemplo para criar o seu `.env`:
+### 2. Configure o Supabase
+Crie um arquivo `.env` a partir do `.env.example` e defina:
 ```bash
-cp .env.example .env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
 ```
-Preencha as seguintes variáveis no arquivo `.env`:
-- `GEMINI_API_KEY`: Sua chave de API do Google AI Studio / Gemini.
-- `BLING_API_TOKEN`: Seu token de API v3 do Bling ERP (opcional, para envio direto).
-- `MELHOR_ENVIO_TOKEN`: Token de acesso oficial do Melhor Envio (opcional para cotação ao vivo).
 
-### 4. Iniciar o Servidor de Desenvolvimento
+### 3. Inicie o app
 ```bash
 npm run dev
 ```
-O aplicativo iniciará em: **http://localhost:3000**
 
----
+A aplicação ficará disponível em:
+```text
+http://localhost:3000
+```
 
-## 📦 Como Enviar para o GitHub
+## Publicar no GitHub Pages
 
-1. Inicialize o repositório Git local (se ainda não tiver feito):
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit - Fresa Master App"
-   ```
-2. Crie um novo repositório no [GitHub](https://github.com/new).
-3. Conecte e envie seus arquivos:
-   ```bash
-   git remote add origin https://github.com/SEU_USUARIO/NOME_DO_REPOSITORIO.git
-   git branch -M main
-   git push -u origin main
-   ```
+O workflow em `.github/workflows/deploy-pages.yml` publica automaticamente quando há push para `main` ou pode ser iniciado manualmente em **Actions > Deploy Fresa Master to GitHub Pages > Run workflow**.
 
----
+Antes da primeira publicação:
 
-## 🛠️ Scripts Disponíveis
+1. Em **Settings > Pages**, selecione **GitHub Actions** como fonte de publicação.
+2. Em **Settings > Secrets and variables > Actions > Variables**, crie as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` com os dados públicos do projeto Supabase. Não use a `service_role` key no frontend.
+3. Execute a migration `supabase/migrations/202609280001_quotes.sql` no Supabase para criar a tabela de orçamentos e suas regras de acesso.
+4. Em **Supabase > Authentication > URL Configuration**, configure o Site URL para `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/` e inclua esse mesmo endereço em Redirect URLs.
+5. Faça push das alterações para `main` e acompanhe a execução em **Actions**.
 
-- `npm run dev`: Inicia o servidor backend Express e o frontend Vite juntos com recarregamento automático.
-- `npm run build`: Compila o frontend e empacota o backend para produção na pasta `dist/`.
-- `npm start`: Inicia o servidor compilado de produção.
-- `npm run lint`: Valida tipos TypeScript sem emitir arquivos.
+O endereço do app será `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/`. O primeiro deploy não termina até que as variáveis e a configuração do Supabase estejam preenchidas.
 
----
+## O que foi mantido
 
-## 🏗️ Tecnologias Utilizadas
+- Frontend em React + TypeScript
+- Login por e-mail e senha com sessão persistente, e dados via Supabase; e-mail só é necessário para criar ou recuperar a senha
+- Salvar orçamentos na nuvem
+- Cálculo local de orçamento e frete básico
+- GitHub como repositório oficial
 
-- **Frontend:** React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Motion.
-- **Backend:** Node.js, Express (`server.ts`), `tsx`, `esbuild`.
-- **Inteligência Artificial:** Google Gemini (`@google/genai`).
-- **Logística & ERP:** API v2 Melhor Envio (Sedex, PAC, Jadlog) e Bling ERP v3 (XML & JSON).
-- **Banco & Autenticação:** Firebase Firestore & Firebase Auth.
+## O que foi removido do caminho principal de operação
+
+- Firebase Admin / Cloud Run como requisito base
+- Gemini como dependência crítica do app
+- API de Bling para emissão de nota fiscal como bloqueio do funcionamento
+- Melhor Envio como obrigatoriedade para rodar
+
+Se quiser evoluir depois, essas integrações podem voltar como extras opcionais, mas não devem ser a base do app para funcionar.

@@ -26,6 +26,8 @@ export interface ShippingOption {
   insuranceCost?: number; // Custo do seguro de carga
   withInsurancePrice?: number; // Preço com seguro incluído
   withoutInsurancePrice?: number; // Preço base sem seguro
+  melhorEnvioServiceId?: number;
+  isRealTimeMelhorEnvio?: boolean;
 }
 
 export interface PackageDimensions {
@@ -110,6 +112,11 @@ export interface QuoteData {
   observations: string[];
   notesForClient: string;
   createdAt: string;
+  sandboxShipment?: {
+    id: string | null;
+    protocol: string | null;
+    createdAt: string;
+  };
 }
 
 export interface ExtractQuoteRequest {

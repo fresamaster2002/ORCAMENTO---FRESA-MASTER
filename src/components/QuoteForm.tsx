@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { apiFetch } from '../api';
 import { 
   Plus, 
   Trash2, 
@@ -21,10 +22,10 @@ import {
   Eye,
   Zap
 } from 'lucide-react';
-import { QuoteData, QuoteItem, ShippingOption, ShippingInfo, ClientInfo } from '../types';
+import { BlingCatalogProduct, QuoteData, QuoteItem, ShippingOption, ShippingInfo, ClientInfo } from '../types';
 import { ShippingCalculator } from './ShippingCalculator';
 import { ClientCadastralModal } from './ClientCadastralModal';
-import { BLING_FRESA_MASTER_CATALOG } from '../blingCatalog';
+import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
 
 interface QuoteFormProps {
   quote: QuoteData;
@@ -43,23 +44,141 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   const [isBlingCatalogModalOpen, setIsBlingCatalogModalOpen] = useState(false);
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [liveBlingCatalog, setLiveBlingCatalog] = useState<BlingCatalogProduct[] | null>(null);
+  const [isLoadingBlingCatalog, setIsLoadingBlingCatalog] = useState(false);
+  const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
+  const [pendingQuoteItemId, setPendingQuoteItemId] = useState<string | null>(null);
+  const [showNewProductForm, setShowNewProductForm] = useState(false);
+  const [isCreatingBlingProduct, setIsCreatingBlingProduct] = useState(false);
+  const [newProductError, setNewProductError] = useState<string | null>(null);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductNcm, setNewProductNcm] = useState('8207.70.00');
 
-  const addBlingProduct = (product: typeof BLING_FRESA_MASTER_CATALOG[0]) => {
-    const newItem: QuoteItem = {
-      id: `bling-${Date.now()}`,
-      description: product.description,
-      sku: product.sku,
-      ncm: product.ncm,
-      category: product.category,
-      quantity: 1,
-      unit: product.unit,
-      unitPrice: product.unitPrice,
-      totalPrice: product.unitPrice,
-      notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+  useEffect(() => {
+    if (!isBlingCatalogModalOpen) return;
+    let cancelled = false;
+
+    const loadBlingCatalog = async () => {
+      setIsLoadingBlingCatalog(true);
+      setCatalogLoadError(null);
+      try {
+        const token = localStorage.getItem('fresa_master_bling_token') || '';
+        const response = await apiFetch('/api/bling/products', {
+          headers: token ? { 'X-Bling-Token': token } : {},
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Não foi possível consultar o Bling.');
+        if (!cancelled) setLiveBlingCatalog(normalizeBlingCatalogProducts(data.products || []));
+      } catch (error: any) {
+        if (!cancelled) {
+          setLiveBlingCatalog(null);
+          setCatalogLoadError(error.message || 'Conecte o Bling para carregar seus produtos cadastrados.');
+        }
+      } finally {
+        if (!cancelled) setIsLoadingBlingCatalog(false);
+      }
     };
-    const updatedItems = [...quote.items, newItem];
+
+    loadBlingCatalog();
+    return () => { cancelled = true; };
+  }, [isBlingCatalogModalOpen]);
+
+  const addBlingProduct = (product: BlingCatalogProduct, replaceItemId?: string | null) => {
+    const updatedItems = replaceItemId
+      ? quote.items.map((item) => item.id === replaceItemId ? {
+          ...item,
+          description: product.description,
+          sku: product.sku,
+          ncm: product.ncm || item.ncm,
+          category: product.category,
+          unit: product.unit || item.unit,
+          unitPrice: product.unitPrice > 0 ? product.unitPrice : item.unitPrice,
+          totalPrice: item.quantity * (product.unitPrice > 0 ? product.unitPrice : item.unitPrice),
+          notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+        } : item)
+      : [...quote.items, {
+          id: `bling-${Date.now()}`,
+          description: product.description,
+          sku: product.sku,
+          ncm: product.ncm,
+          category: product.category,
+          quantity: 1,
+          unit: product.unit,
+          unitPrice: product.unitPrice,
+          totalPrice: product.unitPrice,
+          notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+        }];
     recalculateFinancials(updatedItems, quote.shipping.selectedOption);
+    closeBlingCatalog();
+  };
+
+  const openCatalogForItem = (item: QuoteItem) => {
+    setPendingQuoteItemId(item.id);
+    setCatalogSearch(item.description);
+    setNewProductName(item.description);
+    setNewProductSku(item.sku || `FM-${Date.now().toString().slice(-6)}`);
+    setNewProductPrice(item.unitPrice > 0 ? String(item.unitPrice) : '');
+    setNewProductNcm(item.ncm || '8207.70.00');
+    setShowNewProductForm(false);
+    setNewProductError(null);
+    setIsBlingCatalogModalOpen(true);
+  };
+
+  const closeBlingCatalog = () => {
     setIsBlingCatalogModalOpen(false);
+    setCatalogSearch('');
+    setPendingQuoteItemId(null);
+    setShowNewProductForm(false);
+    setNewProductError(null);
+  };
+
+  const createBlingProduct = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsCreatingBlingProduct(true);
+    setNewProductError(null);
+    try {
+      const token = localStorage.getItem('fresa_master_bling_token') || '';
+      const response = await apiFetch('/api/bling/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'X-Bling-Token': token } : {}),
+        },
+        body: JSON.stringify({
+          product: {
+            name: newProductName,
+            sku: newProductSku,
+            price: Number(newProductPrice),
+            ncm: newProductNcm,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'O Bling não confirmou o cadastro.');
+
+      const created = normalizeBlingCatalogProducts([data.product])[0] || {
+        id: newProductSku,
+        sku: newProductSku,
+        description: newProductName,
+        category: 'Produtos Bling',
+        unitPrice: Number(newProductPrice),
+        unit: 'UN',
+        ncm: newProductNcm,
+        weightGrams: 0,
+        tags: [],
+      };
+      setLiveBlingCatalog((current) => {
+        const products = current ?? [];
+        return [...products.filter((item) => item.sku !== created.sku), created];
+      });
+      addBlingProduct(created, pendingQuoteItemId);
+    } catch (error: any) {
+      setNewProductError(error.message || 'Falha ao cadastrar produto no Bling.');
+    } finally {
+      setIsCreatingBlingProduct(false);
+    }
   };
 
   const updateClient = (field: string, val: any) => {
@@ -86,18 +205,23 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     recalculateFinancials(updatedItems, quote.shipping.selectedOption);
   };
 
-  const addItem = (customTitle?: string, customPrice = 140, customSku = 'FM-TCT') => {
+  const addItem = (customTitle?: string, customPrice = 140) => {
+    const description = customTitle || 'Fresa 3 Cortes TCT para Router CNC';
+    const matchedProduct = matchBlingCatalogProduct(description, activeBlingCatalog);
+    const unitPrice = matchedProduct ? matchedProduct.unitPrice : customPrice;
     const newItem: QuoteItem = {
       id: `item-${Date.now()}`,
-      description: customTitle || 'Fresa 3 Cortes TCT para Router CNC',
-      sku: customSku,
-      ncm: '8207.70.00',
-      category: 'Fresas Router CNC',
+      description: matchedProduct?.description || description,
+      sku: matchedProduct?.sku || '',
+      ncm: matchedProduct?.ncm || '',
+      category: matchedProduct?.category || 'Fresas Router CNC',
       quantity: 1,
-      unit: 'un',
-      unitPrice: customPrice,
-      totalPrice: customPrice,
-      notes: 'TCT / Metal Duro de alto rendimento',
+      unit: matchedProduct?.unit || 'un',
+      unitPrice,
+      totalPrice: unitPrice,
+      notes: matchedProduct
+        ? `Produto cadastrado no Bling ERP (${matchedProduct.sku})`
+        : 'Não encontrado no catálogo do Bling. Revise e cadastre antes de faturar.',
     };
     const updatedItems = [...quote.items, newItem];
     recalculateFinancials(updatedItems, quote.shipping.selectedOption);
@@ -226,65 +350,89 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     });
   };
 
-  const filteredBlingCatalog = BLING_FRESA_MASTER_CATALOG.filter((item) => {
-    const query = catalogSearch.toLowerCase();
+  const activeBlingCatalog = liveBlingCatalog ?? [];
+  const filteredBlingCatalog = activeBlingCatalog.filter((item) => {
+    const query = catalogSearch.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const searchable = [item.description, item.sku, item.category, item.ncm, ...item.tags]
+      .join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     return (
-      item.description.toLowerCase().includes(query) ||
-      item.sku.toLowerCase().includes(query) ||
-      item.category.toLowerCase().includes(query) ||
-      item.tags.some((t) => t.toLowerCase().includes(query))
+      searchable.includes(query)
     );
   });
 
+  const invoiceRequired = ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(
+    quote.shipping.selectedOption?.service || ''
+  );
+
+  const workflowSteps = [
+    { label: '1. Pedido', done: quote.items.length > 0 || Boolean(quote.client.name || quote.client.phone) },
+    { label: '2. Orçamento', done: quote.financials.totalAmount > 0 },
+    { label: '3. Aprovado', done: quote.status === 'approved' },
+    {
+      label: invoiceRequired ? '4. NF Bling' : '4. Sem NF',
+      done: invoiceRequired ? quote.status === 'approved' : true,
+    },
+  ];
+
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden space-y-6">
-      {/* Top Bar of the Quote */}
-      <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
-            {quote.id}
-          </span>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              Orçamento de Fresas & Ferramentas CNC
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Validade: 10 dias • Emissão direta Fresa Master
-            </p>
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden space-y-6">
+      <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+              {quote.id}
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Orçamento de Fresas & Ferramentas CNC
+              </h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Validade: 10 dias • Proposta profissional Fresa Master
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onPreview}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition cursor-pointer flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+            >
+              <Eye className="w-3.5 h-3.5 text-slate-500" />
+              <span>Visualizar PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleStatus}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                quote.status === 'approved'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{quote.status === 'approved' ? 'Pedido aprovado ✓' : 'Pedido aprovado'}</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={toggleStatus}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs ${
-              quote.status === 'approved'
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{quote.status === 'approved' ? 'Aprovado ✓' : 'Marcar Aprovado'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onPreview}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition cursor-pointer flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
-          >
-            <Eye className="w-3.5 h-3.5 text-slate-500" />
-            <span>Visualizar / PDF</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenBling}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-800 hover:bg-black dark:hover:bg-slate-700 text-white transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-          >
-            <Building className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Exportar Bling</span>
-          </button>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+          {workflowSteps.map((step) => (
+            <div
+              key={step.label}
+              className={`rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition ${
+                step.done
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span>{step.label}</span>
+                <span className={`inline-flex h-2.5 w-2.5 rounded-full ${step.done ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -479,16 +627,21 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
-                onClick={() => setIsBlingCatalogModalOpen(true)}
+                onClick={() => {
+                  setPendingQuoteItemId(null);
+                  setShowNewProductForm(false);
+                  setNewProductError(null);
+                  setIsBlingCatalogModalOpen(true);
+                }}
                 className="text-[11px] px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
               >
                 <Building className="w-3.5 h-3.5 text-emerald-200" />
-                <span>Catálogo Bling ERP ({BLING_FRESA_MASTER_CATALOG.length})</span>
+                <span>Produtos do Bling ({activeBlingCatalog.length})</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => addItem('Fresa 3 Cortes TCT 6x22mm Haste 6mm (Widia)', 140, 'FM-TCT-6X22')}
+                onClick={() => addItem('Fresa 3 Cortes TCT 6x22mm Haste 6mm (Widia)', 140)}
                 className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition cursor-pointer font-medium"
               >
                 + 3 Cortes TCT (R$ 140)
@@ -496,7 +649,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
               <button
                 type="button"
-                onClick={() => addItem('Fresa Helicoidal 2 Cortes Metal Duro 6x22mm', 95, 'FM-HEL-2C-6X22')}
+                onClick={() => addItem('Fresa Helicoidal 2 Cortes Metal Duro 6x22mm', 95)}
                 className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer font-medium"
               >
                 + Helicoidal 2C (R$ 95)
@@ -536,11 +689,21 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         onChange={(e) => updateItem(item.id, 'description', e.target.value)}
                         className="w-full font-semibold text-slate-800 dark:text-slate-100 bg-transparent outline-none focus:underline"
                       />
+                      {(!item.sku || item.notes?.includes('Não encontrado no catálogo do Bling')) && (
+                        <button
+                          type="button"
+                          onClick={() => openCatalogForItem(item)}
+                          className="mt-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+                        >
+                          Buscar ou cadastrar no Bling
+                        </button>
+                      )}
                     </td>
                     <td className="p-3 font-mono text-[11px]">
                       <input
                         type="text"
-                        value={item.sku || 'FM-TCT'}
+                        value={item.sku || ''}
+                        placeholder="Pendente"
                         onChange={(e) => updateItem(item.id, 'sku', e.target.value)}
                         className="w-full text-slate-600 dark:text-slate-400 bg-transparent outline-none"
                       />
@@ -548,7 +711,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                     <td className="p-3 font-mono text-[11px]">
                       <input
                         type="text"
-                        value={item.ncm || '8207.70.00'}
+                        value={item.ncm || ''}
+                        placeholder="Pendente"
                         onChange={(e) => updateItem(item.id, 'ncm', e.target.value)}
                         className="w-full text-slate-600 dark:text-slate-400 bg-transparent outline-none"
                       />
@@ -735,12 +899,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               <div className="flex items-center gap-2">
                 <Building className="w-5 h-5 text-emerald-600" />
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  Catálogo Oficial Fresa Master (Bling ERP)
+                  Produtos cadastrados no Bling ERP
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsBlingCatalogModalOpen(false)}
+                onClick={closeBlingCatalog}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 <X className="w-4 h-4" />
@@ -754,18 +918,28 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   type="text"
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
-                  placeholder="Buscar fresa por descrição, SKU, diâmetro ou NCM..."
+                  placeholder="Digite nome, SKU, diâmetro ou NCM para buscar..."
                   className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs outline-none focus:border-emerald-500"
                   autoFocus
                 />
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  {isLoadingBlingCatalog
+                    ? 'Sincronizando produtos da sua conta...'
+                    : liveBlingCatalog !== null
+                      ? `${liveBlingCatalog.length} produtos carregados da sua conta Bling`
+                      : catalogLoadError || 'Conecte o Bling para carregar seus produtos cadastrados.'}
+                </p>
               </div>
             </div>
 
             <div className="p-4 overflow-y-auto space-y-2 flex-1 divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredBlingCatalog.map((prod) => (
+              {isLoadingBlingCatalog && (
+                <div className="py-8 text-center text-xs text-slate-500">Carregando catálogo...</div>
+              )}
+              {!isLoadingBlingCatalog && filteredBlingCatalog.map((prod) => (
                 <div
                   key={prod.id}
-                  onClick={() => addBlingProduct(prod)}
+                  onClick={() => addBlingProduct(prod, pendingQuoteItemId)}
                   className="pt-2 first:pt-0 flex items-center justify-between gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl cursor-pointer transition"
                 >
                   <div>
@@ -784,6 +958,76 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   </div>
                 </div>
               ))}
+
+              {!isLoadingBlingCatalog && catalogSearch.trim() && filteredBlingCatalog.length === 0 && (
+                <p className="py-5 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Nenhum produto encontrado no catálogo carregado.
+                </p>
+              )}
+
+              {!isLoadingBlingCatalog && catalogSearch.trim() && !showNewProductForm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewProductName(catalogSearch.trim());
+                    setNewProductSku(`FM-${Date.now().toString().slice(-6)}`);
+                    setNewProductPrice('');
+                    setNewProductNcm('8207.70.00');
+                    setNewProductError(null);
+                    setShowNewProductForm(true);
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Não encontrou? Cadastrar no Bling
+                </button>
+              )}
+
+              {showNewProductForm && (
+                <form onSubmit={createBlingProduct} className="mt-3 space-y-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 p-3">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Confirmar novo produto no Bling</div>
+                  <input
+                    required
+                    value={newProductName}
+                    onChange={(event) => setNewProductName(event.target.value)}
+                    placeholder="Descrição do produto"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      required
+                      value={newProductSku}
+                      onChange={(event) => setNewProductSku(event.target.value)}
+                      placeholder="SKU"
+                      className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                    />
+                    <input
+                      required
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={newProductPrice}
+                      onChange={(event) => setNewProductPrice(event.target.value)}
+                      placeholder="Preço unitário (R$)"
+                      className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                    />
+                    <input
+                      required
+                      value={newProductNcm}
+                      onChange={(event) => setNewProductNcm(event.target.value)}
+                      placeholder="NCM"
+                      className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                    />
+                  </div>
+                  {newProductError && <p className="text-[11px] text-red-700 dark:text-red-400">{newProductError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setShowNewProductForm(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300">Cancelar</button>
+                    <button type="submit" disabled={isCreatingBlingProduct} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold">
+                      {isCreatingBlingProduct ? 'Cadastrando...' : 'Confirmar cadastro'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,19 @@
 import { BlingCatalogProduct } from './types';
 
+export interface BlingProductRecord {
+  id?: string | number;
+  codigo?: string;
+  nome?: string;
+  descricao?: string;
+  descricaoCurta?: string;
+  preco?: number | string;
+  unidade?: string;
+  pesoLiquido?: number | string;
+  categoriaProduto?: { descricao?: string };
+  tributacao?: { ncm?: string };
+  ncm?: string;
+}
+
 export const BLING_FRESA_MASTER_CATALOG: BlingCatalogProduct[] = [
   // 1. Fresas 3 Cortes TCT (Widia)
   {
@@ -188,51 +202,89 @@ export const BLING_FRESA_MASTER_CATALOG: BlingCatalogProduct[] = [
   },
 ];
 
-// Helper to find the best match in Bling's catalog based on item description
-export function matchBlingCatalogProduct(query: string): BlingCatalogProduct | null {
+const normalizeText = (value: string) =>
+  value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+export function normalizeBlingCatalogProducts(records: unknown[]): BlingCatalogProduct[] {
+  return records.flatMap((record, index) => {
+    if (!record || typeof record !== 'object') return [];
+    const product = record as BlingProductRecord;
+    const description = product.nome?.trim() || product.descricao?.trim() || product.descricaoCurta?.trim();
+    if (!description) return [];
+
+    const sku = product.codigo?.trim() || String(product.id || `BLING-${index + 1}`);
+    const category = product.categoriaProduto?.descricao || 'Produtos Bling';
+    const price = Number(product.preco) || 0;
+    const weight = Number(product.pesoLiquido) || 0;
+
+    return [{
+      id: String(product.id || sku),
+      sku,
+      description,
+      category,
+      unitPrice: price,
+      unit: product.unidade || 'un',
+      ncm: product.tributacao?.ncm || product.ncm || '',
+      weightGrams: weight * 1000,
+      tags: [sku, category, product.descricaoCurta || '', description]
+        .join(' ')
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((tag) => tag.length > 1),
+    }];
+  });
+}
+
+// Find the closest catalog match using SKU, product family, and technical terms.
+export function matchBlingCatalogProduct(
+  query: string,
+  catalog: BlingCatalogProduct[] = BLING_FRESA_MASTER_CATALOG,
+): BlingCatalogProduct | null {
   if (!query) return null;
-  const q = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const q = normalizeText(query);
+  const queryTokens = [...new Set(q.split(' ').filter((token) => token.length > 1))];
+  if (!queryTokens.length) return null;
 
   // Exact SKU match
-  const skuMatch = BLING_FRESA_MASTER_CATALOG.find(
-    (p) => p.sku.toLowerCase() === q || q.includes(p.sku.toLowerCase())
-  );
+  const skuMatch = catalog.find((product) => {
+    const sku = normalizeText(product.sku);
+    return sku === q || (sku.length > 3 && q.includes(sku));
+  });
   if (skuMatch) return skuMatch;
 
-  // Score match based on tags and description
   let bestProduct: BlingCatalogProduct | null = null;
   let highestScore = 0;
+  const families = [
+    ['tct', 'widia'],
+    ['3 cortes', 'tres cortes'],
+    ['2 cortes', 'dois cortes'],
+    ['1 corte', 'um corte'],
+    ['helicoidal'],
+    ['downcut', 'descendente'],
+    ['vbit', 'v bit', 'v-bit'],
+    ['pinca', 'er11', 'er16', 'er20', 'er25', 'er32'],
+  ];
+  const queryFamilies = families.filter((family) => family.some((term) => q.includes(normalizeText(term))));
+  const queryDimensions = query.match(/\b\d+(?:\.\d+)?\b/g) || [];
 
-  for (const prod of BLING_FRESA_MASTER_CATALOG) {
+  for (const prod of catalog) {
     let score = 0;
-    const prodDesc = prod.description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const searchable = normalizeText([prod.description, prod.category, prod.sku, ...prod.tags].join(' '));
+    const productTokens = new Set(searchable.split(' '));
+    const productNumbers = new Set(searchable.match(/\d+(?:\.\d+)?/g) || []);
+    const productFamilies = families.filter((family) => family.some((term) => searchable.includes(normalizeText(term))));
 
-    for (const tag of prod.tags) {
-      const cleanTag = tag.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (q.includes(cleanTag)) {
-        score += 3;
-      }
+    if (queryFamilies.length && !queryFamilies.every((family) => productFamilies.includes(family))) continue;
+
+    for (const token of queryTokens) {
+      if (productTokens.has(token)) score += /^\d/.test(token) ? 5 : token.length > 3 ? 3 : 1;
+    }
+    for (const dimension of queryDimensions) {
+      if (productNumbers.has(dimension)) score += 4;
     }
 
-    if (q.includes('tct') && prodDesc.includes('tct')) score += 5;
-    if (q.includes('widia') && prodDesc.includes('widia')) score += 5;
-    if ((q.includes('3 cortes') || q.includes('tres cortes') || q.includes('3 corte')) && prodDesc.includes('3 cortes')) score += 6;
-    if ((q.includes('2 cortes') || q.includes('dois cortes')) && prodDesc.includes('2 cortes')) score += 5;
-    if (q.includes('1 corte') && prodDesc.includes('1 corte')) score += 5;
-    if (q.includes('acrilico') && prodDesc.includes('acrilico')) score += 4;
-    if (q.includes('aluminio') && prodDesc.includes('aluminio')) score += 4;
-    if (q.includes('v-bit') || q.includes('vbit')) {
-      if (prodDesc.includes('v-bit')) score += 4;
-      if (q.includes('60') && prodDesc.includes('60°')) score += 5;
-      if (q.includes('90') && prodDesc.includes('90°')) score += 5;
-    }
-    if (q.includes('6mm') && prodDesc.includes('6mm')) score += 2;
-    if (q.includes('4mm') && prodDesc.includes('4mm')) score += 2;
-    if (q.includes('pinca') || q.includes('pinça')) {
-      if (prodDesc.includes('pinca') || prodDesc.includes('pinça')) score += 6;
-      if (q.includes('er20') && prodDesc.includes('er20')) score += 4;
-      if (q.includes('er11') && prodDesc.includes('er11')) score += 4;
-    }
+    const queryAngle = q.match(/\b(60|90)\b/);
+    if (queryAngle && searchable.includes(`${queryAngle[1]} graus`)) score += 5;
+    if (searchable.includes(q)) score += 8;
 
     if (score > highestScore) {
       highestScore = score;
@@ -240,5 +292,5 @@ export function matchBlingCatalogProduct(query: string): BlingCatalogProduct | n
     }
   }
 
-  return highestScore >= 3 ? bestProduct : null;
+  return highestScore >= 6 ? bestProduct : null;
 }

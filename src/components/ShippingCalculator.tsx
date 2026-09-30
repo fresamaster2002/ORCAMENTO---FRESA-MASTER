@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 import {
   Truck,
   Check,
@@ -172,7 +173,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
     }
 
     try {
-      const res = await fetch('/api/shipping/calculate', {
+      const res = await apiFetch('/api/shipping/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

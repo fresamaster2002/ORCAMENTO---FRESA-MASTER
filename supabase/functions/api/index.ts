@@ -1,0 +1,631 @@
+type EdgeRuntime = {
+  env: { get(name: string): string | undefined };
+  serve(handler: (request: Request) => Response | Promise<Response>): void;
+};
+type JsonObject = Record<string, any>;
+
+const edge = (globalThis as typeof globalThis & { Deno?: EdgeRuntime }).Deno;
+const env = (name: string, fallback = '') => edge?.env.get(name) || fallback;
+const allowedEmail = 'fresamaster0@gmail.com';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-bling-token',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+type CatalogProduct = {
+  id: string;
+  sku: string;
+  description: string;
+  category: string;
+  unitPrice: number;
+  unit: string;
+  ncm: string;
+  weightGrams: number;
+  tags: string[];
+};
+
+const normalizeText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+function normalizeBlingCatalogProducts(records: unknown[]): CatalogProduct[] {
+  return records.flatMap((record, index) => {
+    if (!record || typeof record !== 'object') return [];
+    const product = record as JsonObject;
+    const description = String(product.nome || product.descricao || product.descricaoCurta || '').trim();
+    if (!description) return [];
+    const sku = String(product.codigo || product.id || `BLING-${index + 1}`).trim();
+    const category = String(product.categoriaProduto?.descricao || 'Produtos Bling');
+    return [{
+      id: String(product.id || sku), sku, description, category,
+      unitPrice: Number(product.preco) || 0,
+      unit: String(product.unidade || 'un'),
+      ncm: String(product.tributacao?.ncm || product.ncm || ''),
+      weightGrams: (Number(product.pesoLiquido) || 0) * 1000,
+      tags: [sku, category, product.descricaoCurta || '', description].join(' ').split(/[^\p{L}\p{N}]+/u).filter((tag: string) => tag.length > 1),
+    }];
+  });
+}
+
+function matchBlingCatalogProduct(query: string, catalog: CatalogProduct[]): CatalogProduct | null {
+  if (!query) return null;
+  const normalizedQuery = normalizeText(query);
+  const queryTokens = [...new Set(normalizedQuery.split(' ').filter((token) => token.length > 1))];
+  const exact = catalog.find((product) => {
+    const sku = normalizeText(product.sku);
+    return sku === normalizedQuery || (sku.length > 3 && normalizedQuery.includes(sku));
+  });
+  if (exact) return exact;
+  const families = [['tct', 'widia'], ['3 cortes', 'tres cortes'], ['2 cortes', 'dois cortes'], ['1 corte', 'um corte'], ['helicoidal'], ['downcut', 'descendente'], ['vbit', 'v bit', 'v-bit'], ['pinca', 'er11', 'er16', 'er20', 'er25', 'er32']];
+  const queryFamilies = families.filter((family) => family.some((term) => normalizedQuery.includes(normalizeText(term))));
+  const queryDimensions = normalizedQuery.match(/\b\d+(?:\.\d+)?\b/g) || [];
+  let best: CatalogProduct | null = null;
+  let bestScore = 0;
+  for (const product of catalog) {
+    const searchable = normalizeText([product.description, product.category, product.sku, ...product.tags].join(' '));
+    const productTokens = new Set(searchable.split(' '));
+    const productNumbers = new Set(searchable.match(/\d+(?:\.\d+)?/g) || []);
+    const productFamilies = families.filter((family) => family.some((term) => searchable.includes(normalizeText(term))));
+    if (queryFamilies.length && !queryFamilies.every((family) => productFamilies.includes(family))) continue;
+    let score = 0;
+    for (const token of queryTokens) if (productTokens.has(token)) score += /^\d/.test(token) ? 5 : token.length > 3 ? 3 : 1;
+    for (const dimension of queryDimensions) if (productNumbers.has(dimension)) score += 4;
+    const angle = normalizedQuery.match(/\b(60|90)\b/);
+    if (angle && searchable.includes(`${angle[1]} graus`)) score += 5;
+    if (searchable.includes(normalizedQuery)) score += 8;
+    if (score > bestScore) { best = product; bestScore = score; }
+  }
+  return bestScore >= 6 ? best : null;
+}
+
+function extractCepFromText(text: string): string {
+  const labeled = text.match(/\bcep\b\s*(?:é|e|de|do|para|:|=|-)?\s*(\d{5}-?\d{3})/i);
+  if (labeled) return labeled[1];
+  return text.match(/(?:^|[^\d])(\d{5}-\d{3})(?!\d)/)?.[1] || '';
+}
+
+function parseBrazilianNumber(value: string): number {
+  const normalized = value.includes(',') || /\.\d{3}$/.test(value) ? value.replace(/\./g, '').replace(',', '.') : value;
+  return Number(normalized);
+}
+
+function extractUnitPricesFromText(text: string): number[] {
+  const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
+  const price = `(?:R\\$\\s*)?(${amount})`;
+  const patterns = [new RegExp(`${price}\\s*(?:reais?\\s*)?(?:cada(?:\\s+(?:fresa|unidade|uma))?|por\\s+unidade)`, 'gi'), new RegExp(`cada\\s+(?:fresa|unidade|uma)?\\s*(?:por|a|e|é|de|no valor de)?\\s*${price}`, 'gi')];
+  const matches: Array<{ index: number; value: number }> = [];
+  for (const pattern of patterns) for (const match of text.matchAll(pattern)) {
+    const value = parseBrazilianNumber(match[1]);
+    if (Number.isFinite(value) && value > 0) matches.push({ index: match.index || 0, value });
+  }
+  matches.sort((left, right) => left.index - right.index);
+  return matches.reduce<number[]>((prices, match, index) => {
+    const previous = matches[index - 1];
+    if (!previous || Math.abs(match.index - previous.index) > 5 || match.value !== previous.value) prices.push(match.value);
+    return prices;
+  }, []);
+}
+
+function extractMotoboyPriceFromText(text: string): number | null {
+  const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
+  const patterns = [new RegExp(`\\b(?:motoboy|moto boy)\\s*(?:(?:por|a|custa|de|no valor de|:|-)\\s*)?(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'), new RegExp(`(?:R\\$\\s*)?(${amount})\\s*(?:reais?\\s*)?(?:de|no)\\s*(?:frete|motoboy)`, 'i'), new RegExp(`(?:frete|entrega)\\s+(?:de\\s+)?(?:R\\$\\s*)?(${amount})\\s*(?:reais?)?[^.]{0,20}\\b(?:motoboy|moto boy)\\b`, 'i')];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseBrazilianNumber(match[1]);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+  return null;
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
+  });
+}
+
+function html(content: string, status = 200): Response {
+  return new Response(content, {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+function routePath(request: Request): string {
+  const pathname = new URL(request.url).pathname;
+  const functionPrefix = '/functions/v1/api';
+  const prefixIndex = pathname.indexOf(functionPrefix);
+  const route = prefixIndex >= 0 ? pathname.slice(prefixIndex + functionPrefix.length) : pathname;
+  return route.replace(/^\/api(?=\/|$)/, '') || '/';
+}
+
+function isPublicRoute(path: string, method: string): boolean {
+  return method === 'GET' && (
+    path === '/health' ||
+    path === '/bling/oauth/callback' ||
+    path === '/shipping/melhor-envio/callback'
+  );
+}
+
+async function authorize(request: Request, path: string): Promise<Response | null> {
+  if (isPublicRoute(path, request.method)) return null;
+
+  const projectUrl = env('SUPABASE_URL');
+  const publishableKey = env('SUPABASE_ANON_KEY') || env('SUPABASE_PUBLISHABLE_KEY');
+  const accessToken = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!projectUrl || !publishableKey) return json({ error: 'Autenticação Supabase não está configurada nesta função.' }, 503);
+  if (!accessToken) return json({ error: 'Faça login para acessar este recurso.' }, 401);
+
+  try {
+    const response = await fetch(`${projectUrl}/auth/v1/user`, {
+      headers: { apikey: publishableKey, Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return json({ error: 'Sessão expirada. Entre novamente para continuar.' }, 401);
+    const user = await response.json();
+    if (user.email_confirmed_at == null || user.email?.toLowerCase() !== allowedEmail) {
+      return json({ error: 'Esta conta não tem autorização para acessar o Fresa Master.' }, 403);
+    }
+  } catch {
+    return json({ error: 'Não foi possível validar a sessão Supabase.' }, 503);
+  }
+  return null;
+}
+
+async function readJson(request: Request): Promise<JsonObject> {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+async function callGemini(parts: JsonObject[], systemInstruction: string, responseSchema?: JsonObject, maxOutputTokens = 1200): Promise<JsonObject | string | null> {
+  const apiKey = env('GEMINI_API_KEY');
+  if (!apiKey) return null;
+  const model = env('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          maxOutputTokens,
+          ...(responseSchema ? { responseMimeType: 'application/json', responseSchema } : {}),
+        },
+      }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const text = payload.candidates?.[0]?.content?.parts?.map((part: JsonObject) => part.text || '').join('').trim();
+    return text ? (responseSchema ? JSON.parse(text) : text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function calculatePackageWeight(items: Array<{ description?: string; quantity?: number }>) {
+  let grams = 150;
+  let totalPieces = 0;
+  for (const item of items || []) {
+    const quantity = Number(item.quantity) || 1;
+    totalPieces += quantity;
+    const description = (item.description || '').toLowerCase();
+    const toolWeight = /tct|widia|3 cortes|corte reto/.test(description) ? 110
+      : /pinça|pinca|er11|er16|er20|er25|er32/.test(description) ? 85
+      : /v-bit|chanfro|desbaste|12mm|1\/2/.test(description) ? 85
+      : /acrílico|alumínio|1 corte|2 cortes/.test(description) ? 45 : 45;
+    grams += quantity * toolWeight;
+  }
+  const rawKg = grams / 1000;
+  const weightKg = rawKg <= 0.5 ? 0.5 : Number((Math.ceil(rawKg * 10) / 10).toFixed(1));
+  return {
+    weightKg,
+    totalPieces,
+    description: weightKg <= 0.5 ? '0,5 kg (padrão até 0,5 kg)' : `${weightKg.toFixed(1).replace('.', ',')} kg (${totalPieces} ferramentas com embalagem protetora)`,
+  };
+}
+
+function calculateShippingRates(
+  destinationCep: string,
+  originCep = '13321-472',
+  weightKg = 0.5,
+  dimensions: JsonObject = { height: 5, width: 12, length: 18 },
+  customShipping?: JsonObject,
+  insuranceEnabled = false,
+  declaredValue = 280,
+) {
+  const destination = destinationCep.replace(/\D/g, '');
+  const origin = originCep.replace(/\D/g, '') || '13321472';
+  const destDigit = destination ? Number(destination[0]) : 1;
+  const originDigit = origin ? Number(origin[0]) : 1;
+  const sameState = destDigit === originDigit;
+  const closeRegion = Math.abs(destDigit - originDigit) <= 1;
+  const zoneFactor = sameState ? 0.95 : closeRegion ? 1.15 : 1.35;
+  const extraWeight = Math.max(0, weightKg - 0.5);
+  const cubicWeight = ((dimensions.height || 5) * (dimensions.width || 12) * (dimensions.length || 18)) / 6000;
+  const effectiveExtra = Math.max(extraWeight, cubicWeight > 1 ? cubicWeight - 0.5 : 0);
+  const insuranceCost = declaredValue > 0 ? Number(Math.max(3.5, declaredValue * 0.015).toFixed(2)) : 0;
+  const sedexBase = Number((28.5 * zoneFactor + effectiveExtra * 5.8 * zoneFactor).toFixed(2));
+  const pacBase = Number((18.9 * zoneFactor + effectiveExtra * 3.2 * zoneFactor).toFixed(2));
+  const jadlogBase = Number((17.4 * zoneFactor + effectiveExtra * 2.9 * zoneFactor).toFixed(2));
+  const withInsurance = (price: number) => insuranceEnabled ? Number((price + insuranceCost).toFixed(2)) : price;
+  const pacDays = sameState ? 4 : closeRegion ? 6 : 8;
+  const options: JsonObject[] = [
+    { service: 'SEDEX', name: insuranceEnabled ? 'Sedex c/ Seguro' : 'Sedex (Melhor Envio)', carrier: 'Correios', price: withInsurance(sedexBase), deliveryDays: sameState ? 2 : closeRegion ? 3 : 4, selected: true, insuranceIncluded: insuranceEnabled, insuranceCost, withInsurancePrice: Number((sedexBase + insuranceCost).toFixed(2)), withoutInsurancePrice: sedexBase },
+    { service: 'PAC', name: insuranceEnabled ? 'PAC c/ Seguro' : 'PAC (Melhor Envio)', carrier: 'Correios', price: withInsurance(pacBase), deliveryDays: pacDays, selected: false, insuranceIncluded: insuranceEnabled, insuranceCost, withInsurancePrice: Number((pacBase + insuranceCost).toFixed(2)), withoutInsurancePrice: pacBase },
+    { service: 'JADLOG_PACKAGE', name: insuranceEnabled ? 'Jadlog .Package c/ Seguro' : 'Jadlog .Package', carrier: 'Jadlog', price: withInsurance(jadlogBase), deliveryDays: Math.max(2, pacDays - 1), selected: false, insuranceIncluded: insuranceEnabled, insuranceCost, withInsurancePrice: Number((jadlogBase + insuranceCost).toFixed(2)), withoutInsurancePrice: jadlogBase },
+    { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+    { service: 'MOTOBOY', name: 'Envio por Motoboy / Aplicativo (Lalamove, Uber Flash)', carrier: 'Motoboy / App', price: 0, deliveryDays: 1, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+    { service: 'CONTA_FRESA', name: 'Envio por Nossa Conta (Cortesia Fresa Master)', carrier: 'Fresa Master', price: 0, deliveryDays: 2, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+  ];
+  if (customShipping && Number(customShipping.amount) >= 0) {
+    const base = Number(Number(customShipping.amount).toFixed(2));
+    const insurance = insuranceEnabled && base > 0 ? insuranceCost : 0;
+    options.unshift({ service: 'PROPRIO', name: customShipping.name || 'Frete Fresa Master (Transportadora Própria)', carrier: 'Fresa Master', price: Number((base + insurance).toFixed(2)), deliveryDays: 2, selected: false, insuranceIncluded: insurance > 0, insuranceCost: insurance, withInsurancePrice: Number((base + insuranceCost).toFixed(2)), withoutInsurancePrice: base });
+  }
+  return options;
+}
+
+async function lookupViaCep(cep: string): Promise<JsonObject | null> {
+  const clean = (cep || '').replace(/\D/g, '');
+  if (clean.length !== 8) return null;
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+    const data = await response.json();
+    if (!response.ok || data.erro) return null;
+    return { logradouro: data.logradouro || '', bairro: data.bairro || '', cidade: data.localidade || '', uf: data.uf || '', ddd: data.ddd || '' };
+  } catch {
+    return null;
+  }
+}
+
+async function liveShippingRates(destinationCep: string, originCep: string, weightKg: number, dimensions: JsonObject, insuranceEnabled: boolean, declaredValue: number, token?: string, sandbox?: boolean): Promise<JsonObject[] | null> {
+  const accessToken = token || env('MELHOR_ENVIO_TOKEN');
+  const destination = (destinationCep || '').replace(/\D/g, '');
+  if (!accessToken || destination.length !== 8) return null;
+  const isSandbox = sandbox ?? env('MELHOR_ENVIO_SANDBOX') === 'true';
+  const host = isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
+  try {
+    const response = await fetch(`${host}/api/v2/me/shipment/calculate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken.trim()}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' },
+      body: JSON.stringify({
+        from: { postal_code: (originCep || '13321-472').replace(/\D/g, '') },
+        to: { postal_code: destination },
+        package: { height: Math.max(2, Number(dimensions.height) || 5), width: Math.max(11, Number(dimensions.width) || 12), length: Math.max(16, Number(dimensions.length) || 18), weight: Math.max(0.1, weightKg || 0.5) },
+        options: { insurance_value: insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
+        services: '1,2,3,4,17',
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!Array.isArray(data)) return null;
+    const insuranceFallback = Math.max(2.5, Number((declaredValue * 0.015).toFixed(2)));
+    return data.flatMap((item: JsonObject) => {
+      if (item.error) return [];
+      const price = Number(item.custom_price || item.price || 0);
+      if (!price) return [];
+      const label = String(item.name || '').toLowerCase();
+      const service = label.includes('sedex') ? 'SEDEX' : label.includes('pac') ? 'PAC' : 'JADLOG_PACKAGE';
+      const insurance = insuranceEnabled ? Number(Math.max(2.5, declaredValue * (service === 'SEDEX' ? 0.009 : 0.012)).toFixed(2)) : insuranceFallback;
+      const base = insuranceEnabled ? Number(Math.max(0, price - insurance).toFixed(2)) : price;
+      const insured = insuranceEnabled ? price : Number((price + insurance).toFixed(2));
+      return [{ service, melhorEnvioServiceId: Number(item.id), name: `${item.name} (Melhor Envio Oficial)`, carrier: item.company?.name || (label.includes('jadlog') ? 'Jadlog' : 'Correios'), price: insuranceEnabled ? insured : base, deliveryDays: Number(item.custom_delivery_time || item.delivery_time || 2), selected: false, insuranceIncluded: insuranceEnabled, insuranceCost: insurance, withInsurancePrice: insured, withoutInsurancePrice: base, isRealTimeMelhorEnvio: true }];
+    });
+  } catch {
+    return null;
+  }
+}
+
+function chooseRequestedCarrier(text: string, options: JsonObject[], price?: number | null): JsonObject {
+  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (normalized.includes('motoboy') || normalized.includes('moto boy')) {
+    const value = price ?? 0;
+    return { service: 'MOTOBOY', name: 'Envio por Motoboy', carrier: 'Motoboy / Aplicativo', price: value, deliveryDays: 1, selected: true, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: value, withoutInsurancePrice: value };
+  }
+  if (/(nossa conta|por conta|gratis|cortesia)/.test(normalized)) return options.find((item) => item.service === 'CONTA_FRESA') || options[0];
+  if (normalized.includes('pac')) return options.find((item) => item.service === 'PAC') || options[0];
+  if (normalized.includes('jadlog')) return options.find((item) => item.service === 'JADLOG_PACKAGE') || options[0];
+  if (normalized.includes('retirada') || normalized.includes('balcao')) return options.find((item) => item.service === 'RETIRADA') || options[0];
+  if (normalized.includes('proprio') || normalized.includes('transportadora')) return options.find((item) => item.service === 'PROPRIO') || options[0];
+  return options.find((item) => item.service === 'SEDEX') || options[0];
+}
+
+function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalog: any[] = []) {
+  const cep = extractCepFromText(text);
+  const quantityMatch = text.match(/(\d+)\s*(?:fresas?|unidades?|peças?)/i);
+  const quantity = quantityMatch ? Number.parseInt(quantityMatch[1], 10) : 1;
+  const spokenPrices = extractUnitPricesFromText(text);
+  const matched = matchBlingCatalogProduct(text, catalog);
+  const unitPrice = spokenPrices[0] || matched?.unitPrice || 0;
+  const item = {
+    id: 'item-1', description: matched?.description || text, category: matched?.category || 'Fresas Router CNC',
+    sku: matched?.sku || '', ncm: matched?.ncm || '', quantity, unit: 'un', unitPrice,
+    totalPrice: quantity * unitPrice,
+    notes: matched ? `Item cadastrado no Bling ERP (${matched.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.',
+  };
+  const weight = calculatePackageWeight([item]);
+  const shipping = currentQuote.shipping || {};
+  const dimensions = shipping.packageDimensions || { height: 5, width: 12, length: 18 };
+  const customShipping = shipping.customShippingAmount === undefined ? undefined : { amount: shipping.customShippingAmount, name: shipping.customShippingName };
+  const options = calculateShippingRates(cep || '00000000', shipping.originCep || '13321-472', weight.weightKg, dimensions, customShipping);
+  const carrierPrice = extractMotoboyPriceFromText(text);
+  const selected = chooseRequestedCarrier(text, options, carrierPrice);
+  if (!options.some((option) => option.service === selected.service)) options.push(selected);
+  else options[options.findIndex((option) => option.service === selected.service)] = selected;
+  const subtotal = quantity * unitPrice;
+  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const clientName = text.match(/(?:raz[aã]o social(?:\s+do cliente)?|cliente)\s*:?\s*([^,\.\n]+)/i)?.[1]?.trim() || 'Cliente CNC Router';
+  const discount = 0;
+  return {
+    id: currentQuote.id || `FM-${Math.floor(100000 + Math.random() * 900000)}`, status: currentQuote.status || 'draft', createdAt: currentQuote.createdAt || new Date().toISOString(),
+    client: { name: clientName, tradeName: '', company: '', email: '', phone: '', document: '', ie: 'ISENTO', cep, address: '', number: '', neighborhood: '', city: '', state: '' },
+    project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de fresas ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
+    items: [item],
+    shipping: { originCep: shipping.originCep || '13321-472', destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled: false, selectedOption: selected, options },
+    financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage: discount, discountAmount: 0, taxPercentage: 0, taxAmount: 0, totalAmount: subtotal + Number(selected.price || 0), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
+    observations: ['Envio pelo Melhor Envio com seguro total.', 'Garantia contra defeitos de fabricação e balanceamento.'],
+    notesForClient: 'Fresa Master - Sua router CNC trabalhando com máxima precisão.',
+  };
+}
+
+async function extractQuote(body: JsonObject): Promise<Response> {
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!text) return json({ success: false, error: "O campo 'text' é obrigatório com a mensagem ou áudio transcrito do cliente." }, 400);
+  if (text.length > 8000) return json({ success: false, error: 'O texto do pedido excede o limite de 8.000 caracteres.' }, 413);
+  const catalog = body.blingCatalogAvailable === true ? normalizeBlingCatalogProducts(Array.isArray(body.blingProducts) ? body.blingProducts : []) : [];
+  const current = body.currentQuote || {};
+  const schema = {
+    type: 'OBJECT',
+    properties: {
+      summary: { type: 'STRING' }, confidence: { type: 'NUMBER' }, detectedCep: { type: 'STRING' }, detectedCarrier: { type: 'STRING' }, missingInfo: { type: 'ARRAY', items: { type: 'STRING' } }, observations: { type: 'ARRAY', items: { type: 'STRING' } },
+      client: { type: 'OBJECT', properties: { name: { type: 'STRING' }, tradeName: { type: 'STRING' }, company: { type: 'STRING' }, email: { type: 'STRING' }, phone: { type: 'STRING' }, document: { type: 'STRING' }, ie: { type: 'STRING' }, cep: { type: 'STRING' }, address: { type: 'STRING' }, number: { type: 'STRING' }, neighborhood: { type: 'STRING' }, city: { type: 'STRING' }, state: { type: 'STRING' } }, required: ['name'] },
+      items: { type: 'ARRAY', items: { type: 'OBJECT', properties: { description: { type: 'STRING' }, category: { type: 'STRING' }, sku: { type: 'STRING' }, ncm: { type: 'STRING' }, quantity: { type: 'NUMBER' }, unit: { type: 'STRING' }, unitPrice: { type: 'NUMBER' }, notes: { type: 'STRING' } }, required: ['description', 'quantity'] } },
+      financials: { type: 'OBJECT', properties: { discountPercentage: { type: 'NUMBER' }, paymentTerms: { type: 'STRING' }, paymentMethod: { type: 'STRING' } }, required: [] },
+    }, required: ['summary', 'client', 'items'],
+  };
+  const ai = await callGemini([{ text: `Extraia os dados deste orçamento da Fresa Master: ${text}\n\nIdentifique cliente, CEP, itens, quantidade, preços unitários ditados, frete e observações. Preserve valores e CEP explicitamente informados. O motoboy é frete, não produto. Não invente SKU, NCM ou preço. NCM padrão de fresas: 8207.70.00. Catálogo Bling disponível: ${JSON.stringify(catalog)}` }], 'Você é o assistente comercial da Fresa Master para ferramentas de router CNC. Retorne somente os dados solicitados em JSON.', schema);
+  const parsed = ai && typeof ai === 'object' ? ai : null;
+  const fallback = fallbackQuote(text, current, catalog);
+  if (!parsed) return json({ success: true, summary: 'Orçamento preenchido pelo analisador local Fresa Master.', confidence: 0.9, missingInfo: [], quote: fallback });
+
+  const unitPrices = extractUnitPricesFromText(text);
+  const items = (parsed.items || []).map((item: JsonObject, index: number) => {
+    const match = matchBlingCatalogProduct(text, catalog) || matchBlingCatalogProduct(item.description || '', catalog);
+    const quantity = Number(item.quantity) || 1;
+    const spokenPrice = unitPrices.length === 1 ? unitPrices[0] : unitPrices[index];
+    const unitPrice = spokenPrice || (match ? match.unitPrice : Number(item.unitPrice) || 0);
+    return { id: `item-${index + 1}`, description: match?.description || item.description || 'Fresa para Router CNC', category: match?.category || item.category || 'Fresas Router CNC', sku: match?.sku || '', ncm: match?.ncm || '', quantity, unit: item.unit || 'un', unitPrice, totalPrice: quantity * unitPrice, notes: match ? `Item cadastrado no Bling ERP (${match.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.' };
+  });
+  const cep = extractCepFromText(text) || parsed.detectedCep || parsed.client?.cep || current.client?.cep || '';
+  const weight = calculatePackageWeight(items);
+  const shippingState = current.shipping || {};
+  const shippingOptions = calculateShippingRates(cep || '00000000', shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0));
+  const selected = chooseRequestedCarrier(`${text} ${parsed.detectedCarrier || ''}`, shippingOptions, extractMotoboyPriceFromText(text));
+  if (!shippingOptions.some((option) => option.service === selected.service)) shippingOptions.push(selected);
+  else shippingOptions[shippingOptions.findIndex((option) => option.service === selected.service)] = selected;
+  const address = await lookupViaCep(cep);
+  const client = { name: parsed.client?.name || 'Cliente Fresa Master', tradeName: parsed.client?.tradeName || '', company: parsed.client?.company || '', email: parsed.client?.email || '', phone: parsed.client?.phone || '', document: parsed.client?.document || '', ie: parsed.client?.ie || 'ISENTO', cep, address: parsed.client?.address || address?.logradouro || '', number: parsed.client?.number || '', neighborhood: parsed.client?.neighborhood || address?.bairro || '', city: parsed.client?.city || address?.cidade || '', state: parsed.client?.state || address?.uf || '' };
+  const subtotal = items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0);
+  const discountPercentage = Number(parsed.financials?.discountPercentage) || 0;
+  const discountAmount = Number((subtotal * discountPercentage / 100).toFixed(2));
+  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { height: 5, width: 12, length: 18 }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number((subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
+  return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });
+}
+
+async function extractCadastral(body: JsonObject): Promise<Response> {
+  const text = typeof body.text === 'string' ? body.text : '';
+  const file = body.file || {};
+  if (!text.trim() && !file.base64) return json({ error: 'Texto ou documento com dados cadastrais é obrigatório.' }, 400);
+  if (text.length > 5000) return json({ error: 'O texto cadastral excede o limite de 5.000 caracteres.' }, 413);
+  if (typeof file.base64 === 'string' && file.base64.length > 2500000) return json({ error: 'O documento excede o limite de tamanho de 1,8 MB.' }, 413);
+  const schema = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, client: { type: 'OBJECT', properties: { name: { type: 'STRING' }, tradeName: { type: 'STRING' }, document: { type: 'STRING' }, ie: { type: 'STRING' }, email: { type: 'STRING' }, phone: { type: 'STRING' }, cep: { type: 'STRING' }, address: { type: 'STRING' }, number: { type: 'STRING' }, complement: { type: 'STRING' }, neighborhood: { type: 'STRING' }, city: { type: 'STRING' }, state: { type: 'STRING' } }, required: ['name'] } }, required: ['client', 'summary'] };
+  const prompt = `Extraia os dados fiscais brasileiros deste documento/texto para cadastro no Bling. Retorne nome empresarial, nome fantasia, CPF/CNPJ, IE (ISENTO quando ausente), CEP, endereço, número, complemento, bairro, cidade, UF, e-mail e telefone. Texto: ${text || 'Consulte o documento anexado.'}`;
+  const parts: JsonObject[] = [];
+  if (file.base64 && file.mimeType) parts.push({ inlineData: { data: String(file.base64).replace(/^data:[^;]+;base64,/, ''), mimeType: file.mimeType } });
+  parts.push({ text: prompt });
+  const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Não invente informações.', schema);
+  const parsedObject = parsed && typeof parsed === 'object' ? parsed : null;
+  if (parsedObject?.client) {
+    const client = { ...(body.currentClient || {}), ...parsedObject.client };
+    const address = await lookupViaCep(client.cep || '');
+    if (address) {
+      client.address ||= address.logradouro;
+      client.neighborhood ||= address.bairro;
+      client.city ||= address.cidade;
+      client.state ||= address.uf;
+    }
+    return json({ success: true, summary: parsedObject.summary, client });
+  }
+  const cnpj = text.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || text.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
+  const cepMatch = text.match(/(?:cep\s*:?\s*)?(\d{5}-?\d{3})/i);
+  const email = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  const name = text.match(/(?:raz[aã]o social|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);
+  const addressInfo = await lookupViaCep(cepMatch?.[1] || body.currentClient?.cep || '');
+  const client = { ...(body.currentClient || {}), name: name?.[1]?.trim() || body.currentClient?.name || 'Empresa Cliente Ltda', document: cnpj?.[0] || body.currentClient?.document || '', ie: text.match(/(?:ie|inscri[cç][aã]o estadual)\s*:?\s*([0-9.-]+|isento)/i)?.[1] || body.currentClient?.ie || 'ISENTO', cep: cepMatch?.[1] || body.currentClient?.cep || '', email: email?.[0] || body.currentClient?.email || '', address: addressInfo?.logradouro || body.currentClient?.address || '', neighborhood: addressInfo?.bairro || body.currentClient?.neighborhood || '', city: addressInfo?.cidade || body.currentClient?.city || '', state: addressInfo?.uf || body.currentClient?.state || '' };
+  return json({ success: true, summary: 'Dados cadastrais extraídos pelo analisador local.', client });
+}
+
+function generateBlingPayload(quote: JsonObject): JsonObject {
+  const client = quote.client || {};
+  const cleanDocument = String(client.document || '').replace(/\D/g, '');
+  const cleanCep = String(client.cep || '').replace(/\D/g, '');
+  const cleanPhone = String(client.phone || '').replace(/\D/g, '');
+  const date = quote.project?.date || new Date().toISOString().split('T')[0];
+  const items = quote.items || [];
+  const blingJson = { numero: String(quote.id || '').replace(/\D/g, '') || String(Date.now()).slice(-6), numeroLoja: 'FRESA-MASTER', data: date, dataSaida: date, contato: { nome: client.name, tipoPessoa: cleanDocument.length === 14 ? 'J' : 'F', numeroDocumento: cleanDocument, ie: client.ie || 'ISENTO', email: client.email || '', telefone: cleanPhone, endereco: { endereco: client.address || '', numero: client.number || 'S/N', complemento: client.complement || '', bairro: client.neighborhood || '', cep: cleanCep, municipio: client.city || '', uf: client.state || 'SP' } }, itens: items.map((item: JsonObject, index: number) => ({ codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: 0.35, pesoLiquido: 0.25 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Orçamento ${quote.id} gerado pela Fresa Master. ${(quote.observations || []).join(' ')}` };
+  const cdata = (value: unknown) => String(value || '').replace(/\]\]>/g, ']]]]><![CDATA[>');
+  const xmlItems = items.map((item: JsonObject, index: number) => `<item><codigo>${item.sku || `FM-${index + 1}`}</codigo><descricao><![CDATA[${cdata(item.description)}]]></descricao><un>${item.unit || 'UN'}</un><qtde>${Number(item.quantity) || 1}</qtde><vlr_unit>${Number(item.unitPrice || 0).toFixed(2)}</vlr_unit><tipo>P</tipo><origem>0</origem><class_fiscal>${item.ncm || '8207.70.00'}</class_fiscal></item>`).join('');
+  const blingXml = `<?xml version="1.0" encoding="UTF-8"?><pedido><cliente><nome><![CDATA[${cdata(client.name)}]]></nome><tipoPessoa>${cleanDocument.length === 14 ? 'J' : 'F'}</tipoPessoa><cpf_cnpj>${cleanDocument}</cpf_cnpj><ie>${client.ie || 'ISENTO'}</ie><endereco><![CDATA[${cdata(client.address)}]]></endereco><numero>${client.number || 'S/N'}</numero><complemento><![CDATA[${cdata(client.complement)}]]></complemento><bairro><![CDATA[${cdata(client.neighborhood)}]]></bairro><cep>${cleanCep}</cep><cidade><![CDATA[${cdata(client.city)}]]></cidade><uf>${client.state || 'SP'}</uf><fone>${cleanPhone}</fone><email>${client.email || ''}</email></cliente><transporte><transportadora><![CDATA[${cdata(quote.shipping?.selectedOption?.carrier || 'Correios')}]]></transportadora><tipo_frete>R</tipo_frete><servico_correios>${quote.shipping?.selectedOption?.name || 'Sedex'}</servico_correios></transporte><itens>${xmlItems}</itens><vlr_frete>${Number(quote.financials?.shippingAmount || 0).toFixed(2)}</vlr_frete><vlr_desconto>${Number(quote.financials?.discountAmount || 0).toFixed(2)}</vlr_desconto><obs><![CDATA[Orçamento Fresa Master ${quote.id}.]]></obs></pedido>`;
+  return { blingJson, blingXml };
+}
+
+async function shippingCalculate(body: JsonObject): Promise<Response> {
+  const destinationCep = String(body.destinationCep || '');
+  if (!destinationCep) return json({ error: 'CEP de destino é obrigatório.' }, 400);
+  const items = Array.isArray(body.items) ? body.items : [];
+  let weight = Number(body.weightKg) > 0 ? Number(body.weightKg) : items.length ? calculatePackageWeight(items).weightKg : 0.5;
+  const weightDescription = Number(body.weightKg) > 0 ? `${weight.toFixed(1).replace('.', ',')} kg (definido manualmente)` : calculatePackageWeight(items).description;
+  let declaredValue = Number(body.declaredValue) || items.reduce((sum: number, item: JsonObject) => sum + (Number(item.totalPrice) || 0), 0) || 280;
+  const dimensions = body.packageDimensions || { height: 5, width: 12, length: 18 };
+  const originCep = body.originCep || '13321-472';
+  const insuranceEnabled = Boolean(body.insuranceEnabled);
+  let options = await liveShippingRates(destinationCep, originCep, weight, dimensions, insuranceEnabled, declaredValue, body.melhorEnvioToken);
+  const isLiveApi = Boolean(options?.length);
+  if (!options?.length) options = calculateShippingRates(destinationCep, originCep, weight, dimensions, body.customShipping, insuranceEnabled, declaredValue);
+  else {
+    options.push(
+      { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+      { service: 'MOTOBOY', name: 'Envio por Motoboy / Aplicativo (Lalamove, Uber Flash)', carrier: 'Motoboy / App', price: 0, deliveryDays: 1, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+      { service: 'CONTA_FRESA', name: 'Envio por Nossa Conta (Cortesia Fresa Master)', carrier: 'Fresa Master', price: 0, deliveryDays: 2, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+    );
+    if (body.customShipping && Number(body.customShipping.amount) >= 0) options.unshift({ service: 'PROPRIO', name: body.customShipping.name || 'Frete Fresa Master (Transportadora Própria)', carrier: 'Fresa Master', price: Number(Number(body.customShipping.amount).toFixed(2)), deliveryDays: 2, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: Number(body.customShipping.amount), withoutInsurancePrice: Number(body.customShipping.amount) });
+  }
+  const address = await lookupViaCep(destinationCep);
+  const insuranceAmount = insuranceEnabled ? Math.max(2.5, Number((declaredValue * 0.015).toFixed(2))) : 0;
+  return json({ success: true, weightKg: weight, weightDescription, packageDimensions: dimensions, insuranceEnabled, declaredValue, insuranceAmount, isLiveApi, options, address });
+}
+
+async function testBling(token: string): Promise<JsonObject> {
+  if (!token.trim()) return { success: false, connected: false, message: 'Nenhum token de API do Bling fornecido.' };
+  const headers = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' };
+  const [contacts, products] = await Promise.all([
+    fetch('https://api.bling.com.br/Api/v3/contatos?limite=1', { headers }),
+    fetch('https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1', { headers }),
+  ]);
+  if (contacts.status === 401 || products.status === 401) return { success: false, connected: false, message: 'Token do Bling não autorizado ou expirado.' };
+  if (!contacts.ok) return { success: false, connected: false, message: `Não foi possível validar a conta Bling (HTTP ${contacts.status}).` };
+  const productData = products.ok ? await products.json().catch(() => ({})) : null;
+  const count = Array.isArray(productData?.data) ? productData.data.length : 0;
+  return { success: true, connected: true, productsReadable: products.ok, productCount: count, message: products.ok ? `Bling conectado. A permissão de produtos está ativa (${count} produto(s) nesta página).` : `Conta conectada, mas o Bling negou acesso a produtos (HTTP ${products.status}). Reative produtos:read.` };
+}
+
+async function route(request: Request): Promise<Response> {
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const path = routePath(request);
+  const authError = await authorize(request, path);
+  if (authError) return authError;
+  const url = new URL(request.url);
+  const body = request.method === 'POST' ? await readJson(request) : {};
+
+  try {
+    if (path === '/health' && request.method === 'GET') return json({ status: 'ok', company: 'Fresa Master', hasApiKey: Boolean(env('GEMINI_API_KEY')), model: env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), timestamp: new Date().toISOString() });
+    if (path === '/quote/extract' && request.method === 'POST') return await extractQuote(body);
+    if (path === '/bling/extract-cadastral' && request.method === 'POST') return await extractCadastral(body);
+    if (path === '/bling/generate-payload' && request.method === 'POST') {
+      if (!body.quote?.client) return json({ error: 'Orçamento inválido.' }, 400);
+      return json({ success: true, ...generateBlingPayload(body.quote) });
+    }
+    if (path === '/quote/generate-proposal' && request.method === 'POST') {
+      const quote = body.quote || {};
+      const total = Number(quote.financials?.totalAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const shippingName = quote.shipping?.selectedOption?.name || 'Sedex (Melhor Envio)';
+      const shippingCost = Number(quote.financials?.shippingAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const prompt = `Crie uma mensagem comercial da Fresa Master para ${body.channel === 'email' ? 'e-mail' : 'WhatsApp'} em tom ${body.tone || 'friendly'}. Cliente: ${quote.client?.name || ''}. CEP: ${quote.client?.cep || ''}. Itens: ${(quote.items || []).map((item: JsonObject) => `${item.description}: ${item.quantity} ${item.unit} x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('; ')}. Subtotal R$ ${Number(quote.financials?.subtotal || 0).toFixed(2)}. Frete ${shippingName}: ${shippingCost}. Prazo: ${quote.project?.deadline || 'A combinar'}. Total: ${total}. Pagamento: ${quote.financials?.paymentTerms || 'Pix ou Boleto'}. Peça confirmação e dados cadastrais para NF-e.`;
+      const ai = await callGemini([{ text: prompt }], 'Você é o assistente comercial da Fresa Master.', undefined, 700);
+      const messageText = typeof ai === 'string' ? ai : '';
+      const fallback = `Olá, *${quote.client?.name || 'cliente'}*! Tudo bem? Aqui é da *Fresa Master*.\n\nSegue o orçamento das ferramentas para sua router CNC:\n\n${(quote.items || []).map((item: JsonObject) => `🔹 *${item.description}*\n   ${item.quantity} un x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('\n\n')}\n\n📦 *Frete:* ${shippingName} (${shippingCost})\n⏱️ *Prazo:* ${quote.project?.deadline || 'A combinar'}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || 'Pix ou Boleto'}\n\nApós aprovar, envie seus dados cadastrais para emissão da Nota Fiscal e despacho.`;
+      return json({ success: true, messageText: messageText || fallback });
+    }
+    if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
+    if (path === '/shipping/create-sandbox-shipment' && request.method === 'POST') return json({ success: false, error: 'A criação de remessas sandbox ainda não está disponível nesta aplicação.' }, 501);
+    if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(env('BLING_API_TOKEN')), hasToken: Boolean(env('BLING_API_TOKEN')) });
+    if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || env('BLING_API_TOKEN')));
+    if (path === '/bling/products' && request.method === 'GET') {
+      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || env('BLING_API_TOKEN');
+      if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
+      const products: JsonObject[] = [];
+      for (let page = 1; page <= 20; page += 1) {
+        const response = await fetch(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100`, { headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return json({ success: false, error: `Falha ao consultar produtos no Bling: ${data.error?.description || data.message || `HTTP ${response.status}`}. Verifique produtos:read.` }, response.status);
+        const pageProducts = Array.isArray(data.data) ? data.data : [];
+        products.push(...pageProducts);
+        if (pageProducts.length < 100) break;
+      }
+      return json({ success: true, products });
+    }
+    if (path === '/bling/products' && request.method === 'POST') {
+      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || body.token || env('BLING_API_TOKEN');
+      const product = body.product || {};
+      const name = String(product.name || '').trim();
+      const sku = String(product.sku || '').trim();
+      const price = Number(product.price);
+      const ncm = String(product.ncm || '').replace(/\D/g, '');
+      if (!token) return json({ success: false, error: 'Conecte o Bling antes de cadastrar o produto.' }, 401);
+      if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) return json({ success: false, error: 'Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos.' }, 400);
+      const response = await fetch('https://api.bling.com.br/Api/v3/produtos', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: name, codigo: sku, preco: price, tipo: 'P', situacao: 'A', formato: 'S', unidade: 'UN', pesoLiquido: 0, pesoBruto: 0, tributacao: { ncm } }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return json({ success: false, error: data.error?.description || data.message || 'O Bling recusou o cadastro do produto.', details: data }, response.status);
+      return json({ success: true, product: data.data }, 201);
+    }
+    if (path === '/bling/create-order' && request.method === 'POST') {
+      const quote = body.quote;
+      const token = body.token || env('BLING_API_TOKEN');
+      if (!quote?.client) return json({ success: false, error: 'Dados do orçamento ou cliente não fornecidos.' }, 400);
+      if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
+      const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
+      if (missing.length) return json({ success: false, error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${missing.map((item: JsonObject) => item.description).join(', ')}.` }, 400);
+      const doc = String(quote.client.document || '').replace(/\D/g, '');
+      const payload = { numeroLoja: quote.id, data: quote.project?.date || new Date().toISOString().slice(0, 10), dataSaida: quote.project?.date || new Date().toISOString().slice(0, 10), contato: { nome: quote.client.name || 'Cliente Fresa Master', tipoPessoa: doc.length === 14 ? 'J' : 'F', numeroDocumento: doc || undefined, ie: quote.client.ie || 'ISENTO', email: quote.client.email || undefined, telefone: String(quote.client.phone || '').replace(/\D/g, '') || undefined, endereco: { endereco: quote.client.address || 'Rua de Entrega', numero: quote.client.number || 'S/N', complemento: quote.client.complement || undefined, bairro: quote.client.neighborhood || 'Centro', cep: String(quote.client.cep || '').replace(/\D/g, '') || undefined, municipio: quote.client.city || 'Curitiba', uf: quote.client.state || 'PR' } }, itens: quote.items.map((item: JsonObject, index: number) => ({ codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: quote.shipping?.weightKg || 0.5 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}.` };
+      const response = await fetch('https://api.bling.com.br/Api/v3/pedidos/vendas', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return json({ success: false, error: data.error?.message || data.message || 'O Bling recusou o pedido de venda.', blingDetails: data }, response.status);
+      const orderId = data?.data?.id || data?.id;
+      const orderNumber = data?.data?.numero || data?.numero || payload.numeroLoja;
+      return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
+    }
+    if (path === '/bling/oauth/token-exchange' && request.method === 'POST') {
+      const { code, clientId, clientSecret, redirectUri } = body;
+      if (!code || !clientId || !clientSecret) return json({ success: false, error: 'Parâmetros obrigatórios ausentes: code, clientId e clientSecret.' }, 400);
+      const credentials = btoa(`${String(clientId).trim()}:${String(clientSecret).trim()}`);
+      const params = new URLSearchParams({ grant_type: 'authorization_code', code: String(code).trim() });
+      if (redirectUri) params.set('redirect_uri', String(redirectUri).trim());
+      const response = await fetch('https://bling.com.br/Api/v3/oauth/token', { method: 'POST', headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: params.toString() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return json({ success: false, error: data.error_description || data.error || 'Erro ao obter token do Bling.', details: data }, response.status);
+      return json({ success: true, accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in, tokenType: data.token_type });
+    }
+    if (path === '/bling/oauth/callback' && request.method === 'GET') {
+      const params = url.searchParams;
+      const code = params.get('code') || '';
+      const error = params.get('error') || '';
+      const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
+      return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Bling - Fresa Master</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><p>${escape(error || 'O Bling autorizou a integração Fresa Master.')}</p><code id="code">${escape(code)}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'BLING_AUTH_CODE',code},'*');</script></body></html>`);
+    }
+    if (path === '/shipping/test-melhor-envio' && request.method === 'POST') {
+      const token = body.token || env('MELHOR_ENVIO_TOKEN');
+      if (!token) return json({ success: false, connected: false, message: 'Nenhum token do Melhor Envio fornecido.' }, 400);
+      const host = body.isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
+      const response = await fetch(`${host}/api/v2/me`, { headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' } });
+      if (!response.ok) return json({ success: false, connected: false, message: response.status === 401 ? 'Token não autorizado ou expirado.' : `Melhor Envio retornou HTTP ${response.status}.` });
+      const user = await response.json();
+      return json({ success: true, connected: true, user: { name: user.firstname ? `${user.firstname} ${user.lastname || ''}`.trim() : user.name || 'Usuário', email: user.email, company: user.company_name, environment: body.isSandbox ? 'Sandbox (Testes)' : 'Produção (Oficial)' }, calculationActive: true, message: `Conectado à conta de ${user.firstname || 'Melhor Envio'} (${user.email}).` });
+    }
+    if (path === '/shipping/melhor-envio/exchange-code' && request.method === 'POST') {
+      const { code, redirectUri, isSandbox } = body;
+      const clientId = body.clientId || env('MELHOR_ENVIO_CLIENT_ID');
+      const clientSecret = body.clientSecret || env('MELHOR_ENVIO_CLIENT_SECRET');
+      if (!code) return json({ success: false, error: "Código de autorização 'code' não fornecido." }, 400);
+      if (!clientId || !clientSecret) return json({ success: false, error: 'Client ID e Client Secret do Melhor Envio não configurados.' }, 400);
+      const host = isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
+      const response = await fetch(`${host}/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' }, body: JSON.stringify({ grant_type: 'authorization_code', client_id: String(clientId).trim(), client_secret: String(clientSecret).trim(), redirect_uri: redirectUri, code: String(code).trim() }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return json({ success: false, error: data.message || data.error_description || data.error || 'Falha na troca do token.', details: data }, response.status);
+      return json({ success: true, accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in });
+    }
+    if (path === '/shipping/melhor-envio/callback' && request.method === 'GET') {
+      const code = url.searchParams.get('code') || '';
+      const error = url.searchParams.get('error') || '';
+      return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Melhor Envio</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><code id="code">${String(code).replace(/[&<>]/g, '')}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'MELHOR_ENVIO_AUTH_CODE',code},'*');</script></body></html>`);
+    }
+    return json({ success: false, error: 'Rota não encontrada.' }, 404);
+  } catch (error) {
+    return json({ success: false, error: error instanceof Error ? error.message : 'Erro interno da função.' }, 500);
+  }
+}
+
+if (edge) edge.serve(route);

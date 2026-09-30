@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { apiFetch } from '../api';
 import { 
   Sparkles, 
   X, 
@@ -132,7 +133,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
         };
       }
 
-      const res = await fetch('/api/bling/extract-cadastral', {
+      const res = await apiFetch('/api/bling/extract-cadastral', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

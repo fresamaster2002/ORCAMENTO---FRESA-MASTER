@@ -3,18 +3,87 @@ import path from "path";
 import { createRequire } from "module";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { applicationDefault, getApps, initializeApp as initializeFirebaseAdminApp } from "firebase-admin/app";
+import { getAuth as getFirebaseAdminAuth } from "firebase-admin/auth";
+import { FieldValue, getFirestore as getFirebaseAdminFirestore } from "firebase-admin/firestore";
 import dotenv from "dotenv";
-import { BLING_FRESA_MASTER_CATALOG, matchBlingCatalogProduct } from "./src/blingCatalog";
+import {
+  BLING_FRESA_MASTER_CATALOG,
+  matchBlingCatalogProduct,
+  normalizeBlingCatalogProducts,
+} from "./src/blingCatalog";
+import { extractCepFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
 
-const require = createRequire(import.meta.url);
+const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
 
+const parsePortFromArgs = () => {
+  const rawArgs = process.argv.slice(2);
+  const portIndex = rawArgs.findIndex((arg) => arg === "--port" || arg === "-p");
+  if (portIndex >= 0) {
+    const nextValue = rawArgs[portIndex + 1];
+    const parsed = Number(nextValue);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  const portValue = rawArgs.find((arg) => /^--port=\d+$/.test(arg));
+  if (portValue) {
+    const parsed = Number(portValue.split("=")[1]);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  return Number(process.env.PORT) || 3001;
+};
+
+const PORT = parsePortFromArgs();
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
+
+let firebaseAdminAuth: ReturnType<typeof getFirebaseAdminAuth> | null = null;
+let firebaseAdminFirestore: ReturnType<typeof getFirebaseAdminFirestore> | null = null;
+if (process.env.NODE_ENV === "production") {
+  try {
+    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
+    const firebaseAdminApp = getApps()[0] || initializeFirebaseAdminApp({
+      credential: applicationDefault(),
+      ...(projectId ? { projectId } : {}),
+    });
+    firebaseAdminAuth = getFirebaseAdminAuth(firebaseAdminApp);
+    firebaseAdminFirestore = getFirebaseAdminFirestore(
+      firebaseAdminApp,
+      process.env.FIREBASE_DATABASE_ID || "(default)",
+    );
+  } catch (error) {
+    console.error("Firebase Admin não pôde ser inicializado; APIs protegidas permanecerão indisponíveis.", error);
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (process.env.NODE_ENV !== "production") return next();
+  if (req.path === "/api/health" || req.path === "/api/public-config" || req.path === "/api/bling/oauth/callback") return next();
+  if (!req.path.startsWith("/api/")) return next();
+  if (!firebaseAdminAuth) {
+    return res.status(503).json({ error: "Autenticação Firebase não está configurada neste serviço." });
+  }
+
+  const bearerToken = req.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!bearerToken) return res.status(401).json({ error: "Faça login para acessar este recurso." });
+
+  try {
+    const identity = await firebaseAdminAuth.verifyIdToken(bearerToken);
+    const allowedEmail = (process.env.FIREBASE_ALLOWED_EMAIL || "fresamaster0@gmail.com").toLowerCase();
+    if (identity.email_verified !== true || identity.email?.toLowerCase() !== allowedEmail) {
+      return res.status(403).json({ error: "Esta conta não tem autorização para acessar o Fresa Master." });
+    }
+    next();
+  } catch {
+    res.status(401).json({ error: "Sessão expirada. Entre novamente para continuar." });
+  }
+});
 
 // Helper to get or check Gemini client
 function getGeminiClient(): GoogleGenAI | null {
@@ -30,6 +99,41 @@ function getGeminiClient(): GoogleGenAI | null {
       },
     },
   });
+}
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const localGeminiUsage = new Map<string, number>();
+
+async function reserveGeminiRequest(): Promise<boolean> {
+  const configuredLimit = Number(process.env.GEMINI_DAILY_REQUEST_LIMIT || 0);
+  if (!Number.isFinite(configuredLimit) || configuredLimit <= 0) return true;
+  const dailyLimit = Math.max(1, Math.floor(configuredLimit));
+  const day = new Date().toISOString().slice(0, 10);
+
+  if (process.env.NODE_ENV === "production") {
+    if (!firebaseAdminFirestore) return false;
+    const usageRef = firebaseAdminFirestore.collection("systemUsage").doc(`gemini-${day}`);
+    try {
+      return await firebaseAdminFirestore.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(usageRef);
+        const count = Number(snapshot.data()?.count || 0);
+        if (count >= dailyLimit) return false;
+        transaction.set(usageRef, {
+          count: count + 1,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return true;
+      });
+    } catch (error) {
+      console.error("Não foi possível validar o limite diário do Gemini.", error);
+      return false;
+    }
+  }
+
+  const count = localGeminiUsage.get(day) || 0;
+  if (count >= dailyLimit) return false;
+  localGeminiUsage.set(day, count + 1);
+  return true;
 }
 
 // Package Weight Estimator for Fresa Master Tools & Packaging
@@ -280,6 +384,19 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.get("/api/public-config", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    firebase: {
+      apiKey: process.env.FIREBASE_API_KEY || "",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "",
+      projectId: process.env.FIREBASE_PROJECT_ID || "",
+      appId: process.env.FIREBASE_APP_ID || "",
+      databaseId: process.env.FIREBASE_DATABASE_ID || "(default)",
+    },
+    allowedAdminEmail: process.env.FIREBASE_ALLOWED_EMAIL || "fresamaster0@gmail.com",
+  });
+});
 // Token Sandbox do Melhor Envio da Fresa Master (Conta fresamaster0@gmail.com - Salto/SP)
 const DEFAULT_MELHOR_ENVIO_TOKEN = "";
 
@@ -391,6 +508,7 @@ async function fetchMelhorEnvioLiveRates(
 
       mappedOptions.push({
         service: serviceCode,
+        melhorEnvioServiceId: Number(item.id),
         name: `${item.name} (Melhor Envio Oficial)`,
         carrier: item.company?.name || (nameLower.includes("jadlog") ? "Jadlog" : "Correios"),
         price: activePrice,
@@ -659,8 +777,8 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
 app.post("/api/shipping/melhor-envio/exchange-code", async (req, res) => {
   try {
     const { code, clientId, clientSecret, redirectUri, isSandbox } = req.body;
-    const effClientId = clientId || process.env.MELHOR_ENVIO_CLIENT_ID || "12238";
-    const effClientSecret = clientSecret || process.env.MELHOR_ENVIO_CLIENT_SECRET || "nNsbJgrP55385JcE7QlSRTcmi848ci0uZ4QgHcVf";
+    const effClientId = clientId || process.env.MELHOR_ENVIO_CLIENT_ID || "";
+    const effClientSecret = clientSecret || process.env.MELHOR_ENVIO_CLIENT_SECRET || "";
 
     if (!code) {
       return res.status(400).json({
@@ -775,7 +893,7 @@ app.get("/api/shipping/melhor-envio/callback", async (req, res) => {
 // Primary Endpoint: Extract Quote from Raw Customer Input (Voice / Audio Transcript, WhatsApp, Text)
 app.post("/api/quote/extract", async (req, res) => {
   try {
-    const { text, currentQuote, customInstructions } = req.body;
+    const { text, currentQuote, customInstructions, blingProducts, blingCatalogAvailable } = req.body;
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return res.status(400).json({
@@ -783,11 +901,18 @@ app.post("/api/quote/extract", async (req, res) => {
         error: "O campo 'text' é obrigatório com a mensagem ou áudio transcrito do cliente.",
       });
     }
+    if (text.length > 8000) {
+      return res.status(413).json({ success: false, error: "O texto do pedido excede o limite de 8.000 caracteres." });
+    }
 
     const ai = getGeminiClient();
 
     // Default origin CEP for Fresa Master (Salto/SP)
     const originCep = currentQuote?.shipping?.originCep || "13321-472";
+    const liveCatalog = blingCatalogAvailable === true
+      ? normalizeBlingCatalogProducts(Array.isArray(blingProducts) ? blingProducts : [])
+      : null;
+    const productCatalog = liveCatalog || [];
 
     if (ai) {
       const prompt = `
@@ -817,6 +942,8 @@ Regras de negócio da Fresa Master:
    - Se o usuário falar "por nossa conta", "frete por nossa conta", "frete grátis", "cortesia", detecte 'detectedCarrier' como 'CONTA_FRESA' com valor 0.
    - Se falar "retirada" ou "balcão", detecte 'detectedCarrier' como 'RETIRADA' com valor 0.
 5. No campo 'missingInfo', indique se falta dados importantes como CPF/CNPJ, e-mail ou endereço completo para emissão da NF futura.
+6. Nunca invente SKU, preço ou NCM. O servidor fará a correspondência com o catálogo real; preserve a descrição falada e deixe SKU/NCM vazios se não houver correspondência.
+7. Preserve preços e CEP explicitamente falados. Valor do motoboy é frete, nunca preço unitário de produto.
 `;
 
       const schemaConfig = {
@@ -894,16 +1021,19 @@ Regras de negócio da Fresa Master:
         },
       };
 
-      // Cascade of models: Try high-throughput gemini-3.5-flash-lite first, then gemini-3.6-flash, then gemini-3.8-flash
-      const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"];
+      const candidateModels = [GEMINI_MODEL];
       let responseText = "";
+
+      if (!await reserveGeminiRequest()) {
+        return res.status(429).json({ success: false, error: "Limite diário de uso da IA atingido ou controle de custo indisponível. Tente novamente amanhã." });
+      }
 
       for (const modelName of candidateModels) {
         try {
           const response = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
-            config: schemaConfig,
+            config: { ...schemaConfig, maxOutputTokens: 1200 },
           });
           responseText = response.text?.trim() || "";
           if (responseText) break;
@@ -916,30 +1046,30 @@ Regras de negócio da Fresa Master:
         const parsed = JSON.parse(responseText || "{}");
 
         // Process items: Match against existing Bling ERP catalog first!
+        const spokenUnitPrices = extractUnitPricesFromText(text);
         const items = (parsed.items || []).map((it: any, idx: number) => {
           const qty = Number(it.quantity) || 1;
-          const userPrice = Number(it.unitPrice);
+          const spokenPrice = spokenUnitPrices.length === 1 ? spokenUnitPrices[0] : spokenUnitPrices[idx];
 
           // Procura produto correspondente no catálogo do Bling ERP da Fresa Master
-          const matchedBlingProduct = matchBlingCatalogProduct(it.description || text);
+          const matchedBlingProduct = matchBlingCatalogProduct(text, productCatalog)
+            || matchBlingCatalogProduct(it.description || "", productCatalog);
 
           let description = it.description || "Fresa 3 Cortes TCT para Router CNC";
-          let sku = it.sku || `FM-TCT-${idx + 1}`;
-          let ncm = it.ncm || "8207.70.00";
+          let sku = matchedBlingProduct?.sku || "";
+          let ncm = matchedBlingProduct?.ncm || "";
           let category = it.category || "Fresas Router CNC";
-          let price = userPrice > 0 ? userPrice : 140;
-          let notes = it.notes || "Widia / Metal Duro de alta durabilidade";
+          let price = spokenPrice || (matchedBlingProduct?.unitPrice || 0);
+          let notes = matchedBlingProduct
+            ? `Item cadastrado no Bling ERP (${matchedBlingProduct.sku})`
+            : "Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.";
 
           if (matchedBlingProduct) {
             description = matchedBlingProduct.description;
-            sku = matchedBlingProduct.sku;
-            ncm = matchedBlingProduct.ncm;
             category = matchedBlingProduct.category;
-            // Se o usuário não ditou um preço específico, usa o preço cadastrado no Bling
-            if (!userPrice || isNaN(userPrice) || userPrice <= 0) {
+            if (!spokenPrice) {
               price = matchedBlingProduct.unitPrice;
             }
-            notes = `Item cadastrado no Bling ERP (${matchedBlingProduct.sku})`;
           }
 
           return {
@@ -977,7 +1107,7 @@ Regras de negócio da Fresa Master:
         const subtotalPreliminary = items.reduce((acc: number, item: any) => acc + item.totalPrice, 0);
 
         // Resolve CEP and shipping calculation with calculated weight, dimensions, and insurance
-        const cep = parsed.detectedCep || parsed.client?.cep || currentQuote?.client?.cep || "";
+        const cep = extractCepFromText(text) || parsed.detectedCep || parsed.client?.cep || currentQuote?.client?.cep || "";
         let shippingOptions = calculateMelhorEnvioRates(
           cep,
           originCep,
@@ -989,21 +1119,17 @@ Regras de negócio da Fresa Master:
         );
 
         // Select carrier requested by user (e.g. Sedex, Motoboy, Por Nossa Conta)
-        const requestedCarrier = (parsed.detectedCarrier || text).toLowerCase();
-        const extractedShippingPrice = Number(parsed.detectedShippingPrice) || 0;
+        const normalizedRequest = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const requestedCarrier = normalizedRequest.includes("motoboy") || normalizedRequest.includes("moto boy")
+          ? normalizedRequest
+          : (parsed.detectedCarrier || normalizedRequest).toLowerCase();
+        const extractedShippingPrice = extractMotoboyPriceFromText(text);
 
         let selectedOption = shippingOptions[0]; // default Sedex
 
         if (requestedCarrier.includes("motoboy") || requestedCarrier.includes("moto boy")) {
           // If user mentioned motoboy and a price (e.g. "motoboy 45 reais")
-          const motoboyPrice = extractedShippingPrice > 0 ? extractedShippingPrice : (
-            // Regex fallback for prices like "45 reais", "R$ 45", "45 de frete"
-            (() => {
-              const match = text.match(/(?:motoboy|moto boy)[^0-9]*([0-9]+(?:[,\.][0-9]{1,2})?)/i) ||
-                            text.match(/([0-9]+(?:[,\.][0-9]{1,2})?)\s*(?:reais|de frete|no motoboy)/i);
-              return match ? parseFloat(match[1].replace(',', '.')) : 0;
-            })()
-          );
+          const motoboyPrice = extractedShippingPrice ?? 0;
 
           selectedOption = {
             service: "MOTOBOY",
@@ -1151,7 +1277,7 @@ Regras de negócio da Fresa Master:
     }
 
     // Heuristic Fallback - Ensures the app NEVER crashes even when API quota is exhausted
-    const fallbackQuote = parseFresaMasterFallback(text, currentQuote);
+    const fallbackQuote = parseFresaMasterFallback(text, currentQuote, productCatalog);
     return res.json({
       success: true,
       summary: "Orçamento processado com sucesso pelo analisador Fresa Master (modo contínuo sem interrupção).",
@@ -1161,7 +1287,14 @@ Regras de negócio da Fresa Master:
     });
   } catch (error: any) {
     console.error("Erro na extração:", error);
-    const fallbackQuote = parseFresaMasterFallback(req.body?.text || "", req.body?.currentQuote);
+    const liveCatalog = req.body?.blingCatalogAvailable === true
+      ? normalizeBlingCatalogProducts(Array.isArray(req.body?.blingProducts) ? req.body.blingProducts : [])
+      : null;
+    const fallbackQuote = parseFresaMasterFallback(
+      req.body?.text || "",
+      req.body?.currentQuote,
+      liveCatalog || [],
+    );
     res.json({
       success: true,
       summary: "Orçamento preenchido pelo analisador local Fresa Master.",
@@ -1179,6 +1312,12 @@ app.post("/api/bling/extract-cadastral", async (req, res) => {
     // file: { base64: string, mimeType: string, fileName?: string }
     if ((!text || typeof text !== "string") && (!file || !file.base64)) {
       return res.status(400).json({ error: "Texto ou documento com dados cadastrais é obrigatório." });
+    }
+    if (typeof text === "string" && text.length > 5000) {
+      return res.status(413).json({ error: "O texto cadastral excede o limite de 5.000 caracteres." });
+    }
+    if (typeof file?.base64 === "string" && file.base64.length > 2500000) {
+      return res.status(413).json({ error: "O documento excede o limite de tamanho de 1,8 MB." });
     }
 
     const ai = getGeminiClient();
@@ -1210,7 +1349,7 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
 """
 `;
 
-        const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"];
+        const candidateModels = [GEMINI_MODEL];
         let cadastralResponseText = "";
 
         // Build contents parts (text + optional image or PDF inlineData)
@@ -1227,6 +1366,10 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
         }
         parts.push({ text: textInstruction });
 
+        if (!await reserveGeminiRequest()) {
+          return res.status(429).json({ success: false, error: "Limite diário de uso da IA atingido ou controle de custo indisponível. Tente novamente amanhã." });
+        }
+
         for (const modelName of candidateModels) {
           try {
             const response = await ai.models.generateContent({
@@ -1236,6 +1379,7 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
                 systemInstruction:
                   "Você é um especialista em emissão de NF-e e leitura de Cartão CNPJ e cadastros de clientes no Bling ERP.",
                 responseMimeType: "application/json",
+                maxOutputTokens: 1200,
                 responseSchema: {
                   type: Type.OBJECT,
                   properties: {
@@ -1480,8 +1624,6 @@ app.get("/api/bling/status", async (req, res) => {
   return res.json({
     connected: hasToken,
     hasToken,
-    tokenPreview: hasToken ? `${persistedBlingToken.slice(0, 15)}...${persistedBlingToken.slice(-10)}` : null,
-    token: persistedBlingToken,
   });
 });
 
@@ -1502,21 +1644,26 @@ app.post("/api/bling/test-connection", async (req, res) => {
       });
     }
 
-    // Call Bling API v3 contatos / produtos endpoint to verify token
+    // Validate basic account access and the product permission used by catalog sync.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const headers = {
+      "Authorization": `Bearer ${effectiveToken.trim()}`,
+      "Accept": "application/json",
+    };
 
-    const response = await fetch("https://api.bling.com.br/Api/v3/contatos?limite=1", {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${effectiveToken.trim()}`,
-        "Accept": "application/json",
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    let contactsResponse: Response;
+    let productsResponse: Response;
+    try {
+      [contactsResponse, productsResponse] = await Promise.all([
+        fetch("https://api.bling.com.br/Api/v3/contatos?limite=1", { headers, signal: controller.signal }),
+        fetch("https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1", { headers, signal: controller.signal }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
 
-    if (response.status === 401) {
+    if (contactsResponse.status === 401 || productsResponse.status === 401) {
       return res.json({
         success: false,
         connected: false,
@@ -1524,21 +1671,29 @@ app.post("/api/bling/test-connection", async (req, res) => {
       });
     }
 
-    if (response.ok) {
-      const data = await response.json().catch(() => ({}));
+    if (!contactsResponse.ok) {
+      const responseText = await contactsResponse.text();
       return res.json({
-        success: true,
-        connected: true,
-        message: "Conexão direta com o Bling ERP validada com sucesso! API v3 ativa e pronta para criar pedidos de venda.",
-        data,
+        success: false,
+        connected: false,
+        message: `Não foi possível validar a conta Bling (HTTP ${contactsResponse.status}): ${responseText.slice(0, 200)}`,
       });
     }
 
-    const errorBody = await response.text();
+    const productsData = productsResponse.ok
+      ? await productsResponse.json().catch(() => ({}))
+      : null;
+    const productsReadable = productsResponse.ok;
+    const productCount = Array.isArray(productsData?.data) ? productsData.data.length : 0;
+
     return res.json({
-      success: false,
-      connected: false,
-      message: `Bling retornou status ${response.status}: ${errorBody.slice(0, 200)}`,
+      success: true,
+      connected: true,
+      productsReadable,
+      productCount,
+      message: productsReadable
+        ? `Bling conectado. A permissão de produtos também está ativa (${productCount} produto(s) nesta página).`
+        : `Conta conectada, mas o Bling negou acesso a produtos (HTTP ${productsResponse.status}). Reative a permissão produtos:read no aplicativo e autorize novamente.`,
     });
   } catch (err: any) {
     return res.status(500).json({
@@ -1566,6 +1721,16 @@ app.post("/api/bling/create-order", async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Token de API do Bling não configurado. Adicione o Token de API v3 do Bling no painel para conectar diretamente.",
+      });
+    }
+
+    const itemsMissingBlingData = (quote.items || []).filter((item: any) =>
+      !String(item.sku || "").trim() || String(item.ncm || "").replace(/\D/g, "").length !== 8 || Number(item.unitPrice) <= 0,
+    );
+    if (itemsMissingBlingData.length) {
+      return res.status(400).json({
+        success: false,
+        error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${itemsMissingBlingData.map((item: any) => item.description).join(", ")}.`,
       });
     }
 
@@ -1601,6 +1766,7 @@ app.post("/api/bling/create-order", async (req, res) => {
         unidade: it.unit || "UN",
         quantidade: Number(it.quantity) || 1,
         valor: Number(it.unitPrice) || 0,
+        ncm: it.ncm || "8207.70.00",
       })),
       transporte: {
         fretePorConta: 0,
@@ -1685,7 +1851,11 @@ app.post("/api/bling/create-order", async (req, res) => {
 // Endpoint: Fetch live catalog / products from Bling API v3
 app.get("/api/bling/products", async (req, res) => {
   try {
-    const token = (req.query.token as string) || process.env.BLING_API_TOKEN;
+    const authorization = req.get("x-bling-token") || "";
+    const token = authorization.replace(/^Bearer\s+/i, "")
+      || (req.query.token as string)
+      || persistedBlingToken
+      || process.env.BLING_API_TOKEN;
     if (!token || token.trim() === "") {
       return res.status(400).json({
         success: false,
@@ -1693,35 +1863,105 @@ app.get("/api/bling/products", async (req, res) => {
       });
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const products: any[] = [];
+    const pageLimit = 100;
+    for (let page = 1; page <= 20; page += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let response: Response;
+      try {
+        response = await fetch(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=${pageLimit}`, {
+          headers: {
+            "Authorization": `Bearer ${token.trim()}`,
+            "Accept": "application/json",
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
-    const response = await fetch("https://api.bling.com.br/Api/v3/produtos?criterio=1&limite=50", {
-      headers: {
-        "Authorization": `Bearer ${token.trim()}`,
-        "Accept": "application/json",
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+      if (!response.ok) {
+        const responseData = await response.json().catch(() => ({}));
+        const apiMessage = responseData.error?.description
+          || responseData.error?.message
+          || responseData.message
+          || `HTTP ${response.status}`;
+        return res.status(response.status).json({
+          success: false,
+          error: `Falha ao consultar produtos no Bling: ${apiMessage}. Verifique se o aplicativo possui a permissão produtos:read.`,
+        });
+      }
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        success: false,
-        error: "Falha ao obter produtos da conta Bling.",
-      });
+      const data = await response.json();
+      const pageProducts = Array.isArray(data.data) ? data.data : [];
+      products.push(...pageProducts);
+      if (pageProducts.length < pageLimit) break;
     }
 
-    const data = await response.json();
     return res.json({
       success: true,
-      products: data.data || [],
+      products,
     });
   } catch (err: any) {
     return res.status(500).json({
       success: false,
       error: err.message,
     });
+  }
+});
+
+app.post("/api/bling/products", async (req, res) => {
+  try {
+    const authorization = req.get("x-bling-token") || "";
+    const token = authorization.replace(/^Bearer\s+/i, "")
+      || req.body?.token
+      || persistedBlingToken
+      || process.env.BLING_API_TOKEN;
+    const product = req.body?.product || {};
+    const name = String(product.name || "").trim();
+    const sku = String(product.sku || "").trim();
+    const price = Number(product.price);
+    const ncm = String(product.ncm || "").replace(/\D/g, "");
+
+    if (!token) return res.status(401).json({ success: false, error: "Conecte o Bling antes de cadastrar o produto." });
+    if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) {
+      return res.status(400).json({ success: false, error: "Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos." });
+    }
+
+    const response = await fetch("https://api.bling.com.br/Api/v3/produtos", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${String(token).trim()}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        nome: name,
+        codigo: sku,
+        preco: price,
+        tipo: "P",
+        situacao: "A",
+        formato: "S",
+        unidade: "UN",
+        pesoLiquido: 0,
+        pesoBruto: 0,
+        tributacao: { ncm },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: data.error?.description || data.message || "O Bling recusou o cadastro do produto.",
+        details: data,
+      });
+    }
+
+    return res.status(201).json({ success: true, product: data.data });
+  } catch (error: any) {
+    console.error("Erro ao cadastrar produto no Bling:", error);
+    return res.status(500).json({ success: false, error: `Erro ao cadastrar produto no Bling: ${error.message}` });
   }
 });
 
@@ -2002,6 +2242,7 @@ app.get("/api/bling/app-details", (req, res) => {
       { code: "contatos:write", description: "Clientes e Contatos - Criar e Alterar (Para salvar o cliente com CNPJ e endereço)" },
       { code: "contatos:read", description: "Clientes e Contatos - Consultar (Para evitar cadastros duplicados)" },
       { code: "produtos:read", description: "Produtos - Consultar (Para puxar as fresas cadastradas no Bling)" },
+      { code: "produtos:write", description: "Produtos - Criar e Alterar (Para cadastrar produtos novos no catálogo)" },
     ],
     alternateFastMethod: {
       title: "Método Rápido Sem Cadastro de Aplicativo (Usuário API)",
@@ -2062,11 +2303,16 @@ Forma de Pagamento: ${quote.financials?.paymentTerms || "Pix ou Boleto"}
 Peça gentilmente para o cliente confirmar o pedido e enviar os dados cadastrais (Razão Social, CNPJ, Inscrição Estadual e endereço completo) para emissão da Nota Fiscal e despacho rápido.
 `;
 
-      for (const modelName of ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]) {
+      if (!await reserveGeminiRequest()) {
+        return res.json({ success: false, error: "Limite diário de uso da IA atingido ou controle de custo indisponível. A mensagem pronta pode ser montada sem IA." });
+      }
+
+      for (const modelName of [GEMINI_MODEL]) {
         try {
           const response = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
+            config: { maxOutputTokens: 700 },
           });
           const textMsg = response.text?.trim();
           if (textMsg) {
@@ -2103,40 +2349,43 @@ Peça gentilmente para o cliente confirmar o pedido e enviar os dados cadastrais
 });
 
 // Fallback regex parser for Fresa Master
-function parseFresaMasterFallback(text: string, currentQuote?: any): any {
+function parseFresaMasterFallback(
+  text: string,
+  currentQuote?: any,
+  catalog: typeof BLING_FRESA_MASTER_CATALOG = [],
+): any {
   const clean = text;
 
   // Detect CEP
-  const cepMatch = clean.match(/\d{5}-?\d{3}/);
-  const cep = cepMatch ? cepMatch[0] : "80010-000";
+  const cep = extractCepFromText(clean) || "";
 
   // Detect Quantity and Price
   const qtyMatch = clean.match(/(\d+)\s*(?:fresas?|unidades?|peças?)/i);
-  const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 2;
-
-  const priceMatch = clean.match(/(?:por|valor|r\$|preco|preço)\s*(\d+(?:[.,]\d{2})?)/i);
-  const unitPrice = priceMatch ? parseFloat(priceMatch[1].replace(",", ".")) : 140;
+  const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+  const spokenPrices = extractUnitPricesFromText(clean);
 
   // Detect client name
   const nameMatch = clean.match(/(?:raz[aã]o social(?:\s+do cliente)?|cliente)\s*:?\s*([A-ZÀ-Úa-zà-ú0-9\s.]+?)(?:,|\.|\be\b|cep|$)/i);
   const clientName = nameMatch ? nameMatch[1].trim() : "Cliente CNC Router";
 
   // Check if text matches any product in Bling catalog
-  const matchedBlingProduct = matchBlingCatalogProduct(clean);
+  const matchedBlingProduct = matchBlingCatalogProduct(clean, catalog);
 
-  let itemDesc = "Fresa 3 Cortes TCT 6x22mm para MDF e Madeira (Widia)";
-  let itemSku = "FM-TCT-6X22";
-  let itemNcm = "8207.70.00";
-  let itemCat = "Fresas 3 Cortes TCT";
-  let finalUnitPrice = unitPrice;
-  let itemNotes = "Item cadastrado no Bling ERP";
+  let itemDesc = matchedBlingProduct?.description || clean;
+  let itemSku = matchedBlingProduct?.sku || "";
+  let itemNcm = matchedBlingProduct?.ncm || "";
+  let itemCat = matchedBlingProduct?.category || "Fresas Router CNC";
+  let finalUnitPrice = spokenPrices[0] || matchedBlingProduct?.unitPrice || 0;
+  let itemNotes = matchedBlingProduct
+    ? `Item cadastrado no Bling ERP (${matchedBlingProduct.sku})`
+    : "Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.";
 
   if (matchedBlingProduct) {
     itemDesc = matchedBlingProduct.description;
     itemSku = matchedBlingProduct.sku;
     itemNcm = matchedBlingProduct.ncm;
     itemCat = matchedBlingProduct.category;
-    if (!priceMatch) {
+    if (!spokenPrices.length) {
       finalUnitPrice = matchedBlingProduct.unitPrice;
     }
   }
@@ -2168,7 +2417,7 @@ function parseFresaMasterFallback(text: string, currentQuote?: any): any {
   const originCep = currentQuote?.shipping?.originCep || "13321-472";
 
   const shippingOptions = calculateMelhorEnvioRates(
-    cep,
+    cep || "00000000",
     originCep,
     weightInfo.weightKg,
     packageDimensions,
@@ -2179,9 +2428,7 @@ function parseFresaMasterFallback(text: string, currentQuote?: any): any {
 
   // Check if motoboy or free shipping was requested in raw text
   if (clean.includes("motoboy") || clean.includes("moto boy")) {
-    const motoMatch = clean.match(/(?:motoboy|moto boy)[^0-9]*([0-9]+(?:[,\.][0-9]{1,2})?)/i) ||
-                      clean.match(/([0-9]+(?:[,\.][0-9]{1,2})?)\s*(?:reais|de frete|no motoboy)/i);
-    const motoboyPrice = motoMatch ? parseFloat(motoMatch[1].replace(',', '.')) : 0;
+    const motoboyPrice = extractMotoboyPriceFromText(clean) ?? 0;
     selectedOption = {
       service: "MOTOBOY",
       name: "Envio por Motoboy",
@@ -2294,7 +2541,7 @@ app.get("/api/download-project-zip", (_req, res) => {
       zlib: { level: 9 },
     });
 
-    archive.on("error", (err) => {
+    archive.on("error", (err: Error) => {
       console.error("Erro ao gerar arquivo ZIP:", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Falha ao gerar arquivo ZIP do projeto." });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../api';
 import {
   X,
   Printer,
@@ -31,6 +32,41 @@ interface ProposalModalProps {
   onOpenBling?: () => void;
 }
 
+const convertUnsupportedColorToRgb = (color: string) => {
+  const oklch = color.match(/^oklch\(\s*([\d.]+)(%)?\s+([\d.]+)\s+([\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/i);
+  const oklab = color.match(/^oklab\(\s*([\d.]+)(%)?\s+(-?[\d.]+)\s+(-?[\d.]+)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/i);
+  if (!oklch && !oklab) return '#000000';
+
+  const match = oklch || oklab!;
+  const lightness = Number(match[1]) / (match[2] ? 100 : 1);
+  const a = oklch
+    ? Number(match[3]) * Math.cos((Number(match[4]) * Math.PI) / 180)
+    : Number(match[3]);
+  const b = oklch
+    ? Number(match[3]) * Math.sin((Number(match[4]) * Math.PI) / 180)
+    : Number(match[4]);
+  const l = Math.pow(lightness + 0.3963377774 * a + 0.2158037573 * b, 3);
+  const m = Math.pow(lightness - 0.1055613458 * a - 0.0638541728 * b, 3);
+  const s = Math.pow(lightness - 0.0894841775 * a - 1.291485548 * b, 3);
+  const toSrgb = (value: number) => {
+    const linear = Math.max(0, Math.min(1, value));
+    const encoded = linear <= 0.0031308
+      ? linear * 12.92
+      : 1.055 * Math.pow(linear, 1 / 2.4) - 0.055;
+    return Math.round(encoded * 255);
+  };
+  const red = toSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
+  const green = toSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
+  const blue = toSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s);
+  const alpha = match[5]
+    ? Number(match[5]) / (match[6] ? 100 : 1)
+    : undefined;
+
+  return alpha === undefined
+    ? `rgb(${red}, ${green}, ${blue})`
+    : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
+
 export const ProposalModal: React.FC<ProposalModalProps> = ({
   isOpen,
   onClose,
@@ -42,6 +78,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [pdfSuccess, setPdfSuccess] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const proposalSheetRef = useRef<HTMLDivElement>(null);
@@ -55,7 +92,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const generateProposalText = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch('/api/quote/generate-proposal', {
+      const res = await apiFetch('/api/quote/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -83,20 +120,45 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
 
     setIsDownloadingPdf(true);
     setPdfSuccess(false);
+    setPdfError(false);
 
     try {
       const element = proposalSheetRef.current;
 
-      // Capture at high resolution (scale: 2) with clean white background
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        windowWidth: 820,
+        windowWidth: 920,
+        onclone: (clonedDocument) => {
+          const clonedSheet = clonedDocument.querySelector('.printable-quote-paper');
+          if (!clonedSheet) return;
+
+          const elements = [clonedSheet, ...Array.from(clonedSheet.querySelectorAll('*'))];
+
+          for (const element of elements) {
+            const computedStyle = clonedDocument.defaultView?.getComputedStyle(element);
+            if (!computedStyle) continue;
+
+            for (let index = 0; index < computedStyle.length; index += 1) {
+              const property = computedStyle.item(index);
+              const isCustomProperty = property.startsWith('--');
+              if (isCustomProperty && element !== clonedSheet) continue;
+
+              const isColorProperty = isCustomProperty || /color$/i.test(property) || property === 'fill' || property === 'stroke';
+              if (!isColorProperty) continue;
+
+              const value = computedStyle.getPropertyValue(property);
+              if (!/oklch\(|oklab\(/i.test(value)) continue;
+
+              const normalizedValue = value.replace(/oklch\([^)]*\)|oklab\([^)]*\)/gi, convertUnsupportedColorToRgb);
+              element.setAttribute('style', `${element.getAttribute('style') || ''};${property}:${normalizedValue} !important`);
+            }
+          }
+        },
       });
 
-      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -104,40 +166,40 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         compress: true,
       });
 
-      const pageWidth = 210;
-      const pageHeight = 297;
-      const margin = 8; // 8mm margins for clean executive look
-      const printableWidth = pageWidth - margin * 2;
-      const printableHeight = (canvas.height * printableWidth) / canvas.width;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = (pageHeight - imgHeight) / 2;
 
-      if (printableHeight <= pageHeight - margin * 2) {
-        // Fits perfectly on single page
-        pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight, undefined, 'FAST');
-      } else {
-        // Multi-page handling
-        let heightLeft = printableHeight;
-        let position = margin;
-
-        pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight, undefined, 'FAST');
-        heightLeft -= pageHeight - margin * 2;
-
-        while (heightLeft > 0) {
-          position = heightLeft - printableHeight + margin;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight, undefined, 'FAST');
-          heightLeft -= pageHeight - margin * 2;
-        }
-      }
+      const imgData = canvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight, undefined, 'FAST');
 
       const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
-      pdf.save(fileName);
+      const pdfBlob = pdf.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       setPdfSuccess(true);
       setTimeout(() => setPdfSuccess(false), 5000);
     } catch (error) {
       console.error('Erro ao gerar arquivo PDF:', error);
-      // Fallback to window.print if html2canvas faces browser restrictions
-      window.print();
+      setPdfSuccess(false);
+      setPdfError(true);
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -267,7 +329,11 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           </div>
 
           <div className="text-[11px] text-slate-500 hidden sm:block">
-            {activeTab === 'preview' && (
+            {pdfError ? (
+              <span className="text-red-700 dark:text-red-400 font-medium">
+                Não foi possível gerar o PDF. Tente novamente.
+              </span>
+            ) : activeTab === 'preview' && (
               <span className="text-emerald-700 dark:text-emerald-400 font-medium">
                 ✓ Pronto para download em formato A4
               </span>

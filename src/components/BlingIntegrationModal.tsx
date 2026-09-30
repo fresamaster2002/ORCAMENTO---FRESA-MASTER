@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
+import { supabaseUrl } from '../supabase';
 import { 
   X, 
   Building, 
@@ -116,19 +118,16 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     // Fetch token from server if not set
     const initTokenAndConnection = async () => {
       let tokenToUse = blingToken;
+      let serverHasToken = false;
       if (!tokenToUse || !tokenToUse.trim()) {
         try {
-          const statusRes = await fetch('/api/bling/status');
+          const statusRes = await apiFetch('/api/bling/status');
           const statusData = await statusRes.json();
-          if (statusData.token) {
-            tokenToUse = statusData.token;
-            setBlingToken(statusData.token);
-            localStorage.setItem('fresa_master_bling_token', statusData.token);
-          }
+          serverHasToken = Boolean(statusData.hasToken);
         } catch (e) {}
       }
 
-      if (tokenToUse && tokenToUse.trim() && connectionStatus !== 'connected') {
+      if (((tokenToUse && tokenToUse.trim()) || serverHasToken) && connectionStatus !== 'connected') {
         testBlingConnection(tokenToUse);
       }
     };
@@ -138,7 +137,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
   const fetchBlingPayload = async (clientToUse: ClientInfo) => {
     try {
-      const res = await fetch('/api/bling/generate-payload', {
+      const res = await apiFetch('/api/bling/generate-payload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,8 +177,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     localStorage.setItem('fresa_master_bling_client_id', clientId.trim());
     localStorage.setItem('fresa_master_bling_client_secret', clientSecret.trim());
     
-    const origin = window.location.origin;
-    const redirectUri = encodeURIComponent(`${origin}/api/bling/oauth/callback`);
+    const redirectUri = encodeURIComponent(`${supabaseUrl}/functions/v1/api/bling/oauth/callback`);
     const authUrl = `https://bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${encodeURIComponent(clientId.trim())}&state=fresa_master&redirect_uri=${redirectUri}`;
     
     // Open in comfortably sized window or new tab if screen is small
@@ -216,8 +214,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setConnectionMessage('Trocando código de autorização pelo Token oficial do Bling...');
 
     try {
-      const redirectUri = `${window.location.origin}/api/bling/oauth/callback`;
-      const res = await fetch('/api/bling/oauth/token-exchange', {
+      const redirectUri = `${supabaseUrl}/functions/v1/api/bling/oauth/callback`;
+      const res = await apiFetch('/api/bling/oauth/token-exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,11 +228,9 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
       const data = await res.json();
       if (data.success && data.accessToken) {
-        handleSaveToken(data.accessToken);
+        await handleSaveToken(data.accessToken);
         localStorage.setItem('fresa_master_bling_client_id', cid.trim());
         localStorage.setItem('fresa_master_bling_client_secret', csec.trim());
-        setConnectionStatus('connected');
-        setConnectionMessage('✅ Token gerado e conectado com sucesso via OAuth 2.0!');
       } else {
         setConnectionStatus('disconnected');
         setConnectionMessage(`Falha na autorização: ${data.error || 'Erro ao obter token'}`);
@@ -249,20 +245,14 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
   const testBlingConnection = async (tokenToTest?: string) => {
     const token = tokenToTest || blingToken;
-    if (!token.trim()) {
-      setConnectionStatus('disconnected');
-      setConnectionMessage('Insira seu Token de API v3 do Bling para conectar.');
-      return;
-    }
-
     setConnectionStatus('testing');
     setConnectionMessage('Testando conexão com a API v3 do Bling ERP...');
 
     try {
-      const res = await fetch('/api/bling/test-connection', {
+      const res = await apiFetch('/api/bling/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
+          body: JSON.stringify(token.trim() ? { token: token.trim() } : {}),
       });
       const data = await res.json();
 
@@ -285,7 +275,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setOrderResult(null);
 
     try {
-      const res = await fetch('/api/bling/create-order', {
+      const res = await apiFetch('/api/bling/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -317,14 +307,11 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   };
 
   const handleSyncProducts = async () => {
-    if (!blingToken.trim()) {
-      alert('Configure o Token de API do Bling primeiro.');
-      return;
-    }
-
     setIsSyncingProducts(true);
     try {
-      const res = await fetch(`/api/bling/products?token=${encodeURIComponent(blingToken.trim())}`);
+      const res = await apiFetch('/api/bling/products', {
+        headers: blingToken.trim() ? { 'X-Bling-Token': blingToken.trim() } : {},
+      });
       const data = await res.json();
       if (data.success) {
         setSyncedProducts(data.products || []);
@@ -388,7 +375,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
         };
       }
 
-      const res = await fetch('/api/bling/extract-cadastral', {
+      const res = await apiFetch('/api/bling/extract-cadastral', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -817,7 +804,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           {/* TAB: BLING APP REGISTRATION GUIDE (LINKS & SCOPES) */}
           {activeTab === 'app_register' && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : 'https://fresamaster.run.app';
-            const redirectUrl = `${origin}/api/bling/oauth/callback`;
+            const redirectUrl = `${supabaseUrl}/functions/v1/api/bling/oauth/callback`;
             const homepageUrl = `${origin}/`;
             const manualUrl = `${origin}/manual`;
             const logoUrl = `${origin}/logo.svg`;
@@ -827,6 +814,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
               { code: 'contatos:write', label: 'Contatos / Clientes - Gravação', desc: 'Para cadastrar a Razão Social, CNPJ, IE e endereço de entrega do cliente.' },
               { code: 'contatos:read', label: 'Contatos / Clientes - Leitura', desc: 'Para buscar clientes já cadastrados e evitar duplicidade.' },
               { code: 'produtos:read', label: 'Produtos / Fresas - Leitura', desc: 'Para sincronizar o catálogo de ferramentas e consultar SKUs cadastrados.' },
+              { code: 'produtos:write', label: 'Produtos / Fresas - Gravação', desc: 'Necessário para cadastrar produtos novos diretamente no Bling.' },
             ];
             const allScopesString = scopesList.map(s => s.code).join(' ');
 

@@ -1,13 +1,11 @@
 # Fresa Master
 
-Aplicativo de orçamento para a Fresa Master com foco no mínimo necessário para funcionar bem em desenvolvimento local:
+Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto, cadastro do cliente, seleção de ferramentas, cotação de frete, proposta comercial e aprovação do pedido.
 
-- VS Code para código
-- GitHub para versionamento
-- Supabase para autenticação e dados
-- Frontend React para interface do usuário
-
-A ideia principal é manter a stack enxuta, sem depender de integrações pesadas de IA, Cloud Run, Firebase, Bling ERP ou Melhor Envio para o uso básico do sistema.
+- React + Vite para a interface
+- Supabase para login e armazenamento dos orçamentos
+- Supabase Edge Function para APIs de IA, Bling e Melhor Envio
+- GitHub Pages para hospedar a interface
 
 ## Como rodar localmente
 
@@ -42,24 +40,12 @@ Antes da primeira publicação:
 1. Em **Settings > Pages**, selecione **GitHub Actions** como fonte de publicação.
 2. Em **Settings > Secrets and variables > Actions > Variables**, crie as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` com os dados públicos do projeto Supabase. Não use a `service_role` key no frontend.
 3. Execute a migration `supabase/migrations/202609280001_quotes.sql` no Supabase para criar a tabela de orçamentos e suas regras de acesso.
-4. Em **Supabase > Authentication > URL Configuration**, configure o Site URL para `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/` e inclua esse mesmo endereço em Redirect URLs.
-5. Faça push das alterações para `main` e acompanhe a execução em **Actions**.
+4. Publique a função `supabase/functions/api` no projeto Supabase (`supabase functions deploy api`) e configure nela as chaves necessárias para Gemini, Bling e Melhor Envio. Não coloque essas chaves no GitHub Pages nem no frontend.
+5. Em **Supabase > Authentication > URL Configuration**, configure o Site URL para `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/` e inclua esse mesmo endereço em Redirect URLs.
+6. Faça push das alterações para `main` e acompanhe a execução em **Actions**.
 
-O endereço do app será `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/`. O primeiro deploy não termina até que as variáveis e a configuração do Supabase estejam preenchidas.
+O endereço do app é `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/`. O Pages hospeda a interface; os recursos que consultam IA, Bling e Melhor Envio dependem da Edge Function ativa no Supabase.
 
-## O que foi mantido
+## Acesso e dados
 
-- Frontend em React + TypeScript
-- Login por e-mail e senha com sessão persistente, e dados via Supabase; e-mail só é necessário para criar ou recuperar a senha
-- Salvar orçamentos na nuvem
-- Cálculo local de orçamento e frete básico
-- GitHub como repositório oficial
-
-## O que foi removido do caminho principal de operação
-
-- Firebase Admin / Cloud Run como requisito base
-- Gemini como dependência crítica do app
-- API de Bling para emissão de nota fiscal como bloqueio do funcionamento
-- Melhor Envio como obrigatoriedade para rodar
-
-Se quiser evoluir depois, essas integrações podem voltar como extras opcionais, mas não devem ser a base do app para funcionar.
+O login usa e-mail e senha com sessão persistente. O e-mail é usado apenas para configurar ou recuperar a senha. Os orçamentos são salvos na tabela `quotes` do Supabase, protegida por Row Level Security.

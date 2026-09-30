@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../api';
 import { X, Key, Code, Copy, Check, Terminal, ExternalLink, Play, ArrowRight } from 'lucide-react';
 
 interface ApiDocsModalProps {
@@ -27,7 +28,7 @@ export const ApiDocsModal: React.FC<ApiDocsModalProps> = ({ isOpen, onClose, app
     setIsTesting(true);
     setTestResponse(null);
     try {
-      const res = await fetch('/api/quote/extract', {
+      const res = await apiFetch('/api/quote/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

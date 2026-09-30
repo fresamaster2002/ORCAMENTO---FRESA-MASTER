@@ -80,8 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-black rounded-xl transition cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <Building className="w-4 h-4 text-emerald-200" />
-            <span>Bling ERP Conectado</span>
-            <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse" />
+            <span>Bling ERP</span>
           </button>
 
           <button

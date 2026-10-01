@@ -10,6 +10,7 @@ import { ProposalModal } from './components/ProposalModal';
 import { BlingIntegrationModal } from './components/BlingIntegrationModal';
 import { SandboxShipmentModal } from './components/SandboxShipmentModal';
 import { QuoteData, ClientInfo } from './types';
+import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
 import { allowedAdminEmail, isSupabaseConfigured, supabase } from './supabase';
 import { extractCepFromText, extractUnitPricesFromText, extractMotoboyPriceFromText } from './quoteParsing';
@@ -484,8 +485,19 @@ export default function App() {
 
     try {
       const token = localStorage.getItem('fresa_master_bling_token') || '';
-      let blingCatalogAvailable = false;
-      let blingProducts: unknown[] = [];
+      let blingCatalogAvailable = true;
+      let blingProducts: unknown[] = BLING_FRESA_MASTER_CATALOG.map((product) => ({
+        id: product.id,
+        codigo: product.sku,
+        nome: product.description,
+        descricao: product.description,
+        preco: product.unitPrice,
+        unidade: product.unit,
+        pesoLiquido: product.weightGrams / 1000,
+        categoriaProduto: { descricao: product.category },
+        tributacao: { ncm: product.ncm },
+        ncm: product.ncm,
+      }));
       try {
         const catalogResponse = await apiFetch('/api/bling/products', {
           headers: token ? { 'X-Bling-Token': token } : {},

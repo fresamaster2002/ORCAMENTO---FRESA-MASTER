@@ -334,15 +334,45 @@ function chooseRequestedCarrier(text: string, options: JsonObject[], price?: num
   return options.find((item) => item.service === 'SEDEX') || options[0];
 }
 
-function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalog: any[] = []) {
+function extractClientName(text: string, currentName = ''): string {
+  const match = text.match(/(?:raz[aã]o social(?:\s+do cliente)?|nome do cliente|cliente)\s*(?:(?:é|eh|e|:|=|se chama|chama-se|chamado|chamada)\s*)?([^,;\n.]+)/i);
+  const name = (match?.[1] || '')
+    .replace(/\s+\b(?:cep|cnpj|cpf|telefone|e-?mail)\b.*$/i, '')
+    .replace(/\s+\b(?:ser[aã]o?|vai|quer|pediu|solicitou|precisa|calcule|calcular)\b.*$/i, '')
+    .replace(/^(?:é|eh|e|se chama|chama-se|chamado|chamada)\s+/i, '')
+    .trim();
+  return name || currentName || 'Cliente CNC Router';
+}
+
+function extractProductDescription(text: string, previousDescription = ''): string {
+  const quantityMatch = text.match(/\b\d+\s*(?:fresas?|unidades?|itens?|peças?)\s*(?:(?:de|do tipo|tipo)\s+)?(.+?)(?=\s+(?:por|a)\s*(?:R\$\s*)?[\d.,]+|\s+\b(?:frete|envio|entrega|calcule|calcular|cotar|cotação|sedex|pac|jadlog|motoboy|retirada|grátis|gratis)\b|[,;\n.]|$)/i);
+  const productMatch = text.match(/\b(?:fresas?|brocas?|pinças?|pincas?|ferramentas?)\s+(?:(?:de|do tipo|tipo)\s+)?(.+?)(?=\s+(?:por|a)\s*(?:R\$\s*)?[\d.,]+|\s+\b(?:frete|envio|entrega|calcule|calcular|cotar|cotação|sedex|pac|jadlog|motoboy|retirada|grátis|gratis)\b|[,;\n.]|$)/i);
+  let description = (quantityMatch?.[1] || productMatch?.[1] || '')
+    .replace(/^(?:de|do tipo|tipo)\s+/i, '')
+    .replace(/[\s,;:.]+$/, '')
+    .trim();
+
+  if (!description && previousDescription && !/\b(?:raz[aã]o social|nome do cliente|\bcep\b|melhor envio|calcule|frete|envio)\b/i.test(previousDescription)) {
+    description = previousDescription.trim();
+  }
+  if (!description) return 'Fresa para Router CNC';
+  if (!/^(?:fresa|fresas|broca|brocas|pinça|pinca|ferramenta)/i.test(description)) {
+    description = `Fresa ${description}`;
+  }
+  return description;
+}
+
+async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalog: CatalogProduct[] = []): Promise<JsonObject> {
   const cep = extractCepFromText(text);
   const quantityMatch = text.match(/(\d+)\s*(?:fresas?|unidades?|peças?)/i);
   const quantity = quantityMatch ? Number.parseInt(quantityMatch[1], 10) : 1;
   const spokenPrices = extractUnitPricesFromText(text);
-  const matched = matchBlingCatalogProduct(text, catalog);
+  const previousDescription = currentQuote.items?.[0]?.description || '';
+  const parsedDescription = extractProductDescription(text, previousDescription);
+  const matched = matchBlingCatalogProduct(parsedDescription, catalog);
   const unitPrice = spokenPrices[0] || matched?.unitPrice || 0;
   const item = {
-    id: 'item-1', description: matched?.description || text, category: matched?.category || 'Fresas Router CNC',
+    id: 'item-1', description: matched?.description || parsedDescription, category: matched?.category || 'Fresas Router CNC',
     sku: matched?.sku || '', ncm: matched?.ncm || '', quantity, unit: 'un', unitPrice,
     totalPrice: quantity * unitPrice,
     notes: matched ? `Item cadastrado no Bling ERP (${matched.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.',
@@ -351,21 +381,41 @@ function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalog: any
   const shipping = currentQuote.shipping || {};
   const dimensions = shipping.packageDimensions || { height: 5, width: 12, length: 18 };
   const customShipping = shipping.customShippingAmount === undefined ? undefined : { amount: shipping.customShippingAmount, name: shipping.customShippingName };
-  const options = calculateShippingRates(cep || '00000000', shipping.originCep || '13321-472', weight.weightKg, dimensions, customShipping);
+  const subtotal = quantity * unitPrice;
+  const insuranceEnabled = Boolean(shipping.insuranceEnabled);
+  const liveOptions = await liveShippingRates(
+    cep,
+    shipping.originCep || '13321-472',
+    weight.weightKg,
+    dimensions,
+    insuranceEnabled,
+    subtotal,
+  );
+  const options = liveOptions?.length
+    ? liveOptions
+    : calculateShippingRates(cep || '00000000', shipping.originCep || '13321-472', weight.weightKg, dimensions, customShipping, insuranceEnabled, subtotal);
+  for (const option of [
+    { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+    { service: 'MOTOBOY', name: 'Envio por Motoboy / Aplicativo', carrier: 'Motoboy / App', price: 0, deliveryDays: 1, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+    { service: 'CONTA_FRESA', name: 'Envio por Nossa Conta (Cortesia Fresa Master)', carrier: 'Fresa Master', price: 0, deliveryDays: 2, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
+  ]) {
+    if (!options.some((existing) => existing.service === option.service)) options.push(option);
+  }
   const carrierPrice = extractMotoboyPriceFromText(text);
   const selected = chooseRequestedCarrier(text, options, carrierPrice);
   if (!options.some((option) => option.service === selected.service)) options.push(selected);
   else options[options.findIndex((option) => option.service === selected.service)] = selected;
-  const subtotal = quantity * unitPrice;
-  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const clientName = text.match(/(?:raz[aã]o social(?:\s+do cliente)?|cliente)\s*:?\s*([^,\.\n]+)/i)?.[1]?.trim() || 'Cliente CNC Router';
+  const selectedOptions = options.map((option) => ({ ...option, selected: option.service === selected.service }));
+  const address = await lookupViaCep(cep);
+  const previousClient = currentQuote.client || {};
+  const clientName = extractClientName(text, previousClient.name || '');
   const discount = 0;
   return {
     id: currentQuote.id || `FM-${Math.floor(100000 + Math.random() * 900000)}`, status: currentQuote.status || 'draft', createdAt: currentQuote.createdAt || new Date().toISOString(),
-    client: { name: clientName, tradeName: '', company: '', email: '', phone: '', document: '', ie: 'ISENTO', cep, address: '', number: '', neighborhood: '', city: '', state: '' },
-    project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de fresas ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
+    client: { ...previousClient, name: clientName, tradeName: previousClient.tradeName || '', company: previousClient.company || clientName, email: previousClient.email || '', phone: previousClient.phone || '', document: previousClient.document || '', ie: previousClient.ie || 'ISENTO', cep: cep || previousClient.cep || '', address: address?.logradouro || previousClient.address || '', number: previousClient.number || '', neighborhood: address?.bairro || previousClient.neighborhood || '', city: address?.cidade || previousClient.city || '', state: address?.uf || previousClient.state || '' },
+    project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
     items: [item],
-    shipping: { originCep: shipping.originCep || '13321-472', destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled: false, selectedOption: selected, options },
+    shipping: { ...shipping, originCep: shipping.originCep || '13321-472', destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
     financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage: discount, discountAmount: 0, taxPercentage: 0, taxAmount: 0, totalAmount: subtotal + Number(selected.price || 0), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
     observations: ['Envio pelo Melhor Envio com seguro total.', 'Garantia contra defeitos de fabricação e balanceamento.'],
     notesForClient: 'Fresa Master - Sua router CNC trabalhando com máxima precisão.',
@@ -376,7 +426,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   if (!text) return json({ success: false, error: "O campo 'text' é obrigatório com a mensagem ou áudio transcrito do cliente." }, 400);
   if (text.length > 8000) return json({ success: false, error: 'O texto do pedido excede o limite de 8.000 caracteres.' }, 413);
-  const catalog = body.blingCatalogAvailable === true ? normalizeBlingCatalogProducts(Array.isArray(body.blingProducts) ? body.blingProducts : []) : [];
+  const catalog = normalizeBlingCatalogProducts(Array.isArray(body.blingProducts) ? body.blingProducts : []);
   const current = body.currentQuote || {};
   const schema = {
     type: 'OBJECT',
@@ -389,7 +439,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   };
   const ai = await callGemini([{ text: `Extraia os dados deste orçamento da Fresa Master: ${text}\n\nIdentifique cliente, CEP, itens, quantidade, preços unitários ditados, frete e observações. Preserve valores e CEP explicitamente informados. O motoboy é frete, não produto. Não invente SKU, NCM ou preço. NCM padrão de fresas: 8207.70.00. Catálogo Bling disponível: ${JSON.stringify(catalog)}` }], 'Você é o assistente comercial da Fresa Master para ferramentas de router CNC. Retorne somente os dados solicitados em JSON.', schema);
   const parsed = ai && typeof ai === 'object' ? ai : null;
-  const fallback = fallbackQuote(text, current, catalog);
+  const fallback = await fallbackQuote(text, current, catalog);
   if (!parsed) return json({ success: true, summary: 'Orçamento preenchido pelo analisador local Fresa Master.', confidence: 0.9, missingInfo: [], quote: fallback });
 
   const unitPrices = extractUnitPricesFromText(text);

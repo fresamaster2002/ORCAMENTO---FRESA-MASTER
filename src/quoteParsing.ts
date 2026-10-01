@@ -6,11 +6,19 @@ const parseBrazilianNumber = (value: string) => {
 };
 
 export function extractCepFromText(text: string): string {
-  const labeledCep = text.match(/\bcep\b\s*(?:é|e|de|do|para|:|=|-)?\s*(\d{5}-?\d{3})/i);
-  if (labeledCep) return labeledCep[1];
+  const labeledCep = text.match(/\bcep\b\s*(?:é|e|de|do|para|:|=|-)?\s*(\d{5}-?\d{3}|\d{8})/i);
+  if (labeledCep) {
+    const raw = labeledCep[1].replace(/\D/g, '');
+    return raw.length === 8 ? `${raw.slice(0, 5)}-${raw.slice(5)}` : labeledCep[1];
+  }
 
   const cep = text.match(/(?:^|[^\d])(\d{5}-\d{3})(?!\d)/);
-  return cep?.[1] || '';
+  if (cep) return cep[1];
+
+  const plain8 = text.match(/(?:^|[^\d])(\d{8})(?!\d)/);
+  if (plain8) return `${plain8[1].slice(0, 5)}-${plain8[1].slice(5)}`;
+
+  return '';
 }
 
 export function extractUnitPricesFromText(text: string): number[] {
@@ -42,9 +50,11 @@ export function extractUnitPricesFromText(text: string): number[] {
 export function extractMotoboyPriceFromText(text: string): number | null {
   const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
   const patterns = [
-    new RegExp(`\\b(?:motoboy|moto boy)\\s*(?:(?:por|a|custa|de|no valor de|:|-)\\s*)?(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'),
-    new RegExp(`(?:R\\$\\s*)?(${amount})\\s*(?:reais?\\s*)?(?:de|no)\\s*(?:frete|motoboy)`, 'i'),
-    new RegExp(`(?:frete|entrega)\\s+(?:de\\s+)?(?:R\\$\\s*)?(${amount})\\s*(?:reais?)?[^.]{0,20}\\b(?:motoboy|moto boy)\\b`, 'i'),
+    new RegExp(`(?:motoboy|moto boy)[^.,;\\n]{0,35}?\\b(?:custou|custa|ficou em|ficou|deu|saiu por|saiu|cobrou|por|a|de|no valor de|valor de|:|-)\\s*(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'),
+    new RegExp(`\\b(?:motoboy|moto boy)\\s+(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'),
+    new RegExp(`(?:R\\$\\s*)?(${amount})\\s*(?:reais?\\s*)?(?:de|no|para o)?\\s*(?:frete\\s+)?(?:do\\s+)?(?:motoboy|moto boy)`, 'i'),
+    new RegExp(`(?:frete|entrega|envio)\\s+(?:por\\s+|de\\s+|do\\s+)?(?:motoboy|moto boy)[^.,;\\n]{0,35}?(?:(?:custou|custa|ficou em|ficou|deu|saiu por|saiu|cobrou|por|a|de|no valor de|valor de|:|-)\\s*)?(?:R\\$\\s*)?(${amount})`, 'i'),
+    new RegExp(`(?:frete|entrega|envio)\\s+(?:de\\s+)?(?:R\\$\\s*)?(${amount})\\s*(?:reais?)?[^.,;\\n]{0,25}\\b(?:motoboy|moto boy)\\b`, 'i'),
   ];
 
   for (const pattern of patterns) {

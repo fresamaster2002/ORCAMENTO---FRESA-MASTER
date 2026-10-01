@@ -78,9 +78,16 @@ function matchBlingCatalogProduct(query: string, catalog: CatalogProduct[]): Cat
 }
 
 function extractCepFromText(text: string): string {
-  const labeled = text.match(/\bcep\b\s*(?:é|e|de|do|para|:|=|-)?\s*(\d{5}-?\d{3})/i);
-  if (labeled) return labeled[1];
-  return text.match(/(?:^|[^\d])(\d{5}-\d{3})(?!\d)/)?.[1] || '';
+  const labeled = text.match(/\bcep\b\s*(?:é|e|de|do|para|:|=|-)?\s*(\d{5}-?\d{3}|\d{8})/i);
+  if (labeled) {
+    const raw = labeled[1].replace(/\D/g, '');
+    return raw.length === 8 ? `${raw.slice(0, 5)}-${raw.slice(5)}` : labeled[1];
+  }
+  const match = text.match(/(?:^|[^\d])(\d{5}-\d{3})(?!\d)/);
+  if (match) return match[1];
+  const plain8 = text.match(/(?:^|[^\d])(\d{8})(?!\d)/);
+  if (plain8) return `${plain8[1].slice(0, 5)}-${plain8[1].slice(5)}`;
+  return '';
 }
 
 function parseBrazilianNumber(value: string): number {
@@ -107,7 +114,13 @@ function extractUnitPricesFromText(text: string): number[] {
 
 function extractMotoboyPriceFromText(text: string): number | null {
   const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
-  const patterns = [new RegExp(`\\b(?:motoboy|moto boy)\\s*(?:(?:por|a|custa|de|no valor de|:|-)\\s*)?(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'), new RegExp(`(?:R\\$\\s*)?(${amount})\\s*(?:reais?\\s*)?(?:de|no)\\s*(?:frete|motoboy)`, 'i'), new RegExp(`(?:frete|entrega)\\s+(?:de\\s+)?(?:R\\$\\s*)?(${amount})\\s*(?:reais?)?[^.]{0,20}\\b(?:motoboy|moto boy)\\b`, 'i')];
+  const patterns = [
+    new RegExp(`(?:motoboy|moto boy)[^.,;\\n]{0,35}?\\b(?:custou|custa|ficou em|ficou|deu|saiu por|saiu|cobrou|por|a|de|no valor de|valor de|:|-)\\s*(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'),
+    new RegExp(`\\b(?:motoboy|moto boy)\\s+(?:R\\$\\s*)?(${amount})(?:\\s*reais?)?`, 'i'),
+    new RegExp(`(?:R\\$\\s*)?(${amount})\\s*(?:reais?\\s*)?(?:de|no|para o)?\\s*(?:frete\\s+)?(?:do\\s+)?(?:motoboy|moto boy)`, 'i'),
+    new RegExp(`(?:frete|entrega|envio)\\s+(?:por\\s+|de\\s+|do\\s+)?(?:motoboy|moto boy)[^.,;\\n]{0,35}?(?:(?:custou|custa|ficou em|ficou|deu|saiu por|saiu|cobrou|por|a|de|no valor de|valor de|:|-)\\s*)?(?:R\\$\\s*)?(${amount})`, 'i'),
+    new RegExp(`(?:frete|entrega|envio)\\s+(?:de\\s+)?(?:R\\$\\s*)?(${amount})\\s*(?:reais?)?[^.,;\\n]{0,25}\\b(?:motoboy|moto boy)\\b`, 'i'),
+  ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
@@ -336,11 +349,14 @@ function chooseRequestedCarrier(text: string, options: JsonObject[], price?: num
 
 function extractClientName(text: string, currentName = ''): string {
   const match = text.match(/(?:raz[aã]o social(?:\s+do cliente)?|nome do cliente|cliente)\s*(?:(?:é|eh|e|:|=|se chama|chama-se|chamado|chamada)\s*)?([^,;\n.]+)/i);
-  const name = (match?.[1] || '')
+  let name = (match?.[1] || '')
     .replace(/\s+\b(?:cep|cnpj|cpf|telefone|e-?mail)\b.*$/i, '')
     .replace(/\s+\b(?:ser[aã]o?|vai|quer|pediu|solicitou|precisa|calcule|calcular)\b.*$/i, '')
     .replace(/^(?:é|eh|e|se chama|chama-se|chamado|chamada)\s+/i, '')
     .trim();
+  if (name) {
+    name = name.replace(/\b[a-z\u00C0-\u00FF]/g, (char) => char.toUpperCase());
+  }
   return name || currentName || 'Cliente CNC Router';
 }
 

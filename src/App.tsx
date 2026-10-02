@@ -13,7 +13,7 @@ import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
 import { allowedAdminEmail, isSupabaseConfigured, supabase } from './supabase';
-import { extractCepFromText, extractUnitPricesFromText, extractMotoboyPriceFromText } from './quoteParsing';
+import { extractCepFromText, extractUnitPricesFromText, extractMotoboyPriceFromText, extractQuantityFromText } from './quoteParsing';
 
 const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
   id: 'FM-849201',
@@ -302,8 +302,7 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
   };
 
   const basePrice = prices[0] ?? currentQuote.items[0]?.unitPrice ?? 0;
-  const quantityMatch = text.match(/(\d+)\s*(?:fresas?|itens?|unidades?)/i);
-  const quantity = quantityMatch ? Number(quantityMatch[1]) : currentQuote.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 1;
+  const quantity = extractQuantityFromText(text) || currentQuote.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 1;
 
   if (basePrice > 0 && quantity > 0) {
     nextQuote.items = nextQuote.items.length

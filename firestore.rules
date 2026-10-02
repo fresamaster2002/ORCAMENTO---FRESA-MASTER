@@ -26,8 +26,11 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      allow read: if isMasterAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow write: if isMasterAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read, write: if isMasterAdmin();
+
+      match /quotes/{quoteId} {
+        allow read, create, update, delete: if isMasterAdmin();
+      }
     }
   }
 }

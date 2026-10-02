@@ -13,7 +13,7 @@ import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
 import { allowedAdminEmail, isSupabaseConfigured, supabase } from './supabase';
-import { extractCepFromText, extractUnitPricesFromText, extractMotoboyPriceFromText, extractQuantityFromText } from './quoteParsing';
+import { extractCepFromText, extractDiscountAmountFromText, extractUnitPricesFromText, extractMotoboyPriceFromText, extractQuantityFromText } from './quoteParsing';
 
 const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
   id: 'FM-849201',
@@ -274,6 +274,7 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
 const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
   const cep = extractCepFromText(text) || currentQuote.client.cep || '';
   const prices = extractUnitPricesFromText(text);
+  const spokenDiscount = extractDiscountAmountFromText(text);
   const motoboyPrice = extractMotoboyPriceFromText(text);
 
   const nextQuote: QuoteData = {
@@ -326,10 +327,17 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
         }];
 
     const subtotal = nextQuote.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+    const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote.financials.discountPercentage || 0);
+    const discountAmount = Math.min(
+      subtotal,
+      spokenDiscount ?? Number(currentQuote.financials.discountAmount || (subtotal * discountPercentage) / 100),
+    );
     nextQuote.financials = {
       ...nextQuote.financials,
       subtotal,
-      totalAmount: subtotal + (nextQuote.shipping.selectedOption?.price || 0),
+      discountAmount,
+      discountPercentage,
+      totalAmount: Math.max(0, subtotal - discountAmount + (nextQuote.shipping.selectedOption?.price || 0) + Number(nextQuote.financials.insuranceAmount || 0)),
       shippingAmount: nextQuote.shipping.selectedOption?.price || 0,
     };
   }
@@ -527,7 +535,38 @@ export default function App() {
         throw new Error(data.error || 'Erro ao processar o orçamento Fresa Master.');
       }
 
-      setQuote(data.quote);
+      const spokenPrices = extractUnitPricesFromText(text);
+      const spokenDiscount = extractDiscountAmountFromText(text);
+      const parsedItems = (data.quote.items || []).map((item: QuoteData['items'][number], index: number) => {
+        const spokenPrice = spokenPrices.length === 1 ? spokenPrices[0] : spokenPrices[index];
+        const unitPrice = spokenPrice ?? Number(item.unitPrice || 0);
+        return {
+          ...item,
+          unitPrice,
+          totalPrice: Number((Number(item.quantity || 1) * unitPrice).toFixed(2)),
+        };
+      });
+      const subtotal = parsedItems.reduce((sum: number, item: QuoteData['items'][number]) => sum + item.totalPrice, 0);
+      const discountPercentage = spokenDiscount !== null
+        ? 0
+        : Number(quote.financials.discountPercentage || 0);
+      const discountAmount = Math.min(
+        subtotal,
+        spokenDiscount ?? Number(quote.financials.discountAmount || (subtotal * discountPercentage) / 100),
+      );
+      const shippingAmount = Number(data.quote.financials?.shippingAmount || 0);
+      const insuranceAmount = Number(data.quote.financials?.insuranceAmount || 0);
+      setQuote({
+        ...data.quote,
+        items: parsedItems,
+        financials: {
+          ...data.quote.financials,
+          subtotal,
+          discountPercentage,
+          discountAmount,
+          totalAmount: Math.max(0, subtotal - discountAmount + shippingAmount + insuranceAmount),
+        },
+      });
       setSummary(data.summary);
       setMissingInfo(data.missingInfo || []);
       setConfidence(data.confidence || 0.96);

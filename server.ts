@@ -12,7 +12,7 @@ import {
   matchBlingCatalogProduct,
   normalizeBlingCatalogProducts,
 } from "./src/blingCatalog";
-import { extractCepFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
+import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1214,8 +1214,12 @@ Regras de negócio da Fresa Master:
         const subtotal = items.reduce((acc: number, item: any) => acc + item.totalPrice, 0);
         const insAmount = insuranceEnabled ? Number((selectedOption.insuranceCost || 0).toFixed(2)) : 0;
         const baseShipping = Number((selectedOption.withoutInsurancePrice ?? (selectedOption.price - (insuranceEnabled ? insAmount : 0))).toFixed(2));
-        const discountPct = Number(parsed.financials?.discountPercentage) || 0;
-        const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
+        const spokenDiscount = extractDiscountAmountFromText(text);
+        const discountPct = spokenDiscount !== null ? 0 : Number(currentQuote?.financials?.discountPercentage) || 0;
+        const discountAmount = Number(Math.min(
+          subtotal,
+          spokenDiscount ?? Number(currentQuote?.financials?.discountAmount || (subtotal * discountPct) / 100),
+        ).toFixed(2));
         const totalAmount = Number(Math.max(0, subtotal - discountAmount + baseShipping + insAmount).toFixed(2));
 
         const quote: any = {
@@ -2273,6 +2277,10 @@ app.post("/api/quote/generate-proposal", async (req, res) => {
       style: "currency",
       currency: "BRL",
     });
+    const discountAmount = Number(quote.financials?.discountAmount || 0);
+    const discountLine = discountAmount > 0
+      ? `\nDesconto concedido: -${discountAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+      : "";
 
     const ai = getGeminiClient();
 
@@ -2296,6 +2304,8 @@ ${(quote.items || [])
 
 Subtotal produtos: R$ ${Number(quote.financials?.subtotal || 0).toFixed(2)}
 Frete calculado (${shippingName}${quote.shipping?.weightKg ? ` - Peso: ${Number(quote.shipping.weightKg).toFixed(1).replace(".", ",")} kg` : ""}): ${shippingCost}
+${discountAmount > 0 ? `Desconto concedido: R$ ${discountAmount.toFixed(2)}` : ""}
+${discountAmount > 0 ? "" : "Não invente nem mencione desconto quando nenhum foi aplicado."}
 Prazo estimado de entrega: ${quote.project?.deadline || "A combinar"}
 VALOR TOTAL FINAL: ${total}
 Forma de Pagamento: ${quote.financials?.paymentTerms || "Pix ou Boleto"}
@@ -2336,7 +2346,7 @@ Peça gentilmente para o cliente confirmar o pedido e enviar os dados cadastrais
             `🔹 *${i.description}*\n   ${i.quantity} un x R$ ${Number(i.unitPrice).toFixed(2)} = R$ ${Number(i.totalPrice).toFixed(2)}`
         )
         .join("\n\n") +
-      `\n\n📦 *Frete:* ${shippingName} (${shippingCost}${weightLabel})\n⏱️ *Prazo de entrega:* ${quote.project?.deadline || "2 a 3 dias úteis"}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || "Pix ou Boleto"}\n\nAssim que aprovar, nos envie seus *dados cadastrais (CNPJ, Inscrição Estadual e endereço)* para já deixarmos sua *Nota Fiscal e envio prontos no Bling*! 🚀`;
+      `\n\n📦 *Frete:* ${shippingName} (${shippingCost}${weightLabel})${discountLine}\n⏱️ *Prazo de entrega:* ${quote.project?.deadline || "2 a 3 dias úteis"}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || "Pix ou Boleto"}\n\nAssim que aprovar, nos envie seus *dados cadastrais (CNPJ, Inscrição Estadual e endereço)* para já deixarmos sua *Nota Fiscal e envio prontos no Bling*! 🚀`;
 
     return res.json({
       success: true,
@@ -2471,7 +2481,13 @@ function parseFresaMasterFallback(
   }
 
   const subtotal = qty * finalUnitPrice;
-  const totalAmount = subtotal + selectedOption.price;
+  const spokenDiscount = extractDiscountAmountFromText(clean);
+  const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote?.financials?.discountPercentage || 0);
+  const discountAmount = Number(Math.min(
+    subtotal,
+    spokenDiscount ?? Number(currentQuote?.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+  ).toFixed(2));
+  const totalAmount = Math.max(0, subtotal - discountAmount + selectedOption.price);
 
   return {
     id: currentQuote?.id || `FM-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -2515,8 +2531,8 @@ function parseFresaMasterFallback(
     financials: {
       subtotal,
       shippingAmount: selectedOption.price,
-      discountPercentage: 0,
-      discountAmount: 0,
+      discountPercentage,
+      discountAmount,
       taxPercentage: 0,
       taxAmount: 0,
       totalAmount,

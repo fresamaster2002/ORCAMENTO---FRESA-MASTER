@@ -2,6 +2,7 @@
 
 Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto, cadastro do cliente, seleção de ferramentas, cotação de frete, proposta comercial e aprovação do pedido.
 
+- Os preços unitários informados por voz/texto prevalecem sobre o catálogo; desconto em reais é opcional e só aparece na proposta quando aplicado.
 - React + Vite para a interface
 - Supabase para login e armazenamento dos orçamentos
 - Supabase Edge Function para APIs de IA, Bling e Melhor Envio

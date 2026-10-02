@@ -1,0 +1,50 @@
+name: Deploy Fresa Master to Cloud Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud with Workload Identity
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: or-amentos-fresa-master
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          source: .
+          env_vars: |-
+            NODE_ENV=production
+            GEMINI_MODEL=gemini-3.5-flash-lite
+            GEMINI_DAILY_REQUEST_LIMIT=0
+            FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+            FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }}
+            FIREBASE_AUTH_DOMAIN=${{ vars.FIREBASE_AUTH_DOMAIN }}
+            FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }}
+            FIREBASE_DATABASE_ID=${{ vars.FIREBASE_DATABASE_ID }}
+            FIREBASE_ALLOWED_EMAIL=fresamaster0@gmail.com
+            MELHOR_ENVIO_SANDBOX=false
+          secrets: |-
+            GEMINI_API_KEY=GEMINI_API_KEY:latest
+            BLING_API_TOKEN=BLING_API_TOKEN:latest
+            MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest
+          flags: >-
+            --allow-unauthenticated
+            --min 0
+            --max 1
+            --service-account=${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}

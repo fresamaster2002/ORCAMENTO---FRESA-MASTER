@@ -27,6 +27,11 @@ import { ShippingCalculator } from './ShippingCalculator';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
 
+const calculateDiscountAmount = (subtotal: number, discountPercentage: number, fixedDiscount: number) => {
+  const amount = discountPercentage > 0 ? (subtotal * discountPercentage) / 100 : fixedDiscount;
+  return Number(Math.min(subtotal, Math.max(0, amount)).toFixed(2));
+};
+
 interface QuoteFormProps {
   quote: QuoteData;
   onChange: (updatedQuote: QuoteData) => void;
@@ -251,7 +256,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
     const subtotal = quote.items.reduce((acc, it) => acc + it.totalPrice, 0);
     const discountPct = Number(quote.financials.discountPercentage) || 0;
-    const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
+    const discountAmount = calculateDiscountAmount(subtotal, discountPct, Number(quote.financials.discountAmount) || 0);
     const totalAmount = Number(Math.max(0, subtotal - discountAmount + baseShipping + insuranceCost).toFixed(2));
 
     onChange({
@@ -293,7 +298,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     const insuranceCost = isInsured ? (activeOption?.insuranceCost || updatedShipping.insuranceAmount || 0) : 0;
     const baseShipping = activeOption?.withoutInsurancePrice ?? ((activeOption?.price || 0) - insuranceCost);
     const discountPct = Number(quote.financials.discountPercentage) || 0;
-    const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
+    const discountAmount = calculateDiscountAmount(subtotal, discountPct, Number(quote.financials.discountAmount) || 0);
     const totalAmount = Number(Math.max(0, subtotal - discountAmount + baseShipping + insuranceCost).toFixed(2));
 
     onChange({
@@ -325,7 +330,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     const insuranceCost = isInsured ? (activeOption?.insuranceCost || quote.shipping.insuranceAmount || 0) : 0;
     const baseShipping = activeOption?.withoutInsurancePrice ?? (quote.financials.shippingAmount || 0);
     const discountPct = Number(quote.financials.discountPercentage) || 0;
-    const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
+    const discountAmount = calculateDiscountAmount(subtotal, discountPct, Number(quote.financials.discountAmount) || 0);
     const totalAmount = Number(Math.max(0, subtotal - discountAmount + baseShipping + insuranceCost).toFixed(2));
 
     onChange({
@@ -347,6 +352,22 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     onChange({
       ...quote,
       status: newStatus,
+    });
+  };
+
+  const updateDiscountAmount = (value: string) => {
+    const subtotal = quote.items.reduce((acc, item) => acc + item.totalPrice, 0);
+    const enteredAmount = Number(value) || 0;
+    const discountAmount = Math.min(subtotal, Math.max(0, enteredAmount));
+    const insuranceAmount = Number(quote.financials.insuranceAmount || 0);
+    onChange({
+      ...quote,
+      financials: {
+        ...quote.financials,
+        discountPercentage: 0,
+        discountAmount,
+        totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(quote.financials.shippingAmount || 0) + insuranceAmount).toFixed(2)),
+      },
     });
   };
 
@@ -848,6 +869,21 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                 })}
               </span>
             </div>
+
+            <label className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
+              <span>Desconto (opcional, R$):</span>
+              <input
+                type="number"
+                min="0"
+                max={quote.financials.subtotal}
+                step="0.01"
+                value={quote.financials.discountAmount || ''}
+                onChange={(event) => updateDiscountAmount(event.target.value)}
+                placeholder="0,00"
+                aria-label="Desconto em reais"
+                className="w-24 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-right font-mono text-xs text-slate-800 dark:text-slate-100"
+              />
+            </label>
 
             {/* Insurance Fee explicitly added when insurance is enabled */}
             {Boolean(quote.shipping.insuranceEnabled && (quote.financials.insuranceAmount || 0) > 0) && (

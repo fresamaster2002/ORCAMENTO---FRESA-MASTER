@@ -121,6 +121,10 @@ function extractUnitPricesFromText(text: string): number[] {
 
   const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
   const price = `(?:R\\$\\s*)?(${amount})`;
+  const discountSpans = [...toolText.matchAll(new RegExp(
+    `\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}|(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`,
+    'gi',
+  ))].map((match) => [match.index || 0, (match.index || 0) + match[0].length]);
 
   const patterns = [
     // 1. Explícito 'cada': 'por 140 cada', 'a 140 cada', '140 reais cada', '140 cada uma', '140 cada peca'
@@ -141,9 +145,11 @@ function extractUnitPricesFromText(text: string): number[] {
   for (const pattern of patterns) {
     for (const match of toolText.matchAll(pattern)) {
       const value = parseBrazilianNumber(match[1]);
+      const matchStart = match.index || 0;
+      if (discountSpans.some(([start, end]) => matchStart >= start && matchStart < end)) continue;
       if (Number.isFinite(value) && value >= 10 && value <= 10000) {
-        if (!foundPrices.some((p) => p.value === value || Math.abs(p.index - (match.index || 0)) < 8)) {
-          foundPrices.push({ index: match.index || 0, value });
+        if (!foundPrices.some((p) => p.value === value || Math.abs(p.index - matchStart) < 8)) {
+          foundPrices.push({ index: matchStart, value });
         }
       }
     }
@@ -162,6 +168,24 @@ function extractUnitPricesFromText(text: string): number[] {
 
   foundPrices.sort((a, b) => a.index - b.index);
   return foundPrices.map((p) => p.value);
+}
+
+function extractDiscountAmountFromText(text: string): number | null {
+  if (/\b(?:sem desconto|sem abatimento|não (?:dei|apliquei|concedi|quero dar|vou dar) (?:nenhum )?(?:desconto|abatimento))\b/i.test(text)) return 0;
+  const amount = '(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
+  const patterns = [
+    new RegExp(`\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}(?:\\s*reais?)?`, 'i'),
+    new RegExp(`(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`, 'i'),
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const beforeMatch = text.slice(Math.max(0, (match.index || 0) - 40), match.index);
+    if (/\b(?:sem|nenhum|nenhuma|não|nao)\s+(?:(?:quero|dar|dê|de|aplique|um|o)\s+)*$/i.test(beforeMatch)) continue;
+    const value = parseBrazilianNumber(match[1]);
+    if (Number.isFinite(value) && value > 0 && value <= 10000) return value;
+  }
+  return null;
 }
 
 function extractMotoboyPriceFromText(text: string): number | null {
@@ -478,6 +502,12 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const dimensions = shipping.packageDimensions || { height: 5, width: 12, length: 18 };
   const customShipping = shipping.customShippingAmount === undefined ? undefined : { amount: shipping.customShippingAmount, name: shipping.customShippingName };
   const subtotal = quantity * unitPrice;
+  const spokenDiscount = extractDiscountAmountFromText(text);
+  const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote.financials?.discountPercentage || 0);
+  const discountAmount = Number(Math.min(
+    subtotal,
+    spokenDiscount ?? Number(currentQuote.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+  ).toFixed(2));
   const insuranceEnabled = Boolean(shipping.insuranceEnabled);
   const liveOptions = await liveShippingRates(
     cep,
@@ -505,14 +535,13 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const address = await lookupViaCep(cep);
   const previousClient = currentQuote.client || {};
   const clientName = extractClientName(text, previousClient.name || '');
-  const discount = 0;
   return {
     id: currentQuote.id || `FM-${Math.floor(100000 + Math.random() * 900000)}`, status: currentQuote.status || 'draft', createdAt: currentQuote.createdAt || new Date().toISOString(),
     client: { ...previousClient, name: clientName, tradeName: previousClient.tradeName || '', company: previousClient.company || clientName, email: previousClient.email || '', phone: previousClient.phone || '', document: previousClient.document || '', ie: previousClient.ie || 'ISENTO', cep: cep || previousClient.cep || '', address: address?.logradouro || previousClient.address || '', number: previousClient.number || '', neighborhood: address?.bairro || previousClient.neighborhood || '', city: address?.cidade || previousClient.city || '', state: address?.uf || previousClient.state || '' },
     project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
     items: [item],
     shipping: { ...shipping, originCep: shipping.originCep || '13321-472', destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
-    financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage: discount, discountAmount: 0, taxPercentage: 0, taxAmount: 0, totalAmount: subtotal + Number(selected.price || 0), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
+    financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage, discountAmount, taxPercentage: 0, taxAmount: 0, totalAmount: Math.max(0, subtotal - discountAmount + Number(selected.price || 0)), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
     observations: ['Envio pelo Melhor Envio com seguro total.', 'Garantia contra defeitos de fabricação e balanceamento.'],
     notesForClient: 'Fresa Master - Sua router CNC trabalhando com máxima precisão.',
   };
@@ -556,9 +585,13 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const address = await lookupViaCep(cep);
   const client = { name: parsed.client?.name || 'Cliente Fresa Master', tradeName: parsed.client?.tradeName || '', company: parsed.client?.company || '', email: parsed.client?.email || '', phone: parsed.client?.phone || '', document: parsed.client?.document || '', ie: parsed.client?.ie || 'ISENTO', cep, address: parsed.client?.address || address?.logradouro || '', number: parsed.client?.number || '', neighborhood: parsed.client?.neighborhood || address?.bairro || '', city: parsed.client?.city || address?.cidade || '', state: parsed.client?.state || address?.uf || '' };
   const subtotal = items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0);
-  const discountPercentage = Number(parsed.financials?.discountPercentage) || 0;
-  const discountAmount = Number((subtotal * discountPercentage / 100).toFixed(2));
-  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { height: 5, width: 12, length: 18 }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number((subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
+  const spokenDiscount = extractDiscountAmountFromText(text);
+  const discountPercentage = spokenDiscount !== null ? 0 : Number(current.financials?.discountPercentage || 0);
+  const discountAmount = Number(Math.min(
+    subtotal,
+    spokenDiscount ?? Number(current.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+  ).toFixed(2));
+  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { height: 5, width: 12, length: 18 }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
   return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });
 }
 
@@ -670,10 +703,14 @@ async function route(request: Request): Promise<Response> {
       const total = Number(quote.financials?.totalAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const shippingName = quote.shipping?.selectedOption?.name || 'Sedex (Melhor Envio)';
       const shippingCost = Number(quote.financials?.shippingAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const prompt = `Crie uma mensagem comercial da Fresa Master para ${body.channel === 'email' ? 'e-mail' : 'WhatsApp'} em tom ${body.tone || 'friendly'}. Cliente: ${quote.client?.name || ''}. CEP: ${quote.client?.cep || ''}. Itens: ${(quote.items || []).map((item: JsonObject) => `${item.description}: ${item.quantity} ${item.unit} x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('; ')}. Subtotal R$ ${Number(quote.financials?.subtotal || 0).toFixed(2)}. Frete ${shippingName}: ${shippingCost}. Prazo: ${quote.project?.deadline || 'A combinar'}. Total: ${total}. Pagamento: ${quote.financials?.paymentTerms || 'Pix ou Boleto'}. Peça confirmação e dados cadastrais para NF-e.`;
+      const discountAmount = Number(quote.financials?.discountAmount || 0);
+      const discountLine = discountAmount > 0
+        ? `\n🏷️ *Desconto:* -${discountAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+        : '';
+      const prompt = `Crie uma mensagem comercial da Fresa Master para ${body.channel === 'email' ? 'e-mail' : 'WhatsApp'} em tom ${body.tone || 'friendly'}. Cliente: ${quote.client?.name || ''}. CEP: ${quote.client?.cep || ''}. Itens: ${(quote.items || []).map((item: JsonObject) => `${item.description}: ${item.quantity} ${item.unit} x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('; ')}. Subtotal R$ ${Number(quote.financials?.subtotal || 0).toFixed(2)}. Frete ${shippingName}: ${shippingCost}.${discountAmount > 0 ? ` Desconto concedido: R$ ${discountAmount.toFixed(2)}. Informe o desconto na mensagem.` : ' Não invente nem mencione desconto, pois nenhum foi aplicado.'} Prazo: ${quote.project?.deadline || 'A combinar'}. Total: ${total}. Pagamento: ${quote.financials?.paymentTerms || 'Pix ou Boleto'}. Peça confirmação e dados cadastrais para NF-e.`;
       const ai = await callGemini([{ text: prompt }], 'Você é o assistente comercial da Fresa Master.', undefined, 700);
       const messageText = typeof ai === 'string' ? ai : '';
-      const fallback = `Olá, *${quote.client?.name || 'cliente'}*! Tudo bem? Aqui é da *Fresa Master*.\n\nSegue o orçamento das ferramentas para sua router CNC:\n\n${(quote.items || []).map((item: JsonObject) => `🔹 *${item.description}*\n   ${item.quantity} un x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('\n\n')}\n\n📦 *Frete:* ${shippingName} (${shippingCost})\n⏱️ *Prazo:* ${quote.project?.deadline || 'A combinar'}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || 'Pix ou Boleto'}\n\nApós aprovar, envie seus dados cadastrais para emissão da Nota Fiscal e despacho.`;
+      const fallback = `Olá, *${quote.client?.name || 'cliente'}*! Tudo bem? Aqui é da *Fresa Master*.\n\nSegue o orçamento das ferramentas para sua router CNC:\n\n${(quote.items || []).map((item: JsonObject) => `🔹 *${item.description}*\n   ${item.quantity} un x R$ ${Number(item.unitPrice).toFixed(2)} = R$ ${Number(item.totalPrice).toFixed(2)}`).join('\n\n')}\n\n📦 *Frete:* ${shippingName} (${shippingCost})${discountLine}\n⏱️ *Prazo:* ${quote.project?.deadline || 'A combinar'}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || 'Pix ou Boleto'}\n\nApós aprovar, envie seus dados cadastrais para emissão da Nota Fiscal e despacho.`;
       return json({ success: true, messageText: messageText || fallback });
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);

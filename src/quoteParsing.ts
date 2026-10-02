@@ -47,6 +47,10 @@ export function extractUnitPricesFromText(text: string): number[] {
 
   const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
   const price = `(?:R\\$\\s*)?(${amount})`;
+  const discountSpans = [...toolText.matchAll(new RegExp(
+    `\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}|(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`,
+    'gi',
+  ))].map((match) => [match.index || 0, (match.index || 0) + match[0].length]);
 
   const patterns = [
     // 1. Explícito 'cada': 'por 140 cada', 'a 140 cada', '140 reais cada', '140 cada uma', '140 cada peca'
@@ -67,9 +71,11 @@ export function extractUnitPricesFromText(text: string): number[] {
   for (const pattern of patterns) {
     for (const match of toolText.matchAll(pattern)) {
       const value = parseBrazilianNumber(match[1]);
+      const matchStart = match.index || 0;
+      if (discountSpans.some(([start, end]) => matchStart >= start && matchStart < end)) continue;
       if (Number.isFinite(value) && value >= 10 && value <= 10000) {
-        if (!foundPrices.some((p) => p.value === value || Math.abs(p.index - (match.index || 0)) < 8)) {
-          foundPrices.push({ index: match.index || 0, value });
+        if (!foundPrices.some((p) => p.value === value || Math.abs(p.index - matchStart) < 8)) {
+          foundPrices.push({ index: matchStart, value });
         }
       }
     }
@@ -88,6 +94,26 @@ export function extractUnitPricesFromText(text: string): number[] {
 
   foundPrices.sort((a, b) => a.index - b.index);
   return foundPrices.map((p) => p.value);
+}
+
+export function extractDiscountAmountFromText(text: string): number | null {
+  if (/\b(?:sem desconto|sem abatimento|não (?:dei|apliquei|concedi|quero dar|vou dar) (?:nenhum )?(?:desconto|abatimento))\b/i.test(text)) return 0;
+  const amount = '(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
+  const patterns = [
+    new RegExp(`\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}(?:\\s*reais?)?`, 'i'),
+    new RegExp(`(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const beforeMatch = text.slice(Math.max(0, (match.index || 0) - 40), match.index);
+    if (/\b(?:sem|nenhum|nenhuma|não|nao)\s+(?:(?:quero|dar|dê|de|aplique|um|o)\s+)*$/i.test(beforeMatch)) continue;
+    const value = parseBrazilianNumber(match[1]);
+    if (Number.isFinite(value) && value > 0 && value <= 10000) return value;
+  }
+
+  return null;
 }
 
 export function extractMotoboyPriceFromText(text: string): number | null {

@@ -1,0 +1,9 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-oramentosfresama-1dee2e02-3999-4b68-aff8-d54fc43c4925",
+      "location": "us-west1",
+      "rules": "firestore.rules"
+    }
+  ]
+}

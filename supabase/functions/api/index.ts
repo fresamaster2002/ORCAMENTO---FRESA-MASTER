@@ -116,13 +116,12 @@ function extractUnitPricesFromText(text: string): number[] {
   const normalizedText = text.replace(/(\b\d{2,4})\s+(?:e|com)\s+(\d{1,2})\b(?!\s*(?:cortes|dias|mm|graus))/gi, '$1,$2');
 
   // Isola a parte do produto antes do frete para que o valor do motoboy/sedex não seja capturado como preço unitário
-  const shippingMatch = normalizedText.match(/\b(?:frete|envio|entrega|motoboy|moto boy|sedex|pac|jadlog|transportadora)\b/i);
-  const toolText = shippingMatch && shippingMatch.index && shippingMatch.index > 10 ? normalizedText.slice(0, shippingMatch.index) : normalizedText;
+  const toolText = normalizedText.replace(/\b(?:frete|envio|entrega|motoboy|moto boy|sedex|pac|jadlog|transportadora)\b(?:[^.;,\n]|,(?=\d))*/gi, ' ');
 
   const amount = '(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
   const price = `(?:R\\$\\s*)?(${amount})`;
   const discountSpans = [...toolText.matchAll(new RegExp(
-    `\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}|(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`,
+    `\\b(?:desconto|abatimento)\\b[^\\d\\n.;]{0,30}?(?:R\\$\\s*)?${amount}|(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`,
     'gi',
   ))].map((match) => [match.index || 0, (match.index || 0) + match[0].length]);
 
@@ -174,7 +173,7 @@ function extractDiscountAmountFromText(text: string): number | null {
   if (/\b(?:sem desconto|sem abatimento|não (?:dei|apliquei|concedi|quero dar|vou dar) (?:nenhum )?(?:desconto|abatimento))\b/i.test(text)) return 0;
   const amount = '(\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
   const patterns = [
-    new RegExp(`\\b(?:desconto|abatimento)\\b\\s*(?:de|no valor de|no valor|:)?\\s*(?:R\\$\\s*)?${amount}(?:\\s*reais?)?`, 'i'),
+    new RegExp(`\\b(?:desconto|abatimento)\\b[^\\d\\n.;]{0,30}?(?:R\\$\\s*)?${amount}(?:\\s*reais?)?`, 'i'),
     new RegExp(`(?:R\\$\\s*)?${amount}\\s*(?:reais?\\s*)?(?:de\\s+)?(?:desconto|abatimento)\\b`, 'i'),
   ];
   for (const pattern of patterns) {

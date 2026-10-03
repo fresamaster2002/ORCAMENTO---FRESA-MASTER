@@ -327,11 +327,8 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
         }];
 
     const subtotal = nextQuote.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
-    const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote.financials.discountPercentage || 0);
-    const discountAmount = Math.min(
-      subtotal,
-      spokenDiscount ?? Number(currentQuote.financials.discountAmount || (subtotal * discountPercentage) / 100),
-    );
+    const discountPercentage = 0;
+    const discountAmount = Math.min(subtotal, spokenDiscount ?? 0);
     nextQuote.financials = {
       ...nextQuote.financials,
       subtotal,
@@ -547,13 +544,8 @@ export default function App() {
         };
       });
       const subtotal = parsedItems.reduce((sum: number, item: QuoteData['items'][number]) => sum + item.totalPrice, 0);
-      const discountPercentage = spokenDiscount !== null
-        ? 0
-        : Number(quote.financials.discountPercentage || 0);
-      const discountAmount = Math.min(
-        subtotal,
-        spokenDiscount ?? Number(quote.financials.discountAmount || (subtotal * discountPercentage) / 100),
-      );
+      const discountPercentage = 0;
+      const discountAmount = Math.min(subtotal, spokenDiscount ?? 0);
       const shippingAmount = Number(data.quote.financials?.shippingAmount || 0);
       const insuranceAmount = Number(data.quote.financials?.insuranceAmount || 0);
       setQuote({

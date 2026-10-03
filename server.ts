@@ -1215,10 +1215,10 @@ Regras de negócio da Fresa Master:
         const insAmount = insuranceEnabled ? Number((selectedOption.insuranceCost || 0).toFixed(2)) : 0;
         const baseShipping = Number((selectedOption.withoutInsurancePrice ?? (selectedOption.price - (insuranceEnabled ? insAmount : 0))).toFixed(2));
         const spokenDiscount = extractDiscountAmountFromText(text);
-        const discountPct = spokenDiscount !== null ? 0 : Number(currentQuote?.financials?.discountPercentage) || 0;
+        const discountPct = 0;
         const discountAmount = Number(Math.min(
           subtotal,
-          spokenDiscount ?? Number(currentQuote?.financials?.discountAmount || (subtotal * discountPct) / 100),
+          spokenDiscount ?? 0,
         ).toFixed(2));
         const totalAmount = Number(Math.max(0, subtotal - discountAmount + baseShipping + insAmount).toFixed(2));
 
@@ -2482,10 +2482,10 @@ function parseFresaMasterFallback(
 
   const subtotal = qty * finalUnitPrice;
   const spokenDiscount = extractDiscountAmountFromText(clean);
-  const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote?.financials?.discountPercentage || 0);
+  const discountPercentage = 0;
   const discountAmount = Number(Math.min(
     subtotal,
-    spokenDiscount ?? Number(currentQuote?.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+    spokenDiscount ?? 0,
   ).toFixed(2));
   const totalAmount = Math.max(0, subtotal - discountAmount + selectedOption.price);
 

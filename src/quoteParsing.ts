@@ -39,7 +39,9 @@ function parseWordNumber(str: string): number | null {
 
 export function extractUnitPricesFromText(text: string): number[] {
   // Normaliza centavos falados: '145 e 50' ou '145 com 50' -> '145,50'
-  const normalizedText = text.replace(/(\b\d{2,4})\s+(?:e|com)\s+(\d{1,2})\b(?!\s*(?:cortes|dias|mm|graus))/gi, '$1,$2');
+  const normalizedText = text
+    .replace(/(\b\d{2,4})\s*reais?\s*(?:e|com)\s*(\d{1,2})(?:\s*centavos)?\b/gi, '$1,$2')
+    .replace(/(\b\d{2,4})\s+(?:e|com)\s+(\d{1,2})\b(?!\s*(?:cortes|corte|dias|mm|graus))/gi, '$1,$2');
 
   // Isola a parte do produto antes do frete para que o valor do motoboy/sedex não seja capturado como preço unitário
   const toolText = normalizedText.replace(/\b(?:frete|envio|entrega|motoboy|moto boy|sedex|pac|jadlog|transportadora)\b(?:[^.;,\n]|,(?=\d))*/gi, ' ');
@@ -87,6 +89,20 @@ export function extractUnitPricesFromText(text: string): number[] {
       const spelledVal = parseWordNumber(spelledMatch[1]);
       if (spelledVal && spelledVal >= 10) {
         foundPrices.push({ index: spelledMatch.index || 0, value: spelledVal });
+      }
+    }
+  }
+
+  // Último recurso: primeiro número com cara de preço fora de CEP, desconto, medidas e quantidades
+  if (foundPrices.length === 0) {
+    let rest = toolText;
+    for (const [start, end] of [...discountSpans].sort((a, b) => b[0] - a[0])) rest = `${rest.slice(0, start)} ${rest.slice(end)}`;
+    rest = rest.replace(/\bcep\b\s*[:\-]?\s*[\d.\-]+/gi, ' ').replace(/\d{5}-?\d{3}/g, ' ');
+    for (const match of rest.matchAll(new RegExp(`(?<![\\d,.])(${amount})(?![\\d,.]*\\d)(?!\\s*(?:cortes?|corte|mm|graus|dias|x|fresas?|unidades?|pecas?|peças?|%))`, 'gi'))) {
+      const value = parseBrazilianNumber(match[1]);
+      if (Number.isFinite(value) && value >= 30 && value <= 10000) {
+        foundPrices.push({ index: match.index || 0, value });
+        break;
       }
     }
   }

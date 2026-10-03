@@ -113,7 +113,9 @@ function parseWordNumber(str: string): number | null {
 
 function extractUnitPricesFromText(text: string): number[] {
   // Normaliza centavos falados: '145 e 50' ou '145 com 50' -> '145,50'
-  const normalizedText = text.replace(/(\b\d{2,4})\s+(?:e|com)\s+(\d{1,2})\b(?!\s*(?:cortes|dias|mm|graus))/gi, '$1,$2');
+  const normalizedText = text
+    .replace(/(\b\d{2,4})\s*reais?\s*(?:e|com)\s*(\d{1,2})(?:\s*centavos)?\b/gi, '$1,$2')
+    .replace(/(\b\d{2,4})\s+(?:e|com)\s+(\d{1,2})\b(?!\s*(?:cortes|corte|dias|mm|graus))/gi, '$1,$2');
 
   // Isola a parte do produto antes do frete para que o valor do motoboy/sedex não seja capturado como preço unitário
   const toolText = normalizedText.replace(/\b(?:frete|envio|entrega|motoboy|moto boy|sedex|pac|jadlog|transportadora)\b(?:[^.;,\n]|,(?=\d))*/gi, ' ');
@@ -161,6 +163,20 @@ function extractUnitPricesFromText(text: string): number[] {
       const spelledVal = parseWordNumber(spelledMatch[1]);
       if (spelledVal && spelledVal >= 10) {
         foundPrices.push({ index: spelledMatch.index || 0, value: spelledVal });
+      }
+    }
+  }
+
+  // Último recurso: primeiro número com cara de preço fora de CEP, desconto, medidas e quantidades
+  if (foundPrices.length === 0) {
+    let rest = toolText;
+    for (const [start, end] of [...discountSpans].sort((a, b) => b[0] - a[0])) rest = `${rest.slice(0, start)} ${rest.slice(end)}`;
+    rest = rest.replace(/\bcep\b\s*[:\-]?\s*[\d.\-]+/gi, ' ').replace(/\d{5}-?\d{3}/g, ' ');
+    for (const match of rest.matchAll(new RegExp(`(?<![\\d,.])(${amount})(?![\\d,.]*\\d)(?!\\s*(?:cortes?|corte|mm|graus|dias|x|fresas?|unidades?|pecas?|peças?|%))`, 'gi'))) {
+      const value = parseBrazilianNumber(match[1]);
+      if (Number.isFinite(value) && value >= 30 && value <= 10000) {
+        foundPrices.push({ index: match.index || 0, value });
+        break;
       }
     }
   }
@@ -502,10 +518,10 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const customShipping = shipping.customShippingAmount === undefined ? undefined : { amount: shipping.customShippingAmount, name: shipping.customShippingName };
   const subtotal = quantity * unitPrice;
   const spokenDiscount = extractDiscountAmountFromText(text);
-  const discountPercentage = spokenDiscount !== null ? 0 : Number(currentQuote.financials?.discountPercentage || 0);
+  const discountPercentage = 0;
   const discountAmount = Number(Math.min(
     subtotal,
-    spokenDiscount ?? Number(currentQuote.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+    spokenDiscount ?? 0,
   ).toFixed(2));
   const insuranceEnabled = Boolean(shipping.insuranceEnabled);
   const liveOptions = await liveShippingRates(
@@ -585,10 +601,10 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const client = { name: parsed.client?.name || 'Cliente Fresa Master', tradeName: parsed.client?.tradeName || '', company: parsed.client?.company || '', email: parsed.client?.email || '', phone: parsed.client?.phone || '', document: parsed.client?.document || '', ie: parsed.client?.ie || 'ISENTO', cep, address: parsed.client?.address || address?.logradouro || '', number: parsed.client?.number || '', neighborhood: parsed.client?.neighborhood || address?.bairro || '', city: parsed.client?.city || address?.cidade || '', state: parsed.client?.state || address?.uf || '' };
   const subtotal = items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0);
   const spokenDiscount = extractDiscountAmountFromText(text);
-  const discountPercentage = spokenDiscount !== null ? 0 : Number(current.financials?.discountPercentage || 0);
+  const discountPercentage = 0;
   const discountAmount = Number(Math.min(
     subtotal,
-    spokenDiscount ?? Number(current.financials?.discountAmount || (subtotal * discountPercentage) / 100),
+    spokenDiscount ?? 0,
   ).toFixed(2));
   const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { height: 5, width: 12, length: 18 }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
   return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });

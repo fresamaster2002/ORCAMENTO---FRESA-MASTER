@@ -619,11 +619,18 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
     return json({ success: true, summary: parsedObject.summary, client });
   }
   const cnpj = text.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || text.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
-  const cepMatch = text.match(/(?:cep\s*:?\s*)?(\d{5}-?\d{3})/i);
+  const cepMatch = text.match(/\bcep\b\s*:?\s*(\d{5}-?\d{3})/i) || text.match(/(?<![\d-])(\d{5}-\d{3})(?!\d)/);
   const email = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  const name = text.match(/(?:raz[aã]o social|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);
+  const name = text.match(/(?:raz[aã]o social|nome empresarial|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);
+  const tradeName = text.match(/(?:nome fantasia|fantasia)\s*:?\s*([^,\n\r]+)/i);
+  const phone = text.match(/(?:\+?55\s*)?\(?\b(\d{2})\)?\s*(9?\d{4})[-\s]?(\d{4})\b/);
+  const addressLine = text.match(/(?:endere[cç]o|logradouro)\s*:?\s*([^\n\r]+)/i)?.[1] || '';
+  const streetParts = addressLine.split(/\s*,\s*|\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+  const streetNumber = addressLine.match(/,\s*(\d+[A-Za-z]?)\b|\s-\s*(\d+[A-Za-z]?)\b/);
+  const cityState = text.match(/([A-Za-zÀ-ú' ]{3,})\s*[-/]\s*([A-Z]{2})\b(?!\w)/);
   const addressInfo = await lookupViaCep(cepMatch?.[1] || body.currentClient?.cep || '');
-  const client = { ...(body.currentClient || {}), name: name?.[1]?.trim() || body.currentClient?.name || 'Empresa Cliente Ltda', document: cnpj?.[0] || body.currentClient?.document || '', ie: text.match(/(?:ie|inscri[cç][aã]o estadual)\s*:?\s*([0-9.-]+|isento)/i)?.[1] || body.currentClient?.ie || 'ISENTO', cep: cepMatch?.[1] || body.currentClient?.cep || '', email: email?.[0] || body.currentClient?.email || '', address: addressInfo?.logradouro || body.currentClient?.address || '', neighborhood: addressInfo?.bairro || body.currentClient?.neighborhood || '', city: addressInfo?.cidade || body.currentClient?.city || '', state: addressInfo?.uf || body.currentClient?.state || '' };
+  const current = body.currentClient || {};
+  const client = { ...current, name: name?.[1]?.trim() || current.name || 'Empresa Cliente Ltda', tradeName: tradeName?.[1]?.trim() || name?.[1]?.trim() || current.tradeName || '', document: cnpj?.[0] || current.document || '', ie: text.match(/(?:\bie\b|inscri[cç][aã]o estadual)\s*:?\s*([0-9.-]+|isento)/i)?.[1] || current.ie || 'ISENTO', cep: cepMatch?.[1] || current.cep || '', email: email?.[0] || current.email || '', phone: phone ? `(${phone[1]}) ${phone[2]}-${phone[3]}` : current.phone || '', address: addressInfo?.logradouro || streetParts[0] || current.address || '', number: streetNumber?.[1] || streetNumber?.[2] || current.number || '', complement: streetParts.find((part) => /galp[aã]o|sala|andar|bloco|apto|conj/i.test(part)) || current.complement || '', neighborhood: addressInfo?.bairro || streetParts.find((part) => /bairro|jardim|vila|distrito/i.test(part))?.replace(/^bairro\s*/i, '') || current.neighborhood || '', city: addressInfo?.cidade || cityState?.[1]?.trim() || current.city || '', state: addressInfo?.uf || cityState?.[2] || current.state || '' };
   return json({ success: true, summary: 'Dados cadastrais extraídos pelo analisador local.', client });
 }
 

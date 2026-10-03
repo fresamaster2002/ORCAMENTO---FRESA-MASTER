@@ -622,9 +622,20 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
   if (file.base64 && file.mimeType) parts.push({ inlineData: { data: String(file.base64).replace(/^data:[^;]+;base64,/, ''), mimeType: file.mimeType } });
   parts.push({ text: prompt });
   let parsedObject: JsonObject | null = null;
-  for (const model of [env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), 'gemini-3.6-flash', 'gemini-3.8-flash']) {
-    const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Transcreva fielmente os dados do documento. Não invente informações.', schema, 3000, model);
-    if (parsed && typeof parsed === 'object' && parsed.client) { parsedObject = parsed; break; }
+  const models = file.base64 ? ['gemini-3.6-flash', 'gemini-3.8-flash', env('GEMINI_MODEL', 'gemini-3.5-flash-lite')] : [env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), 'gemini-3.6-flash', 'gemini-3.8-flash'];
+  const score = (o: JsonObject | null) => {
+    const c = (o?.client || {}) as JsonObject;
+    return (String(c.document || '').replace(/\D/g, '').length >= 11 ? 5 : 0) + ['name', 'cep', 'address', 'city', 'state'].filter((k) => String(c[k] || '').trim()).length;
+  };
+  for (const model of models) {
+    const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Transcreva fielmente os dados do documento, sem aspas ou pontuação extra. Não invente informações.', schema, 3000, model);
+    if (parsed && typeof parsed === 'object' && parsed.client) {
+      if (score(parsed) > score(parsedObject)) parsedObject = parsed;
+      if (score(parsed) >= 8) break;
+    }
+  }
+  if (parsedObject?.client) {
+    for (const [k, v] of Object.entries(parsedObject.client as JsonObject)) if (typeof v === 'string') (parsedObject.client as JsonObject)[k] = v.replace(/^[\s"'“”]+|[\s"'“”,;]+$/g, '');
   }
   if (parsedObject?.client) {
     const current = body.currentClient || {};

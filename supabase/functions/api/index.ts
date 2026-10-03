@@ -635,9 +635,17 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
     if (digits.length === 14) {
       client.document = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
       try {
-        const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
-        if (res.ok) {
-          const d = await res.json();
+        const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`, { headers: { 'User-Agent': 'Mozilla/5.0 FresaMaster', Accept: 'application/json' } });
+        let d: JsonObject | null = res.ok ? await res.json() : null;
+        if (!d) {
+          const alt = await fetch(`https://publica.cnpj.ws/cnpj/${digits}`, { headers: { 'User-Agent': 'Mozilla/5.0 FresaMaster' } });
+          if (alt.ok) {
+            const w = await alt.json();
+            const e = w.estabelecimento || {};
+            d = { razao_social: w.razao_social, nome_fantasia: e.nome_fantasia, cep: e.cep, descricao_tipo_de_logradouro: e.tipo_logradouro, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.cidade?.nome, uf: e.estado?.sigla, email: e.email, ddd_telefone_1: `${e.ddd1 || ''}${e.telefone1 || ''}` };
+          }
+        }
+        if (d) {
           const cleanCep = String(d.cep || '').replace(/\D/g, '');
           const title = (v: unknown) => String(v || '').trim();
           const force = Boolean(file.base64);

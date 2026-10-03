@@ -690,6 +690,41 @@ async function shippingCalculate(body: JsonObject): Promise<Response> {
   return json({ success: true, weightKg: weight, weightDescription, packageDimensions: dimensions, insuranceEnabled, declaredValue, insuranceAmount, isLiveApi, options, address });
 }
 
+const BLING_REDIRECT_URI = 'https://jnakhctoigbepxwbaygk.supabase.co/functions/v1/api/bling/oauth/callback';
+
+async function blingDb(method: string, body?: unknown): Promise<any> {
+  const base = env('SUPABASE_URL');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!base || !key) return null;
+  const headers: Record<string, string> = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  if (method === 'POST') headers.Prefer = 'resolution=merge-duplicates,return=minimal';
+  const response = await fetch(`${base}/rest/v1/bling_tokens${method === 'GET' ? '?id=eq.1&select=*' : '?on_conflict=id'}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (!response.ok) { const detail = await response.text().catch(() => ''); console.error('bling_tokens', response.status, detail); if (method === 'POST') throw new Error('Não foi possível salvar o token do Bling (HTTP ' + response.status + '): ' + detail.slice(0, 200)); return null; }
+  return method === 'GET' ? (await response.json().catch(() => []))[0] || null : true;
+}
+
+async function blingTokenRequest(params: URLSearchParams): Promise<JsonObject> {
+  const credentials = btoa(`${env('BLING_CLIENT_ID')}:${env('BLING_CLIENT_SECRET')}`);
+  const response = await fetch('https://api.bling.com.br/Api/v3/oauth/token', { method: 'POST', headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: params.toString() });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) throw new Error(data.error?.description || data.error_description || data.error || `HTTP ${response.status}`);
+  await blingDb('POST', { id: 1, access_token: data.access_token, refresh_token: data.refresh_token, expires_at: new Date(Date.now() + (Number(data.expires_in) || 21600) * 1000).toISOString(), updated_at: new Date().toISOString() });
+  return data;
+}
+
+async function getBlingToken(): Promise<string> {
+  const row = await blingDb('GET');
+  if (row?.access_token) {
+    if (new Date(row.expires_at).getTime() - Date.now() > 120000) return row.access_token;
+    if (row.refresh_token && env('BLING_CLIENT_ID') && env('BLING_CLIENT_SECRET')) {
+      try {
+        const data = await blingTokenRequest(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: row.refresh_token }));
+        return String(data.access_token);
+      } catch { /* cai para o token estático */ }
+    }
+  }
+  return env('BLING_API_TOKEN') || '';
+}
 async function testBling(token: string): Promise<JsonObject> {
   if (!token.trim()) return { success: false, connected: false, message: 'Nenhum token de API do Bling fornecido.' };
   const headers = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' };
@@ -737,10 +772,10 @@ async function route(request: Request): Promise<Response> {
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
     if (path === '/shipping/create-sandbox-shipment' && request.method === 'POST') return json({ success: false, error: 'A criação de remessas sandbox ainda não está disponível nesta aplicação.' }, 501);
-    if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(env('BLING_API_TOKEN')), hasToken: Boolean(env('BLING_API_TOKEN')) });
-    if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || env('BLING_API_TOKEN')));
+    if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(await getBlingToken()), hasToken: Boolean(await getBlingToken()), authorizeUrl: `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${env('BLING_CLIENT_ID')}&state=fresa_master` });
+    if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || await getBlingToken()));
     if (path === '/bling/products' && request.method === 'GET') {
-      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || env('BLING_API_TOKEN');
+      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || await getBlingToken();
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       const products: JsonObject[] = [];
       for (let page = 1; page <= 20; page += 1) {
@@ -754,7 +789,7 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, products });
     }
     if (path === '/bling/products' && request.method === 'POST') {
-      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || body.token || env('BLING_API_TOKEN');
+      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || body.token || await getBlingToken();
       const product = body.product || {};
       const name = String(product.name || '').trim();
       const sku = String(product.sku || '').trim();
@@ -769,7 +804,7 @@ async function route(request: Request): Promise<Response> {
     }
     if (path === '/bling/create-order' && request.method === 'POST') {
       const quote = body.quote;
-      const token = body.token || env('BLING_API_TOKEN');
+      const token = body.token || await getBlingToken();
       if (!quote?.client) return json({ success: false, error: 'Dados do orçamento ou cliente não fornecidos.' }, 400);
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
@@ -798,6 +833,16 @@ async function route(request: Request): Promise<Response> {
       const params = url.searchParams;
       const code = params.get('code') || '';
       const error = params.get('error') || '';
+      let connectedMsg = '';
+      if (code && !error && env('BLING_CLIENT_ID') && env('BLING_CLIENT_SECRET')) {
+        try {
+          await blingTokenRequest(new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: BLING_REDIRECT_URI }));
+          connectedMsg = 'ok';
+        } catch (err) {
+          return html(`<!doctype html><meta charset="utf-8"><body style="font:16px system-ui;padding:32px"><h1>Falha ao conectar o Bling</h1><p>${String((err as Error).message).replace(/[<>&]/g, '')}</p></body>`, 400);
+        }
+      }
+      if (connectedMsg) return html('<!doctype html><meta charset="utf-8"><title>Bling conectado</title><body style="font:18px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="text-align:center"><h1>Bling conectado com sucesso!</h1><p>Pode fechar esta aba e voltar ao app da Fresa Master.</p></main></body>');
       const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
       return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Bling - Fresa Master</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><p>${escape(error || 'O Bling autorizou a integração Fresa Master.')}</p><code id="code">${escape(code)}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'BLING_AUTH_CODE',code},'*');</script></body></html>`);
     }

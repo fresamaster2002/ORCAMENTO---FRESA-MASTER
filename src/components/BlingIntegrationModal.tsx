@@ -59,6 +59,11 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   } | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
 
+  // NF-e State
+  const [nfe, setNfe] = useState<any | null>(null);
+  const [nfeBusy, setNfeBusy] = useState<'generate' | 'send' | 'status' | null>(null);
+  const [nfeError, setNfeError] = useState<string | null>(null);
+
   // Live Products Sync State
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
   const [syncedProducts, setSyncedProducts] = useState<any[] | null>(null);
@@ -269,10 +274,33 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     }
   };
 
-  const handleCreateDirectOrder = async () => {
-    setIsSubmittingOrder(true);
+  const callNfe = async (action: 'generate' | 'send' | 'status', payload: Record<string, unknown>) => {
+    setNfeBusy(action);
+    setNfeError(null);
+    try {
+      const res = await apiFetch(`/api/bling/nfe/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNfe((prev: any) => ({ ...(prev || {}), ...(data.nfe || {}), id: data.nfeId ?? data.nfe?.id ?? prev?.id }));
+      } else {
+        setNfeError(data.error || 'Erro ao processar a NF-e no Bling.');
+      }
+    } catch (err: any) {
+      setNfeError(`Falha de rede ou servidor: ${err.message}`);
+    } finally {
+      setNfeBusy(null);
+    }
+  };
+
+  const handleCreateDirectOrder = async () => {    setIsSubmittingOrder(true);
     setOrderError(null);
     setOrderResult(null);
+    setNfe(null);
+    setNfeError(null);
 
     try {
       const res = await apiFetch('/api/bling/create-order', {
@@ -772,8 +800,43 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   </div>
                 )}
 
-                {/* Big Action Submit Button */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                {orderResult && (
+                  <div className="p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
+                    <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
+                    {!nfe?.id ? (
+                      <button
+                        type="button"
+                        onClick={() => callNfe('generate', { orderId: orderResult.orderId })}
+                        disabled={nfeBusy !== null}
+                        className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
+                      >
+                        {nfeBusy === 'generate' ? 'Gerando NF-e...' : 'Gerar NF-e a partir do pedido'}
+                      </button>
+                    ) : (
+                      <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                        <p>
+                          Situação: <strong>{String(nfe.situacao ?? 'rascunho')}</strong>
+                          {nfe.numero ? <> • Número: <strong>{nfe.numero}</strong></> : null}
+                          {nfe.serie ? <> • Série: <strong>{nfe.serie}</strong></> : null}
+                        </p>
+                        {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
+                        <div className="flex flex-wrap gap-2">
+                          <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
+                          <button type="button" onClick={() => { if (window.confirm('Enviar esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                            {nfeBusy === 'send' ? 'Enviando...' : 'Enviar à SEFAZ'}
+                          </button>
+                          <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
+                            {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar status'}
+                          </button>
+                          {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
+                        </div>
+                      </div>
+                    )}
+                    {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}
+                  </div>
+                )}
+
+                {/* Big Action Submit Button */}                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
                   <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>Transmissão segura via API v3 oficial do Bling ERP</span>

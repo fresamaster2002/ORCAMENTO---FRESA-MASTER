@@ -818,6 +818,43 @@ async function route(request: Request): Promise<Response> {
       const orderNumber = data?.data?.numero || data?.numero || payload.numeroLoja;
       return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
     }
+    if (path.startsWith('/bling/nfe/') && request.method === 'POST') {
+      const token = await getBlingToken();
+      if (!token) return json({ success: false, error: 'Conecte o Bling antes de emitir a NF-e.' }, 401);
+      const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
+      const summarize = (n: JsonObject) => ({ id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, chaveAcesso: n.chaveAcesso, linkDanfe: n.linkDanfe || n.linkPDF, xml: n.xml, linkXml: n.xml, tipo: n.tipo });
+      const readNfe = async (id: string | number) => {
+        const r = await fetch(`https://api.bling.com.br/Api/v3/nfe/${id}`, { headers });
+        const d = await r.json().catch(() => ({}));
+        return { ok: r.ok, status: r.status, data: d };
+      };
+      if (path === '/bling/nfe/generate') {
+        const orderId = String(body.orderId || '').trim();
+        if (!orderId) return json({ success: false, error: 'Informe o ID do pedido de venda do Bling.' }, 400);
+        const r = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${orderId}/gerar-nfe`, { method: 'POST', headers });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ success: false, error: d.error?.description || d.error?.message || `O Bling recusou gerar a NF-e (HTTP ${r.status}).`, details: d }, r.status);
+        const nfeId = d.data?.id;
+        const info = nfeId ? await readNfe(nfeId) : null;
+        return json({ success: true, nfeId, nfe: info?.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e gerada no Bling como rascunho. Confira e envie à SEFAZ.' });
+      }
+      if (path === '/bling/nfe/send') {
+        const nfeId = String(body.nfeId || '').trim();
+        if (!nfeId) return json({ success: false, error: 'Informe o ID da NF-e.' }, 400);
+        const r = await fetch(`https://api.bling.com.br/Api/v3/nfe/${nfeId}/enviar`, { method: 'POST', headers });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ success: false, error: d.error?.description || d.error?.message || `A SEFAZ/Bling recusou o envio (HTTP ${r.status}).`, details: d }, r.status);
+        const info = await readNfe(nfeId);
+        return json({ success: true, nfe: info.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e enviada para autorização.' });
+      }
+      if (path === '/bling/nfe/status') {
+        const nfeId = String(body.nfeId || '').trim();
+        if (!nfeId) return json({ success: false, error: 'Informe o ID da NF-e.' }, 400);
+        const info = await readNfe(nfeId);
+        if (!info.ok) return json({ success: false, error: info.data.error?.description || `Falha ao consultar a NF-e (HTTP ${info.status}).` }, info.status);
+        return json({ success: true, nfe: summarize(info.data.data || {}) });
+      }
+    }
     if (path === '/bling/oauth/token-exchange' && request.method === 'POST') {
       const { code, clientId, clientSecret, redirectUri } = body;
       if (!code || !clientId || !clientSecret) return json({ success: false, error: 'Parâmetros obrigatórios ausentes: code, clientId e clientSecret.' }, 400);

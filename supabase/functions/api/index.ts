@@ -617,7 +617,7 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
   if (text.length > 5000) return json({ error: 'O texto cadastral excede o limite de 5.000 caracteres.' }, 413);
   if (typeof file.base64 === 'string' && file.base64.length > 9000000) return json({ error: 'O documento excede o limite de tamanho.' }, 413);
   const schema = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, client: { type: 'OBJECT', properties: { name: { type: 'STRING' }, tradeName: { type: 'STRING' }, document: { type: 'STRING' }, ie: { type: 'STRING' }, email: { type: 'STRING' }, phone: { type: 'STRING' }, cep: { type: 'STRING' }, address: { type: 'STRING' }, number: { type: 'STRING' }, complement: { type: 'STRING' }, neighborhood: { type: 'STRING' }, city: { type: 'STRING' }, state: { type: 'STRING' } }, required: ['name'] } }, required: ['client', 'summary'] };
-  const prompt = `Leia com atenção TODO o documento/texto e extraia os dados fiscais brasileiros para cadastro no Bling. Se for Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral), retorne: NOME EMPRESARIAL em name, TÍTULO DO ESTABELECIMENTO (nome fantasia) em tradeName, número de inscrição (CNPJ) com 14 dígitos em document, LOGRADOURO em address, NÚMERO em number, COMPLEMENTO em complement, CEP em cep (formato 00000-000), BAIRRO/DISTRITO em neighborhood, MUNICÍPIO em city, UF em state, endereço eletrônico em email e telefone em phone. IE: use o que estiver escrito, ou ISENTO se ausente. Nunca deixe um campo vazio se a informação está no documento. Texto adicional do operador: ${text || '(nenhum)'}`;
+  const prompt = `Leia com atenção TODO o documento/texto e extraia os dados fiscais brasileiros para cadastro no Bling. Se for Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral), retorne: NOME EMPRESARIAL em name, TÍTULO DO ESTABELECIMENTO (nome fantasia) em tradeName, número de inscrição (CNPJ) com 14 dígitos em document, LOGRADOURO em address, NÚMERO em number, COMPLEMENTO em complement, CEP em cep (formato 00000-000), BAIRRO/DISTRITO em neighborhood, MUNICÍPIO em city, UF em state, endereço eletrônico em email e telefone em phone. IE: use o que estiver escrito, ou ISENTO se ausente. Nunca deixe um campo vazio se a informação está no documento; se ela NÃO existir, deixe string vazia (não invente, não use "não informado" nem zeros). Texto adicional do operador: ${text || '(nenhum)'}`;
   const parts: JsonObject[] = [];
   if (file.base64 && file.mimeType) parts.push({ inlineData: { data: String(file.base64).replace(/^data:[^;]+;base64,/, ''), mimeType: file.mimeType } });
   parts.push({ text: prompt });
@@ -630,12 +630,20 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
   for (const model of models) {
     const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Transcreva fielmente os dados do documento, sem aspas ou pontuação extra. Não invente informações.', schema, 3000, model);
     if (parsed && typeof parsed === 'object' && parsed.client) {
-      if (score(parsed) > score(parsedObject)) parsedObject = parsed;
-      if (score(parsed) >= 8) break;
+      if (!parsedObject) parsedObject = parsed;
+      else {
+        const base = parsedObject.client as JsonObject;
+        for (const [k, v] of Object.entries(parsed.client as JsonObject)) if (typeof v === 'string' && v.trim() && !String(base[k] || '').trim()) base[k] = v;
+      }
+      if (score(parsedObject) >= 8) break;
     }
   }
   if (parsedObject?.client) {
-    for (const [k, v] of Object.entries(parsedObject.client as JsonObject)) if (typeof v === 'string') (parsedObject.client as JsonObject)[k] = v.replace(/^[\s"'“”]+|[\s"'“”,;]+$/g, '');
+    for (const [k, v] of Object.entries(parsedObject.client as JsonObject)) if (typeof v === 'string') {
+      const cleaned = v.split(/\r?\n|==End/)[0].replace(/^[\s"'“”]+|[\s"'“”,;]+$/g, '');
+      const placeholder = /^(n[aã]o\s*informad[oa]|n\/?a|null|undefined|desconhecido|[0\s()-]+)$/i.test(cleaned) || /naoinformado|@email\.com$/i.test(cleaned);
+      (parsedObject.client as JsonObject)[k] = placeholder ? '' : cleaned;
+    }
   }
   if (parsedObject?.client) {
     const current = body.currentClient || {};
@@ -656,7 +664,11 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
             d = { razao_social: w.razao_social, nome_fantasia: e.nome_fantasia, cep: e.cep, descricao_tipo_de_logradouro: e.tipo_logradouro, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.cidade?.nome, uf: e.estado?.sigla, email: e.email, ddd_telefone_1: `${e.ddd1 || ''}${e.telefone1 || ''}` };
           }
         }
-        if (d) {
+        const words = (v: unknown) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !/^(ltda|eireli|epp|sa|me|com|industria|comercio|dos|das|del)$/.test(w));
+        const readWords = words(client.name).concat(words(client.tradeName));
+        const regWords = words(d?.razao_social).concat(words(d?.nome_fantasia));
+        const sameCompany = !readWords.length || readWords.some((w) => regWords.includes(w));
+        if (d && sameCompany) {
           const cleanCep = String(d.cep || '').replace(/\D/g, '');
           const title = (v: unknown) => String(v || '').trim();
           const force = Boolean(file.base64);

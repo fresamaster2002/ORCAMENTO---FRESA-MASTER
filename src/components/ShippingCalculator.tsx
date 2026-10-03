@@ -46,6 +46,30 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   const [isCalculating, setIsCalculating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [meStatus, setMeStatus] = useState<{ state: 'checking' | 'connected' | 'disconnected'; detail?: string }>({ state: 'checking' });
+
+  const checkMelhorEnvio = async () => {
+    setMeStatus({ state: 'checking' });
+    try {
+      const res = await apiFetch('/api/shipping/test-melhor-envio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json();
+      if (res.ok && data.connected) {
+        setMeStatus({ state: 'connected', detail: `${data.message} (${data.user?.environment || ''})` });
+      } else {
+        setMeStatus({ state: 'disconnected', detail: data.message || data.error || 'Token do Melhor Envio inválido ou ausente.' });
+      }
+    } catch {
+      setMeStatus({ state: 'disconnected', detail: 'Não foi possível contatar o servidor.' });
+    }
+  };
+
+  useEffect(() => {
+    checkMelhorEnvio();
+  }, []);
 
   // Settings
   const [originCep, setOriginCep] = useState(shipping.originCep || DEFAULT_ORIGIN_CEP);
@@ -261,9 +285,21 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
                 Cálculo de Frete & Logística
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                Melhor Envio Oficial
-              </span>
+              <button
+                type="button"
+                onClick={checkMelhorEnvio}
+                title={meStatus.detail || 'Verificar conexão com o Melhor Envio'}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 cursor-pointer transition ${
+                  meStatus.state === 'connected'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                    : meStatus.state === 'checking'
+                      ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
+                      : 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${meStatus.state === 'connected' ? 'bg-emerald-500' : meStatus.state === 'checking' ? 'bg-slate-400 animate-pulse' : 'bg-red-500'}`} />
+                {meStatus.state === 'connected' ? 'Melhor Envio conectado' : meStatus.state === 'checking' ? 'Verificando...' : 'Melhor Envio desconectado'}
+              </button>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Despacho direto de <span className="font-semibold text-slate-700 dark:text-slate-300">Salto/SP ({originCep})</span>

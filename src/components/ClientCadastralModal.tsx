@@ -47,6 +47,7 @@ export const ClientCadastralModal: React.FC<ClientCadastralModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [textFromAi, setTextFromAi] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -81,15 +82,30 @@ Telefone/WhatsApp: (41) 98888-5544`;
     reader.onload = (e) => {
       const resultStr = e.target?.result as string;
       const isImage = file.type.startsWith('image/');
-      setAttachedDoc({
+      const finish = (base64: string, type: string) => setAttachedDoc({
         name: file.name,
         size: file.size,
-        type: file.type,
-        base64: resultStr,
-        previewUrl: isImage ? resultStr : undefined,
+        type,
+        base64,
+        previewUrl: isImage ? base64 : undefined,
       });
-    };
-    reader.readAsDataURL(file);
+      if (!isImage) return finish(resultStr, file.type);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return finish(resultStr, file.type);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.88), 'image/jpeg');
+      };
+      img.onerror = () => finish(resultStr, file.type);
+      img.src = resultStr;
+    };    reader.readAsDataURL(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -122,10 +138,10 @@ Telefone/WhatsApp: (41) 98888-5544`;
     try {
       const payload: any = {
         text: inputText,
-        currentClient,
+        currentClient: attachedDoc && !(textFromAi && inputText.trim()) ? {} : (extractedPreview || currentClient),
       };
 
-      if (attachedDoc) {
+      if (attachedDoc && !(textFromAi && inputText.trim())) {
         payload.file = {
           base64: attachedDoc.base64,
           mimeType: attachedDoc.type,
@@ -142,6 +158,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
       const data = await res.json();
       if (data.success && data.client) {
         setExtractedPreview(data.client);
+        setInputText(clientToText(data.client));
+        setTextFromAi(true);
         setStatusMessage(
           attachedDoc
             ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso pela IA!'
@@ -156,6 +174,28 @@ Telefone/WhatsApp: (41) 98888-5544`;
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const clientToText = (c: ClientInfo) => [
+    `Razão Social: ${c.name || ''}`,
+    `Nome Fantasia: ${c.tradeName || ''}`,
+    `CNPJ/CPF: ${c.document || ''}`,
+    `Inscrição Estadual: ${c.ie || 'ISENTO'}`,
+    `Endereço: ${c.address || ''}, ${c.number || 'S/N'}${c.complement ? ' - ' + c.complement : ''}`,
+    `Bairro: ${c.neighborhood || ''}`,
+    `Cidade: ${c.city || ''} - ${c.state || ''}`,
+    `CEP: ${c.cep || ''}`,
+    `E-mail: ${c.email || ''}`,
+    `Telefone: ${c.phone || ''}`,
+  ].join('\n');
+
+  const updateField = (key: keyof ClientInfo, value: string) => {
+    setExtractedPreview((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, [key]: value };
+      setInputText(clientToText(next));
+      return next;
+    });
   };
 
   const handleConfirmAndApply = () => {
@@ -329,7 +369,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
               </div>
               <textarea
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => { setInputText(e.target.value); if (!attachedDoc) setTextFromAi(false); }}
                 placeholder="Exemplo de mensagem:
 Razão Social: Indústria de Móveis Requinte Ltda
 CNPJ: 14.890.123/0001-45
@@ -414,47 +454,31 @@ E-mail fiscal: fiscal@cliente.com.br"
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 sm:col-span-2">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Razão Social:</span>
-                  <span className="font-bold text-slate-800">{extractedPreview.name || '—'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Nome Fantasia:</span>
-                  <span className="font-semibold text-slate-700">{extractedPreview.tradeName || extractedPreview.name || '—'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">CNPJ / CPF:</span>
-                  <span className="font-mono font-bold text-slate-800">{extractedPreview.document || '—'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Inscrição Estadual (IE):</span>
-                  <span className="font-mono font-semibold text-slate-700">{extractedPreview.ie || 'ISENTO'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">CEP:</span>
-                  <span className="font-mono font-bold text-slate-800">{extractedPreview.cep || '—'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 sm:col-span-3">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Endereço Completo:</span>
-                  <span className="text-slate-700 font-medium">
-                    {extractedPreview.address}
-                    {extractedPreview.number ? `, ${extractedPreview.number}` : ''}
-                    {extractedPreview.complement ? ` - ${extractedPreview.complement}` : ''}
-                    {extractedPreview.neighborhood ? ` - ${extractedPreview.neighborhood}` : ''}
-                    {` - ${extractedPreview.city || ''}/${extractedPreview.state || ''}`}
-                    {extractedPreview.cep ? ` (CEP: ${extractedPreview.cep})` : ''}
-                  </span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 sm:col-span-2">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">E-mail para NF-e:</span>
-                  <span className="text-slate-700 font-medium">{extractedPreview.email || '—'}</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Telefone / WhatsApp:</span>
-                  <span className="text-slate-700 font-medium font-mono">{extractedPreview.phone || '—'}</span>
-                </div>
-              </div>
-            </div>
+                {([
+                  ['name', 'Razão Social', 'sm:col-span-2'],
+                  ['tradeName', 'Nome Fantasia', ''],
+                  ['document', 'CNPJ / CPF', ''],
+                  ['ie', 'Inscrição Estadual (IE)', ''],
+                  ['cep', 'CEP', ''],
+                  ['address', 'Logradouro', 'sm:col-span-2'],
+                  ['number', 'Número', ''],
+                  ['complement', 'Complemento', ''],
+                  ['neighborhood', 'Bairro', ''],
+                  ['city', 'Cidade', ''],
+                  ['state', 'UF', ''],
+                  ['email', 'E-mail para NF-e', 'sm:col-span-2'],
+                  ['phone', 'Telefone / WhatsApp', ''],
+                ] as Array<[keyof ClientInfo, string, string]>).map(([key, label, span]) => (
+                  <label key={key} className={`bg-white p-2 rounded-lg border border-slate-200 block ${span}`}>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">{label}:</span>
+                    <input
+                      value={(extractedPreview[key] as string) || ''}
+                      onChange={(e) => updateField(key, e.target.value)}
+                      className="w-full text-xs font-semibold text-slate-800 outline-none bg-transparent focus:bg-amber-50 rounded"
+                    />
+                  </label>
+                ))}
+              </div>            </div>
           )}
         </div>
 

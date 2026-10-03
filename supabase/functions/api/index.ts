@@ -284,10 +284,10 @@ async function readJson(request: Request): Promise<JsonObject> {
   }
 }
 
-async function callGemini(parts: JsonObject[], systemInstruction: string, responseSchema?: JsonObject, maxOutputTokens = 1200): Promise<JsonObject | string | null> {
+async function callGemini(parts: JsonObject[], systemInstruction: string, responseSchema?: JsonObject, maxOutputTokens = 1200, modelOverride?: string): Promise<JsonObject | string | null> {
   const apiKey = env('GEMINI_API_KEY');
   if (!apiKey) return null;
-  const model = env('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+  const model = modelOverride || env('GEMINI_MODEL', 'gemini-3.5-flash-lite');
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
@@ -615,26 +615,60 @@ async function extractCadastral(body: JsonObject): Promise<Response> {
   const file = body.file || {};
   if (!text.trim() && !file.base64) return json({ error: 'Texto ou documento com dados cadastrais é obrigatório.' }, 400);
   if (text.length > 5000) return json({ error: 'O texto cadastral excede o limite de 5.000 caracteres.' }, 413);
-  if (typeof file.base64 === 'string' && file.base64.length > 2500000) return json({ error: 'O documento excede o limite de tamanho de 1,8 MB.' }, 413);
+  if (typeof file.base64 === 'string' && file.base64.length > 9000000) return json({ error: 'O documento excede o limite de tamanho.' }, 413);
   const schema = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, client: { type: 'OBJECT', properties: { name: { type: 'STRING' }, tradeName: { type: 'STRING' }, document: { type: 'STRING' }, ie: { type: 'STRING' }, email: { type: 'STRING' }, phone: { type: 'STRING' }, cep: { type: 'STRING' }, address: { type: 'STRING' }, number: { type: 'STRING' }, complement: { type: 'STRING' }, neighborhood: { type: 'STRING' }, city: { type: 'STRING' }, state: { type: 'STRING' } }, required: ['name'] } }, required: ['client', 'summary'] };
-  const prompt = `Extraia os dados fiscais brasileiros deste documento/texto para cadastro no Bling. Retorne nome empresarial, nome fantasia, CPF/CNPJ, IE (ISENTO quando ausente), CEP, endereço, número, complemento, bairro, cidade, UF, e-mail e telefone. Texto: ${text || 'Consulte o documento anexado.'}`;
+  const prompt = `Leia com atenção TODO o documento/texto e extraia os dados fiscais brasileiros para cadastro no Bling. Se for Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral), retorne: NOME EMPRESARIAL em name, TÍTULO DO ESTABELECIMENTO (nome fantasia) em tradeName, número de inscrição (CNPJ) com 14 dígitos em document, LOGRADOURO em address, NÚMERO em number, COMPLEMENTO em complement, CEP em cep (formato 00000-000), BAIRRO/DISTRITO em neighborhood, MUNICÍPIO em city, UF em state, endereço eletrônico em email e telefone em phone. IE: use o que estiver escrito, ou ISENTO se ausente. Nunca deixe um campo vazio se a informação está no documento. Texto adicional do operador: ${text || '(nenhum)'}`;
   const parts: JsonObject[] = [];
   if (file.base64 && file.mimeType) parts.push({ inlineData: { data: String(file.base64).replace(/^data:[^;]+;base64,/, ''), mimeType: file.mimeType } });
   parts.push({ text: prompt });
-  const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Não invente informações.', schema);
-  const parsedObject = parsed && typeof parsed === 'object' ? parsed : null;
+  let parsedObject: JsonObject | null = null;
+  for (const model of [env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), 'gemini-3.6-flash', 'gemini-3.8-flash']) {
+    const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Transcreva fielmente os dados do documento. Não invente informações.', schema, 3000, model);
+    if (parsed && typeof parsed === 'object' && parsed.client) { parsedObject = parsed; break; }
+  }
   if (parsedObject?.client) {
-    const client = { ...(body.currentClient || {}), ...parsedObject.client };
-    const address = await lookupViaCep(client.cep || '');
+    const current = body.currentClient || {};
+    const ai = parsedObject.client as JsonObject;
+    const client: JsonObject = { ...current };
+    for (const [key, value] of Object.entries(ai)) if (typeof value === 'string' && value.trim()) client[key] = value.trim();
+    const digits = String(client.document || '').replace(/\D/g, '');
+    if (digits.length === 14) {
+      client.document = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+      try {
+        const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+        if (res.ok) {
+          const d = await res.json();
+          const cleanCep = String(d.cep || '').replace(/\D/g, '');
+          const title = (v: unknown) => String(v || '').trim();
+          const force = Boolean(file.base64);
+          const put = (key: string, value: string) => { if (value && (force || !client[key])) client[key] = value; };
+          put('name', title(d.razao_social));
+          put('tradeName', title(d.nome_fantasia) || String(client.name || ''));
+          if (cleanCep.length === 8) put('cep', `${cleanCep.slice(0, 5)}-${cleanCep.slice(5)}`);
+          put('address', [title(d.descricao_tipo_de_logradouro), title(d.logradouro)].filter(Boolean).join(' '));
+          put('number', title(d.numero));
+          put('complement', title(d.complemento));
+          put('neighborhood', title(d.bairro));
+          put('city', title(d.municipio));
+          put('state', title(d.uf));          if (!client.email && title(d.email)) client.email = title(d.email).toLowerCase();
+          if (!client.phone && title(d.ddd_telefone_1)) {
+            const p = title(d.ddd_telefone_1).replace(/\D/g, '');
+            client.phone = p.length >= 10 ? `(${p.slice(0, 2)}) ${p.slice(2, p.length - 4)}-${p.slice(-4)}` : p;
+          }
+        }
+      } catch { /* mantém os dados lidos pela IA */ }
+    }
+    const address = await lookupViaCep(String(client.cep || ''));
     if (address) {
       client.address ||= address.logradouro;
       client.neighborhood ||= address.bairro;
       client.city ||= address.cidade;
       client.state ||= address.uf;
     }
+    client.ie = client.ie || 'ISENTO';
     return json({ success: true, summary: parsedObject.summary, client });
   }
-  const cnpj = text.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || text.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
+  if (file.base64 && !text.trim()) return json({ error: 'A IA não conseguiu ler o documento agora. Tente novamente ou cole o texto.' }, 502);  const cnpj = text.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || text.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
   const cepMatch = text.match(/\bcep\b\s*:?\s*(\d{5}-?\d{3})/i) || text.match(/(?<![\d-])(\d{5}-\d{3})(?!\d)/);
   const email = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   const name = text.match(/(?:raz[aã]o social|nome empresarial|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);

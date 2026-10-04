@@ -1,5 +1,5 @@
-import React from 'react';
-import { KeyRound, FileSpreadsheet, RefreshCw, Building, Moon, Sun, Download } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyRound, FileSpreadsheet, RefreshCw, Building, Moon, Sun, Download, Settings, LogOut, ChevronDown } from 'lucide-react';
 import { FresaMasterLogo } from './FresaMasterLogo';
 
 interface HeaderProps {
@@ -11,6 +11,8 @@ interface HeaderProps {
   isApproved: boolean;
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
+  userEmail?: string;
+  onSignOut?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,68 +21,45 @@ export const Header: React.FC<HeaderProps> = ({
   onPreviewProposal,
   onOpenBlingModal,
   hasItems,
-  isApproved,
   isDarkMode = true,
   onToggleDarkMode,
+  userEmail,
+  onSignOut,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const menuItem =
+    'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-left rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer';
+
   return (
-    <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <FresaMasterLogo size="lg" theme={isDarkMode ? 'dark' : 'light'} />
-          <div className="hidden md:block pl-3 border-l border-slate-200 dark:border-slate-800">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-              Router CNC & Bling ERP
-            </span>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Cotação Melhor Envio & Pedidos de Venda
-            </p>
-          </div>
-        </div>
+    <>
+    <header className="bg-white dark:bg-slate-900">
+      <div className="max-w-7xl mx-auto px-4 pt-5 pb-4 flex justify-center">
+        <FresaMasterLogo size="xl" theme={isDarkMode ? 'dark' : 'light'} />
+      </div>
+    </header>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-          {/* Dark / Light Mode Toggle */}
-          {onToggleDarkMode && (
-            <button
-              id="btn-toggle-dark-mode"
-              type="button"
-              onClick={onToggleDarkMode}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-              title={isDarkMode ? 'Mudar para Fundo Claro' : 'Mudar para Fundo Escuro'}
-            >
-              {isDarkMode ? (
-                <>
-                  <Moon className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">Fundo Escuro</span>
-                </>
-              ) : (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-amber-500" />
-                  <span className="hidden sm:inline">Fundo Claro</span>
-                </>
-              )}
-            </button>
-          )}
-
-          <a
-            id="btn-download-project-zip"
-            href="/api/download-project-zip"
-            download="fresa-master-app.zip"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 transition cursor-pointer shadow-xs"
-            title="Baixar projeto completo em ZIP para abrir no VS Code e salvar no GitHub"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-950" />
-            <span className="inline">Baixar ZIP (VS Code)</span>
-          </a>
-
+      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-center gap-2 flex-wrap">
           <button
-            id="btn-open-bling-modal"
+            id="btn-reset-quote"
             type="button"
-            onClick={onOpenBlingModal}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-black rounded-xl transition cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={onNewQuote}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+            title="Iniciar novo orçamento"
           >
-            <Building className="w-4 h-4 text-emerald-200" />
-            <span>Bling ERP</span>
+            <RefreshCw className="w-4 h-4" />
+            <span>Novo</span>
           </button>
 
           <button
@@ -88,39 +67,101 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onPreviewProposal}
             disabled={!hasItems}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               hasItems
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
             }`}
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <FileSpreadsheet className="w-4 h-4" />
             <span>Gerar Proposta</span>
           </button>
 
           <button
-            id="btn-open-api-docs"
+            id="btn-open-bling-modal"
             type="button"
-            onClick={onOpenApiDocs}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+            onClick={onOpenBlingModal}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            <KeyRound className="w-3.5 h-3.5 text-blue-500" />
-            <span className="hidden md:inline">API</span>
+            <Building className="w-4 h-4 text-emerald-200" />
+            <span>Bling ERP</span>
           </button>
 
-          <button
-            id="btn-reset-quote"
-            type="button"
-            onClick={onNewQuote}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-            title="Iniciar novo orçamento"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Novo</span>
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              id="btn-open-settings"
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-expanded={menuOpen}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+            >
+              <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span>Definições</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+            </button>
 
+            {menuOpen && (
+              <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto mt-2 w-64 max-w-[calc(100vw-1.5rem)] p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl z-50">
+                {userEmail && (
+                  <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400 truncate border-b border-slate-100 dark:border-slate-800 mb-1">
+                    {userEmail}
+                  </p>
+                )}
+                {onToggleDarkMode && (
+                  <button
+                    id="btn-toggle-dark-mode"
+                    type="button"
+                    onClick={() => {
+                      onToggleDarkMode();
+                      setMenuOpen(false);
+                    }}
+                    className={menuItem}
+                  >
+                    {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-amber-500" />}
+                    <span>{isDarkMode ? 'Mudar para fundo claro' : 'Mudar para fundo escuro'}</span>
+                  </button>
+                )}
+                <button
+                  id="btn-open-api-docs"
+                  type="button"
+                  onClick={() => {
+                    onOpenApiDocs();
+                    setMenuOpen(false);
+                  }}
+                  className={menuItem}
+                >
+                  <KeyRound className="w-4 h-4 text-blue-500" />
+                  <span>API</span>
+                </button>
+                <a
+                  id="btn-download-project-zip"
+                  href="/api/download-project-zip"
+                  download="fresa-master-app.zip"
+                  onClick={() => setMenuOpen(false)}
+                  className={menuItem}
+                  title="Baixar projeto completo em ZIP para abrir no VS Code e salvar no GitHub"
+                >
+                  <Download className="w-4 h-4 text-amber-500" />
+                  <span>Backup do projeto (ZIP)</span>
+                </a>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onSignOut();
+                    }}
+                    className={`${menuItem} border-t border-slate-100 dark:border-slate-800 mt-1 rounded-t-none text-rose-600 dark:text-rose-400`}
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sair</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
+      </nav>
+    </>
   );
 };

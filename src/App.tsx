@@ -717,6 +717,8 @@ export default function App() {
           isApproved={quote.status === 'approved'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={toggleDarkMode}
+          userEmail={supabaseUser?.email ?? undefined}
+          onSignOut={supabaseUser ? handleSignOut : undefined}
         />
 
         {supabaseUser && (
@@ -746,12 +748,7 @@ export default function App() {
                   {cloudSaveState === 'saving' ? 'Sincronizando...' : cloudSaveState === 'saved' ? 'Salvo na nuvem' : cloudSaveState === 'error' ? 'Falha ao sincronizar' : 'Nuvem pronta'}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-3 sm:justify-end">
-                <span className="max-w-[220px] truncate text-[10px] text-slate-500 dark:text-slate-400">{supabaseUser.email}</span>
-                <button type="button" onClick={handleSignOut} className="text-[11px] font-bold text-slate-600 hover:text-rose-600 dark:text-slate-300">
-                  Sair
-                </button>
-              </div>
+
             </div>
           </div>
         )}

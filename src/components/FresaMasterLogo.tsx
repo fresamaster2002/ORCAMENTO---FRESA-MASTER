@@ -58,31 +58,26 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
 
   const style = getTypography();
 
+  const emblemPx = size === 'pdf' ? 56 : size === 'xl' ? 52 : size === 'lg' ? 44 : size === 'sm' ? 30 : 36;
+
   return (
-    <div className={`inline-flex flex-col select-none ${style.spacing} ${className}`}>
+    <div className={`inline-flex items-center gap-3 select-none ${className}`}>
+      <img
+        src={`${import.meta.env.BASE_URL}fresa-master-emblem.png`}
+        alt="Fresa Master"
+        width={emblemPx}
+        height={emblemPx}
+        className="rounded-lg shrink-0"
+        style={{ width: emblemPx, height: emblemPx }}
+      />
+      <div className={`inline-flex flex-col ${style.spacing}`}>
       {/* Primary Brand Line: FRESA MASTER */}
       <div className="flex items-center gap-2 leading-none">
         <span
-          className={`${style.title} uppercase ${
-            isPrint
-              ? 'text-slate-950 font-black'
-              : isLight
-              ? 'text-slate-900 font-black'
-              : 'text-white font-black'
-          }`}
+          className={` uppercase font-black `}
           style={{ letterSpacing: '0.06em' }}
         >
           FRESA MASTER
-        </span>
-
-        <span
-          className={`${style.badge} font-black uppercase rounded-md tracking-wider ${
-            isPrint
-              ? 'bg-slate-900 text-white'
-              : 'bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/30'
-          }`}
-        >
-          CNC
         </span>
       </div>
 
@@ -97,6 +92,7 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
       >
         CNC MACHINING
       </span>
+      </div>
     </div>
   );
 };

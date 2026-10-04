@@ -403,14 +403,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             <span className="text-xs font-mono font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
               {quote.id}
             </span>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                Orçamento de Fresas & Ferramentas CNC
-              </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Validade: 10 dias • Proposta profissional Fresa Master
-              </p>
-            </div>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Validade: 10 dias</span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

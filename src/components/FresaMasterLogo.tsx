@@ -58,23 +58,22 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
 
   const style = getTypography();
 
-  const emblemPx = size === 'pdf' ? 56 : size === 'xl' ? 52 : size === 'lg' ? 44 : size === 'sm' ? 30 : 36;
+  const emblemPx = size === 'pdf' ? 72 : size === 'xl' ? 60 : size === 'lg' ? 52 : size === 'sm' ? 38 : 44;
 
   return (
     <div className={`inline-flex items-center gap-3 select-none ${className}`}>
       <img
         src={`${import.meta.env.BASE_URL}fresa-master-emblem.png`}
         alt="Fresa Master"
-        width={emblemPx}
         height={emblemPx}
         className="rounded-lg shrink-0"
-        style={{ width: emblemPx, height: emblemPx }}
+        style={{ height: emblemPx, width: 'auto' }}
       />
       <div className={`inline-flex flex-col ${style.spacing}`}>
       {/* Primary Brand Line: FRESA MASTER */}
       <div className="flex items-center gap-2 leading-none">
         <span
-          className={` uppercase font-black `}
+          className={`${style.title} uppercase font-black ${isPrint || isLight ? 'text-slate-950' : 'text-white'}`}
           style={{ letterSpacing: '0.06em' }}
         >
           FRESA MASTER

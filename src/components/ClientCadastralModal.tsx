@@ -48,6 +48,7 @@ export const ClientCadastralModal: React.FC<ClientCadastralModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [textFromAi, setTextFromAi] = useState(false);
+  const [applyState, setApplyState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -200,8 +201,11 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
   const handleConfirmAndApply = () => {
     if (!extractedPreview) return;
+    if (applyState !== 'idle') return;
+    setApplyState('saving');
     onApplyClient(extractedPreview);
-    onClose();
+    window.setTimeout(() => setApplyState('saved'), 600);
+    window.setTimeout(() => onClose(), 1600);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -495,11 +499,11 @@ E-mail fiscal: fiscal@cliente.com.br"
           <button
             type="button"
             onClick={handleConfirmAndApply}
-            disabled={!extractedPreview}
+            disabled={!extractedPreview || applyState !== 'idle'}
             className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Check className="w-4 h-4" />
-            <span>Preencher Dados no Orçamento</span>
+            {applyState === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            <span>{applyState === 'saving' ? 'Salvando...' : applyState === 'saved' ? 'Salvo no orçamento!' : 'Preencher Dados no Orçamento'}</span>
           </button>
         </div>
       </div>

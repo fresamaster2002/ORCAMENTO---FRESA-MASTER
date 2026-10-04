@@ -1084,7 +1084,6 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                 destinationCep: newClient.cep || quote.shipping.destinationCep,
               },
             });
-            setIsCadastralModalOpen(false);
           }}
         />
       )}

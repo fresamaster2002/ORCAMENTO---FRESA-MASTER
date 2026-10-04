@@ -90,10 +90,10 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
       <span
         className={`${style.sub} uppercase ${
           isPrint
-            ? 'text-amber-800 font-extrabold'
+            ? 'font-extrabold'
             : 'text-amber-600 dark:text-amber-400'
         }`}
-        style={{ letterSpacing: '0.22em' }}
+        style={{ letterSpacing: '0.22em', ...(isPrint ? { color: '#92400e' } : {}) }}
       >
         CNC MACHINING
       </span>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyRound, FileSpreadsheet, RefreshCw, Building, Moon, Sun, Download, Settings, LogOut, ChevronDown } from 'lucide-react';
+import { KeyRound, FileSpreadsheet, RefreshCw, Building, Moon, Sun, Download, Settings, LogOut } from 'lucide-react';
 import { FresaMasterLogo } from './FresaMasterLogo';
 
 interface HeaderProps {
@@ -41,6 +41,11 @@ export const Header: React.FC<HeaderProps> = ({
   const menuItem =
     'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-left rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer';
 
+  const tab =
+    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-4 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition cursor-pointer leading-tight';
+  const tabIdle =
+    'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700';
+
   return (
     <>
     <header className="bg-white dark:bg-slate-900">
@@ -49,16 +54,10 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
 
-      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 shadow-xs">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-center gap-2 flex-wrap">
-          <button
-            id="btn-reset-quote"
-            type="button"
-            onClick={onNewQuote}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-            title="Iniciar novo orçamento"
-          >
-            <RefreshCw className="w-4 h-4" />
+      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="max-w-3xl mx-auto px-2 sm:px-6 py-2 grid grid-cols-5 gap-1.5 sm:gap-2">
+          <button id="btn-reset-quote" type="button" onClick={onNewQuote} title="Iniciar novo orçamento" className={`${tab} ${tabIdle}`}>
+            <RefreshCw className="w-5 h-5" />
             <span>Novo</span>
           </button>
 
@@ -67,25 +66,29 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onPreviewProposal}
             disabled={!hasItems}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
-              hasItems
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-            }`}
+            className={`${tab} ${hasItems ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'}`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Gerar Proposta</span>
+            <FileSpreadsheet className="w-5 h-5" />
+            <span>Proposta</span>
           </button>
 
-          <button
-            id="btn-open-bling-modal"
-            type="button"
-            onClick={onOpenBlingModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <Building className="w-4 h-4 text-emerald-200" />
-            <span>Bling ERP</span>
+          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={`${tab} bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs`}>
+            <Building className="w-5 h-5 text-emerald-200" />
+            <span>Bling</span>
           </button>
+
+          {onToggleDarkMode && (
+            <button
+              id="btn-toggle-dark-mode"
+              type="button"
+              onClick={onToggleDarkMode}
+              title={isDarkMode ? 'Mudar para fundo claro' : 'Mudar para fundo escuro'}
+              className={`${tab} ${tabIdle}`}
+            >
+              {isDarkMode ? <Moon className="w-5 h-5 text-amber-400" /> : <Sun className="w-5 h-5 text-amber-500" />}
+              <span>{isDarkMode ? 'Escuro' : 'Claro'}</span>
+            </button>
+          )}
 
           <div className="relative" ref={menuRef}>
             <button
@@ -93,33 +96,18 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+              className={`${tab} ${tabIdle} w-full`}
             >
-              <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <Settings className="w-5 h-5 text-slate-500 dark:text-slate-400" />
               <span>Definições</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto mt-2 w-64 max-w-[calc(100vw-1.5rem)] p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl z-50">
+              <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1rem)] p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl z-50">
                 {userEmail && (
                   <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400 truncate border-b border-slate-100 dark:border-slate-800 mb-1">
                     {userEmail}
                   </p>
-                )}
-                {onToggleDarkMode && (
-                  <button
-                    id="btn-toggle-dark-mode"
-                    type="button"
-                    onClick={() => {
-                      onToggleDarkMode();
-                      setMenuOpen(false);
-                    }}
-                    className={menuItem}
-                  >
-                    {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-amber-500" />}
-                    <span>{isDarkMode ? 'Mudar para fundo claro' : 'Mudar para fundo escuro'}</span>
-                  </button>
                 )}
                 <button
                   id="btn-open-api-docs"
@@ -161,7 +149,6 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         </div>
-      </nav>
-    </>
+      </nav>    </>
   );
 };

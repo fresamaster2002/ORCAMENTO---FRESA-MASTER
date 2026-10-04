@@ -754,38 +754,6 @@ export default function App() {
         )}
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Fluxo operacional</p>
-              <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
-                Pedido por voz • Cliente • Itens • Frete • Aprovação
-              </h2>
-            </div>
-            <div className="flex flex-wrap gap-2 text-[11px] font-bold">
-              {[
-                '1. Pedido por voz',
-                '2. Cliente',
-                '3. Detalhamento',
-                '4. Frete',
-                '5. Orçamento',
-                '6. Aprovação',
-              ].map((step, index) => (
-                <span
-                  key={step}
-                  className={`rounded-full border px-2.5 py-1.5 ${
-                    index < 5
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  {step}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Error notification */}
         {errorMessage && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-xs flex items-center gap-2 shadow-xs">
@@ -808,42 +776,19 @@ export default function App() {
           externalText={transcribedText}
         />
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Resumo do pedido</p>
-              <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
-                {quote.client.name || 'Cliente ainda não identificado'} • {quote.items.length} item{quote.items.length === 1 ? '' : 'ns'} • {quote.financials.totalAmount > 0 ? 'Orçamento pronto' : 'Em elaboração'}
-              </h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setIsProposalOpen(true)}
-                className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700"
-              >
-                Enviar em PDF
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsBlingOpen(true)}
-                disabled={quote.status !== 'approved' || !invoiceRequired}
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Gerar NF no Bling
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsSandboxShipmentOpen(true)}
-                disabled={!canCreateSandboxShipment}
-                className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-900 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Enviar no sandbox
-              </button>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-900/60">
+          <p className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
+            {quote.client.name || 'Cliente ainda não identificado'} • {quote.items.length} item{quote.items.length === 1 ? '' : 'ns'} • {quote.financials.totalAmount > 0 ? 'Orçamento pronto' : 'Em elaboração'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsSandboxShipmentOpen(true)}
+            disabled={!canCreateSandboxShipment}
+            className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-900 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Enviar no sandbox
+          </button>
         </div>
-
         {/* Form with CNC Tools, Shipping Calculator & Totals */}
         <QuoteForm
           quote={quote}

@@ -20,6 +20,7 @@ interface SenderData {
 
 interface SandboxShipmentModalProps {
   quote: QuoteData;
+  missing?: string[];
   onClose: () => void;
   onCreated: (shipment: { id: string | null; protocol: string | null; createdAt: string }) => void;
 }
@@ -54,7 +55,7 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
   { key: 'cep', label: 'CEP', required: true },
 ];
 
-export function SandboxShipmentModal({ quote, onClose, onCreated }: SandboxShipmentModalProps) {
+export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(initialSender);
   const [invoiceKey, setInvoiceKey] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -113,6 +114,17 @@ export function SandboxShipmentModal({ quote, onClose, onCreated }: SandboxShipm
             <p>Este passo exige a chave de uma NF-e já emitida no Bling. Ele apenas cria o envio no carrinho sandbox; não compra nem paga a etiqueta e não vale para postagem real.</p>
           </div>
 
+          {missing.length > 0 && (
+            <div className="border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
+              <p className="mb-1 font-bold">Antes de enviar, falta:</p>
+              <ul className="list-disc space-y-0.5 pl-5">
+                {missing.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div>
             <h3 className="mb-3 text-sm font-bold">Dados do remetente</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -155,7 +167,7 @@ export function SandboxShipmentModal({ quote, onClose, onCreated }: SandboxShipm
             {error && <p role="alert" className="mb-3 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
             <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50">Cancelar</button>
-              <button type="submit" disabled={isSubmitting || invoiceKey.length !== 44} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting || invoiceKey.length !== 44 || missing.length > 0} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
                 {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Adicionar ao carrinho sandbox
               </button>

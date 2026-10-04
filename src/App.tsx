@@ -668,6 +668,17 @@ export default function App() {
       quote.shipping.selectedOption.melhorEnvioServiceId
   );
 
+  const sandboxMissing: string[] = [];
+  if (quote.status !== 'approved') sandboxMissing.push('Marcar o pedido como aprovado (botão "Pedido aprovado").');
+  if (!quote.shipping.selectedOption) {
+    sandboxMissing.push('Escolher uma opção de frete (Sedex, PAC ou Jadlog .Package).');
+  } else if (
+    !['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(quote.shipping.selectedOption.service) ||
+    !quote.shipping.selectedOption.melhorEnvioServiceId
+  ) {
+    sandboxMissing.push('Selecionar um frete cotado no Melhor Envio (Sedex, PAC ou Jadlog .Package).');
+  }
+
   const hasSelectedLiveShipping = Boolean(
     quote.shipping.selectedOption?.isRealTimeMelhorEnvio &&
     quote.shipping.selectedOption.melhorEnvioServiceId
@@ -720,7 +731,6 @@ export default function App() {
           userEmail={supabaseUser?.email ?? undefined}
           onSignOut={supabaseUser ? handleSignOut : undefined}
           onOpenSandbox={() => setIsSandboxShipmentOpen(true)}
-          canSandbox={canCreateSandboxShipment}
         />
 
         {supabaseUser && (
@@ -869,6 +879,7 @@ export default function App() {
       {isSandboxShipmentOpen && (
         <SandboxShipmentModal
           quote={quote}
+          missing={sandboxMissing}
           onClose={() => setIsSandboxShipmentOpen(false)}
           onCreated={(shipment) => {
             setQuote((current) => ({ ...current, sandboxShipment: shipment }));

@@ -14,7 +14,6 @@ interface HeaderProps {
   userEmail?: string;
   onSignOut?: () => void;
   onOpenSandbox?: () => void;
-  canSandbox?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,7 +27,6 @@ export const Header: React.FC<HeaderProps> = ({
   userEmail,
   onSignOut,
   onOpenSandbox,
-  canSandbox = false,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,9 +160,8 @@ export const Header: React.FC<HeaderProps> = ({
             id="btn-open-sandbox"
             type="button"
             onClick={onOpenSandbox}
-            disabled={!canSandbox}
             title="Enviar no sandbox do Melhor Envio"
-            className={`${tab} ${canSandbox ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'}`}
+            className={`${tab} bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xs`}
           >
             <Truck className="w-5 h-5" />
             <span>Sandbox</span>

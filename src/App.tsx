@@ -719,6 +719,8 @@ export default function App() {
           onToggleDarkMode={toggleDarkMode}
           userEmail={supabaseUser?.email ?? undefined}
           onSignOut={supabaseUser ? handleSignOut : undefined}
+          onOpenSandbox={() => setIsSandboxShipmentOpen(true)}
+          canSandbox={canCreateSandboxShipment}
         />
 
         {supabaseUser && (
@@ -780,14 +782,6 @@ export default function App() {
           <p className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
             {quote.client.name || 'Cliente ainda não identificado'} • {quote.items.length} item{quote.items.length === 1 ? '' : 'ns'} • {quote.financials.totalAmount > 0 ? 'Orçamento pronto' : 'Em elaboração'}
           </p>
-          <button
-            type="button"
-            onClick={() => setIsSandboxShipmentOpen(true)}
-            disabled={!canCreateSandboxShipment}
-            className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-900 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Enviar no sandbox
-          </button>
         </div>
         {/* Form with CNC Tools, Shipping Calculator & Totals */}
         <QuoteForm

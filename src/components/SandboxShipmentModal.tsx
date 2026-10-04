@@ -27,18 +27,29 @@ interface SandboxShipmentModalProps {
 
 const initialSender: SenderData = {
   name: 'Fresa Master',
-  document: '',
+  document: '59.085.330/0001-70',
   ie: 'ISENTO',
   email: 'fresamaster0@gmail.com',
   phone: '',
-  address: '',
+  address: 'Rua Presidente Geisel',
   number: '',
   complement: '',
-  neighborhood: '',
+  neighborhood: 'Jardim Santo Antônio',
   city: 'Salto',
   state: 'SP',
   cep: '13321-472',
 };
+
+const SENDER_STORAGE_KEY = 'fresa_master_sender_v1';
+
+function loadSender(): SenderData {
+  try {
+    const saved = localStorage.getItem(SENDER_STORAGE_KEY);
+    return saved ? { ...initialSender, ...JSON.parse(saved) } : initialSender;
+  } catch {
+    return initialSender;
+  }
+}
 
 const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }> = [
   { key: 'name', label: 'Nome / Razão social', required: true },
@@ -56,13 +67,21 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
 ];
 
 export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }: SandboxShipmentModalProps) {
-  const [sender, setSender] = useState(initialSender);
+  const [sender, setSender] = useState(loadSender);
   const [invoiceKey, setInvoiceKey] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const updateSender = (key: keyof SenderData, value: string) => {
-    setSender((current) => ({ ...current, [key]: value }));
+    setSender((current) => {
+      const next = { ...current, [key]: value };
+      try {
+        localStorage.setItem(SENDER_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // sem armazenamento local: segue sem salvar
+      }
+      return next;
+    });
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {

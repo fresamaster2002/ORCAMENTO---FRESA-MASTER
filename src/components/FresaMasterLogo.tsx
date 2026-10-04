@@ -66,7 +66,7 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
         src={`${import.meta.env.BASE_URL}fresa-master-emblem.png`}
         alt="Fresa Master"
         height={emblemPx}
-        className="rounded-lg shrink-0"
+        className="shrink-0 object-contain"
         style={{ height: emblemPx, width: 'auto' }}
       />
       <div className={`inline-flex flex-col ${style.spacing}`}>

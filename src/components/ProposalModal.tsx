@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 import {
+  ArrowLeft,
   X,
   Printer,
   Download,
@@ -31,6 +32,9 @@ interface ProposalModalProps {
   quote: QuoteData;
   onOpenBling?: () => void;
 }
+
+const money = (value: number) =>
+  (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const convertUnsupportedColorToRgb = (color: string) => {
   const oklch = color.match(/^oklch\(\s*([\d.]+)(%)?\s+([\d.]+)\s+([\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/i);
@@ -171,14 +175,28 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
       const margin = 8;
       const maxWidth = pageWidth - margin * 2;
       const maxHeight = pageHeight - margin * 2;
-      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-      const imgWidth = canvas.width * ratio;
+      const ratio = maxWidth / canvas.width;
+      const imgWidth = maxWidth;
       const imgHeight = canvas.height * ratio;
-      const x = (pageWidth - imgWidth) / 2;
-      const y = (pageHeight - imgHeight) / 2;
 
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight, undefined, 'FAST');
+      if (imgHeight <= maxHeight) {
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, imgHeight, undefined, 'FAST');
+      } else {
+        const sliceHeightPx = Math.floor(maxHeight / ratio);
+        for (let offset = 0, page = 0; offset < canvas.height; offset += sliceHeightPx, page += 1) {
+          const currentHeight = Math.min(sliceHeightPx, canvas.height - offset);
+          const slice = document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = currentHeight;
+          const ctx = slice.getContext('2d');
+          if (!ctx) continue;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, slice.width, slice.height);
+          ctx.drawImage(canvas, 0, offset, canvas.width, currentHeight, 0, 0, canvas.width, currentHeight);
+          if (page > 0) pdf.addPage();
+          pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, currentHeight * ratio, undefined, 'FAST');
+        }
+      }
 
       const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
       const pdfBlob = pdf.output('blob');
@@ -225,34 +243,43 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto print:max-h-none print:shadow-none print:border-none print:m-0 print:w-full">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+      <div className="bg-white dark:bg-slate-900 sm:rounded-2xl max-w-4xl w-full h-[100dvh] sm:h-auto sm:max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto print:max-h-none print:shadow-none print:border-none print:m-0 print:w-full">
         {/* Modal Top Bar - Hidden during printing */}
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-900 text-white print:hidden">
-          <div className="flex items-center gap-3">
-            <FresaMasterLogo size="sm" theme="dark" />
-            <div className="pl-3 border-l border-slate-700">
+        <div className="px-3 sm:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-slate-900 text-white print:hidden shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="sm:hidden inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-white/10 text-white cursor-pointer shrink-0"
+              aria-label="Voltar para o orçamento"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar</span>
+            </button>
+            <div className="hidden sm:block"><FresaMasterLogo size="sm" theme="dark" /></div>
+            <div className="sm:pl-3 sm:border-l border-slate-700 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">
-                  Orçamento Comercial • Fresa Master CNC
+                <h3 className="text-sm font-bold text-white truncate">
+                  <span className="hidden sm:inline">Orçamento Comercial • Fresa Master CNC</span><span className="sm:hidden">Orçamento</span>
                 </h3>
                 <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
                   {quote.id}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="hidden sm:block text-[11px] text-slate-400">
                 Baixe o arquivo PDF oficial ou envie a mensagem pronta via WhatsApp
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Direct PDF Download Button */}
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isDownloadingPdf}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer shadow-xs ${
+              className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer shadow-xs ${
                 pdfSuccess
                   ? 'bg-emerald-600 text-white'
                   : 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold'
@@ -262,17 +289,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               {isDownloadingPdf ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Gerando PDF...</span>
+                  <span>Gerando...</span>
                 </>
               ) : pdfSuccess ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>PDF Salvo com Sucesso!</span>
+                  <span>PDF salvo!</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Baixar Arquivo PDF</span>
+                  <span><span className="hidden sm:inline">Baixar Arquivo </span>PDF</span>
                 </>
               )}
             </button>
@@ -291,7 +318,8 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              className="hidden sm:block p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              aria-label="Fechar"
             >
               <X className="w-5 h-5" />
             </button>
@@ -299,32 +327,32 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         </div>
 
         {/* Navigation Tabs - Hidden during printing */}
-        <div className="flex items-center justify-between px-5 pt-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 print:hidden text-xs font-semibold">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-3 sm:px-5 pt-2.5 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 print:hidden text-xs font-semibold">
+          <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setActiveTab('preview')}
-              className={`pb-2.5 px-3 border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
+              className={`pb-2.5 px-2 sm:px-3 flex-1 sm:flex-none justify-center border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'preview'
                   ? 'border-amber-600 text-amber-700 dark:text-amber-400 font-bold'
                   : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Folha Timbrada do Orçamento (PDF Oficial)</span>
+              <span><span className="hidden sm:inline">Folha Timbrada do Orçamento (PDF Oficial)</span><span className="sm:hidden">Folha do PDF</span></span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('whatsapp')}
-              className={`pb-2.5 px-3 border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
+              className={`pb-2.5 px-2 sm:px-3 flex-1 sm:flex-none justify-center border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'whatsapp'
                   ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold'
                   : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Mensagem Formatada p/ WhatsApp</span>
+              <span><span className="hidden sm:inline">Mensagem Formatada p/ WhatsApp</span><span className="sm:hidden">WhatsApp</span></span>
             </button>
           </div>
 
@@ -363,281 +391,189 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 </button>
               </div>
 
-              {/* PRINTABLE TIMBRADA EXECUTIVE A4 SHEET */}
+              {/* FOLHA TIMBRADA A4 - cores fixas, imune ao modo escuro */}
               <div
                 ref={proposalSheetRef}
-                className="printable-quote-paper bg-white text-slate-900 p-8 sm:p-10 rounded-2xl border border-slate-200 shadow-sm max-w-3xl mx-auto space-y-6 font-sans print:shadow-none print:border-none print:p-0 print:max-w-none"
+                className="printable-quote-paper bg-[#ffffff] text-[#0f172a] rounded-xl border border-[#e2e8f0] shadow-sm max-w-3xl mx-auto font-sans overflow-hidden print:shadow-none print:border-none print:max-w-none"
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
-                {/* 1. Header with Official Fresa Master Logo at the start */}
-                <div className="flex justify-between items-start border-b-2 border-slate-900 pb-5">
-                  <div className="space-y-1">
-                    {/* Official Typographic Logo */}
-                    <FresaMasterLogo size="pdf" theme="print" />
-
-                    <div className="pt-2 text-[11px] text-slate-600 space-y-0.5">
-                      <p className="font-semibold text-slate-700">
-                        Fresa Master Comercial de Ferramentas de Usinagem
-                      </p>
-                      <p>E-mail: <strong className="font-mono text-slate-800">fresamaster0@gmail.com</strong></p>
-                      <p>Expedição / Coleta: <span className="font-medium text-slate-800">Salto - SP (CEP 13321-472)</span></p>
-                      <p>Classificação Fiscal Padrão: <span className="font-mono text-slate-700">NCM 8207.70.00</span></p>
-                    </div>
-                  </div>
-
-                  {/* Proposal Metadata Badge */}
-                  <div className="text-right shrink-0">
-                    <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded bg-slate-900 text-white inline-block mb-1.5">
-                      PROPOSTA COMERCIAL
-                    </span>
-                    <div className="font-mono text-xl font-black text-slate-950 block">
-                      {quote.id}
-                    </div>
-                    <div className="text-xs text-slate-600 mt-1">
-                      Data: <strong className="text-slate-800">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>
-                    </div>
-                    <div className="text-xs text-emerald-800 font-bold mt-0.5">
-                      Validade: {quote.project.validityDays || 10} dias
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Client & Delivery Details (Executive 2-Column Cards) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  {/* Client Card */}
-                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Destinatário / Cliente
-                    </div>
-                    <div className="font-black text-sm text-slate-900">
-                      {quote.client.name || 'Cliente / Empresa'}
-                    </div>
-                    <div className="font-mono text-slate-700 text-[11px]">
-                      CNPJ/CPF: <strong className="text-slate-900">{quote.client.document || 'A confirmar'}</strong>
-                    </div>
-                    <div className="text-slate-700 text-[11px]">
-                      Inscrição Estadual: <strong className="text-slate-900">{quote.client.ie || 'ISENTO'}</strong>
-                    </div>
-                    {(quote.client.city || quote.client.state) && (
-                      <div className="text-slate-700 text-[11px]">
-                        Cidade/UF: {quote.client.city} / {quote.client.state}
+                <div className="h-2 bg-[#f59e0b]" />
+                <div className="p-6 sm:p-10 space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b-2 border-[#0f172a]">
+                    <div className="space-y-2">
+                      <FresaMasterLogo size="pdf" theme="print" />
+                      <div className="text-[11px] text-[#475569] leading-relaxed">
+                        <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
+                        <p>fresamaster0@gmail.com</p>
+                        <p>Salto/SP • CEP {quote.shipping.originCep || '13321-472'}</p>
                       </div>
-                    )}
-                    {quote.client.phone && (
-                      <div className="text-slate-700 text-[11px]">
-                        WhatsApp/Tel: {quote.client.phone}
+                    </div>
+                    <div className="sm:text-right shrink-0">
+                      <span className="inline-block text-[10px] uppercase tracking-[0.18em] font-extrabold px-3 py-1 rounded bg-[#0f172a] text-[#ffffff]">
+                        Proposta Comercial
+                      </span>
+                      <div className="font-mono text-2xl font-black text-[#0f172a] mt-1.5">{quote.id}</div>
+                      <div className="text-[11px] text-[#475569] mt-0.5">
+                        Emissão: <strong className="text-[#1e293b]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>
                       </div>
-                    )}
+                      <div className="text-[11px] font-bold text-[#047857]">
+                        Válida por {quote.project.validityDays || 10} dias
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Shipping & Delivery Card */}
-                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                      <Truck className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Logística & Envio (Melhor Envio)</span>
-                    </div>
-                    <div className="font-bold text-sm text-slate-900">
-                      {quote.shipping.selectedOption?.name || 'Correios SEDEX (Melhor Envio Oficial)'}
-                    </div>
-                    <div className="text-slate-700 text-[11px]">
-                      Origem: Salto/SP ({quote.shipping.originCep || '13321-472'})
-                    </div>
-                    <div className="text-slate-700 text-[11px]">
-                      Destino: CEP {quote.client.cep || quote.shipping.destinationCep || 'A confirmar'}
-                    </div>
-                    <div className="text-slate-700 text-[11px]">
-                      Peso Tarifado: <strong className="font-mono text-slate-800">{quote.shipping.weightKg || 0.5} kg</strong>
-                    </div>
-
-                    {/* Insurance Status with Clean Badge */}
-                    <div className="pt-1 flex items-center gap-1.5">
-                      {quote.shipping.insuranceEnabled ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
-                          <ShieldCheck className="w-3 h-3 text-emerald-700" />
-                          <span>Carga Segurada com Valor Declarado</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                          <ShieldAlert className="w-3 h-3 text-slate-400" />
-                          <span>Envio Padrão sem Seguro Adicional</span>
-                        </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] border-l-4 border-l-[#f59e0b] space-y-1">
+                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Cliente</div>
+                      <div className="font-black text-sm text-[#0f172a]">{quote.client.name || 'Cliente / Empresa'}</div>
+                      <div className="text-[11px] text-[#334155]">
+                        CNPJ/CPF: <strong className="font-mono text-[#0f172a]">{quote.client.document || 'A confirmar'}</strong>
+                      </div>
+                      <div className="text-[11px] text-[#334155]">
+                        Inscrição Estadual: <strong className="text-[#0f172a]">{quote.client.ie || 'ISENTO'}</strong>
+                      </div>
+                      {(quote.client.city || quote.client.state) && (
+                        <div className="text-[11px] text-[#334155]">
+                          {quote.client.city}{quote.client.city && quote.client.state ? ' / ' : ''}{quote.client.state}
+                        </div>
+                      )}
+                      {quote.client.phone && (
+                        <div className="text-[11px] text-[#334155]">Contato: {quote.client.phone}</div>
                       )}
                     </div>
 
-                    <div className="text-slate-800 font-semibold text-[11px] pt-0.5">
-                      Prazo Previsto: {quote.project.deadline || '2 a 4 dias úteis após despacho'}
+                    <div className="p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] border-l-4 border-l-[#0f172a] space-y-1">
+                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-[#475569]" />
+                        <span>Entrega</span>
+                      </div>
+                      <div className="font-black text-sm text-[#0f172a]">
+                        {quote.shipping.selectedOption?.name || 'A combinar'}
+                      </div>
+                      <div className="text-[11px] text-[#334155]">
+                        Destino: CEP {quote.client.cep || quote.shipping.destinationCep || 'A confirmar'}
+                      </div>
+                      <div className="text-[11px] text-[#334155]">
+                        Peso estimado: <strong className="font-mono text-[#0f172a]">{quote.shipping.weightKg || 0.5} kg</strong>
+                      </div>
+                      <div className="text-[11px] text-[#334155]">
+                        Prazo: <strong className="text-[#0f172a]">{quote.project.deadline || '2 a 4 dias úteis após despacho'}</strong>
+                      </div>
+                      <div className="pt-0.5">
+                        {quote.shipping.insuranceEnabled ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded">
+                            <ShieldCheck className="w-3 h-3" />
+                            <span>Carga segurada</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#64748b]">
+                            <ShieldAlert className="w-3 h-3" />
+                            <span>Sem seguro adicional</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 3. CNC Tools Table (Clean, High-Readability) */}
-                <div className="space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                    Ferramental de Usinagem & Especificações Técnicas
-                  </div>
-                  <div className="overflow-hidden border border-slate-200 rounded-xl">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-900 text-white font-bold text-[10px] uppercase tracking-wider">
-                          <th className="py-2.5 px-3">#</th>
-                          <th className="py-2.5 px-3">Descrição da Ferramenta CNC</th>
-                          <th className="py-2.5 px-3 w-28">SKU Bling</th>
-                          <th className="py-2.5 px-3 w-24">NCM</th>
-                          <th className="py-2.5 px-3 w-14 text-center">Qtd</th>
-                          <th className="py-2.5 px-3 w-24 text-right">Unitário</th>
-                          <th className="py-2.5 px-3 w-28 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {quote.items.map((item, idx) => (
-                          <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}>
-                            <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">
-                              {idx + 1}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <span className="font-bold text-slate-900 block leading-tight">
-                                {item.description}
-                              </span>
-                              {item.notes && (
-                                <span className="text-[10px] text-slate-500 block mt-0.5">
-                                  {item.notes}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
-                              {item.sku || 'FM-TCT'}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
-                              {item.ncm || '8207.70.00'}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-bold text-slate-900">
-                              {item.quantity}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono text-slate-700">
-                              {item.unitPrice.toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                              {item.totalPrice.toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </td>
+                  <div className="space-y-2">
+                    <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider">Itens da proposta</div>
+                    <div className="overflow-hidden border border-[#e2e8f0] rounded-lg">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#0f172a] text-[#ffffff] font-bold text-[10px] uppercase tracking-wider">
+                            <th className="py-2.5 px-3 w-8">#</th>
+                            <th className="py-2.5 px-3">Descrição</th>
+                            <th className="py-2.5 px-3 w-20 hidden sm:table-cell">NCM</th>
+                            <th className="py-2.5 px-3 w-12 text-center">Qtd</th>
+                            <th className="py-2.5 px-2 sm:px-3 w-20 sm:w-24 text-right">Unitário</th>
+                            <th className="py-2.5 px-2 sm:px-3 w-24 sm:w-28 text-right">Total</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 4. Totals Breakdown & Commercial Conditions */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 pt-2 border-t border-slate-200">
-                  {/* Left: Payment Terms & Pix */}
-                  <div className="sm:col-span-7 space-y-2 text-xs">
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                      Condições Comerciais & Pagamento
-                    </div>
-                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-amber-600" />
-                        <span className="font-bold text-slate-900">
-                          {quote.financials.paymentTerms || 'À vista via Pix ou Boleto'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-700">
-                        Chave Pix Oficial:{' '}
-                        <strong className="font-mono text-slate-950 bg-white px-2 py-0.5 rounded border border-slate-200">
-                          fresamaster0@gmail.com
-                        </strong>
-                      </div>
-                      <p className="text-[11px] text-slate-500 leading-tight">
-                        <strong>Faturamento NF-e:</strong> A Nota Fiscal Eletrônica é emitida diretamente via Bling ERP com chave de acesso acompanhando o DANFE na caixa de despacho.
-                      </p>
+                        </thead>
+                        <tbody>
+                          {quote.items.map((item, idx) => (
+                            <tr
+                              key={idx}
+                              className="border-t border-[#e2e8f0]"
+                              style={{ backgroundColor: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}
+                            >
+                              <td className="py-2.5 px-3 text-[#94a3b8] font-mono text-[11px]">{idx + 1}</td>
+                              <td className="py-2.5 px-3">
+                                <span className="font-bold text-[#0f172a] block leading-tight">{item.description}</span>
+                                <span className="text-[10px] text-[#64748b] block mt-0.5 font-mono">
+                                  SKU {item.sku || 'FM-TCT'}
+                                </span>
+                                {item.notes && <span className="text-[10px] text-[#64748b] block">{item.notes}</span>}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[#475569] hidden sm:table-cell">{item.ncm || '8207.70.00'}</td>
+                              <td className="py-2.5 px-3 text-center font-bold text-[#0f172a]">{item.quantity}</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-[#334155]">{money(item.unitPrice)}</td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-[#0f172a]">{money(item.totalPrice)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  {/* Right: Transparent Totals Table */}
-                  <div className="sm:col-span-5 space-y-2 text-xs">
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider text-right">
-                      Fechamento do Pedido
-                    </div>
-
-                    <div className="space-y-1.5 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="flex justify-between text-slate-600">
-                        <span>Subtotal Ferramentas:</span>
-                        <span className="font-mono font-semibold text-slate-900">
-                          {quote.financials.subtotal.toLocaleString('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL',
-                          })}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between text-slate-600">
-                        <span>
-                          Frete ({quote.shipping.selectedOption?.service || 'Sedex'}):
-                        </span>
-                        <span className="font-mono font-semibold text-slate-900">
-                          {(quote.financials.shippingAmount || 0).toLocaleString('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL',
-                          })}
-                        </span>
-                      </div>
-
-                      {Boolean(quote.shipping.insuranceEnabled && (quote.financials.insuranceAmount || 0) > 0) && (
-                        <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          <span className="flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            <span>Seguro de Carga:</span>
-                          </span>
-                          <span className="font-mono">
-                            + {(quote.financials.insuranceAmount || 0).toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 text-xs">
+                    <div className="sm:col-span-7 space-y-2">
+                      <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider">Pagamento</div>
+                      <div className="p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] space-y-2">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-[#d97706]" />
+                          <span className="font-bold text-[#0f172a]">
+                            {quote.financials.paymentTerms || 'À vista via Pix ou Boleto'}
                           </span>
                         </div>
-                      )}
-
-                      {quote.financials.discountAmount > 0 && (
-                        <div className="flex justify-between text-rose-600 font-semibold">
-                          <span>Desconto Comercial:</span>
-                          <span className="font-mono">
-                            -{' '}
-                            {quote.financials.discountAmount.toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                          </span>
+                        <div className="text-[11px] text-[#334155]">
+                          Chave Pix:{' '}
+                          <strong className="font-mono text-[#0f172a] bg-[#ffffff] px-2 py-0.5 rounded border border-[#e2e8f0]">
+                            fresamaster0@gmail.com
+                          </strong>
                         </div>
-                      )}
+                        <p className="text-[10px] text-[#64748b] leading-snug">
+                          A Nota Fiscal Eletrônica (NF-e) é emitida pelo Bling ERP e enviada junto com o pedido.
+                        </p>
+                      </div>
+                    </div>
 
-                      <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-baseline">
-                        <span className="font-black text-sm text-slate-950 uppercase">
-                          TOTAL DO PEDIDO:
-                        </span>
-                        <span className="font-mono font-black text-lg text-slate-950">
-                          {quote.financials.totalAmount.toLocaleString('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL',
-                          })}
-                        </span>
+                    <div className="sm:col-span-5 space-y-2">
+                      <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider sm:text-right">Resumo</div>
+                      <div className="space-y-1.5 p-4 rounded-lg bg-[#f8fafc] border border-[#e2e8f0]">
+                        <div className="flex justify-between text-[#475569]">
+                          <span>Ferramentas</span>
+                          <span className="font-mono font-semibold text-[#0f172a]">{money(quote.financials.subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-[#475569]">
+                          <span>Frete ({quote.shipping.selectedOption?.service || 'Envio'})</span>
+                          <span className="font-mono font-semibold text-[#0f172a]">{money(quote.financials.shippingAmount || 0)}</span>
+                        </div>
+                        {Boolean(quote.shipping.insuranceEnabled && (quote.financials.insuranceAmount || 0) > 0) && (
+                          <div className="flex justify-between text-[#065f46]">
+                            <span>Seguro de carga</span>
+                            <span className="font-mono font-semibold">+ {money(quote.financials.insuranceAmount || 0)}</span>
+                          </div>
+                        )}
+                        {quote.financials.discountAmount > 0 && (
+                          <div className="flex justify-between text-[#e11d48] font-semibold">
+                            <span>Desconto</span>
+                            <span className="font-mono">- {money(quote.financials.discountAmount)}</span>
+                          </div>
+                        )}
+                        <div className="mt-2 -mx-4 -mb-4 px-4 py-3 bg-[#0f172a] rounded-b-lg flex justify-between items-baseline">
+                          <span className="font-black text-[11px] uppercase tracking-wider text-[#fcd34d]">Total</span>
+                          <span className="font-mono font-black text-lg text-[#ffffff]">{money(quote.financials.totalAmount)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 5. Clean Institutional Footer */}
-                <div className="pt-4 border-t border-slate-200 text-center space-y-1">
-                  <p className="text-[11px] font-semibold text-slate-700">
-                    Fresa Master • Ferramentas de Alta Precisão para Router CNC
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    Salto/SP • E-mail fresamaster0@gmail.com • Garantia técnica contra defeitos de fabricação
-                  </p>
+                  <div className="pt-4 border-t border-[#e2e8f0] text-center space-y-0.5">
+                    <p className="text-[11px] font-semibold text-[#334155]">Obrigado pela preferência! • Fresa Master CNC</p>
+                    <p className="text-[10px] text-[#94a3b8]">
+                      fresamaster0@gmail.com • Salto/SP • Garantia contra defeitos de fabricação
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -696,14 +632,14 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         </div>
 
         {/* Modal Bottom Bar - Hidden during printing */}
-        <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between print:hidden">
-          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="px-3 sm:px-5 py-3 shrink-0 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between print:hidden">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span>Fresa Master CNC</span>
             <span>•</span>
             <span>Melhor Envio & Bling ERP</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               onClick={handleDownloadPdf}
@@ -721,9 +657,10 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-300 transition cursor-pointer inline-flex items-center gap-1"
             >
-              Fechar
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Voltar ao orçamento
             </button>
           </div>
         </div>

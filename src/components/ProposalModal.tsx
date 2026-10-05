@@ -406,8 +406,8 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                         <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>
                         <p>CNPJ 59.085.330/0001-70</p>
-                        <p>Rua das Nações Unidas, 600 - Olaria</p>
-                        <p>Salto/SP • CEP 13329-350 • (11) 99852-4939</p>
+                        <p>(11) 99852-4939</p>
+                        <p>Salto/SP • CEP 13329-350</p>
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">

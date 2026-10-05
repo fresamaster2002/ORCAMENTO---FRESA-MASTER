@@ -30,17 +30,17 @@ const initialSender: SenderData = {
   document: '59.085.330/0001-70',
   ie: 'ISENTO',
   email: 'fresamaster0@gmail.com',
-  phone: '',
-  address: 'Rua Presidente Geisel',
-  number: '',
+  phone: '(11) 99852-4939',
+  address: 'Rua das Nações Unidas',
+  number: '600',
   complement: '',
-  neighborhood: 'Jardim Santo Antônio',
+  neighborhood: 'Olaria',
   city: 'Salto',
   state: 'SP',
-  cep: '13321-472',
+  cep: '13329-350',
 };
 
-const SENDER_STORAGE_KEY = 'fresa_master_sender_v1';
+const SENDER_STORAGE_KEY = 'fresa_master_sender_v2';
 
 function loadSender(): SenderData {
   try {

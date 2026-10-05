@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       <nav className="fixed top-0 inset-x-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
-          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={tab}>
+          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>
           </button>

@@ -530,12 +530,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                               <td className="py-3 px-3 text-[#94a3b8] font-mono text-[13px]">{idx + 1}</td>
                               <td className="py-3 px-3">
                                 <span className="font-bold text-[#0f172a] block leading-tight">{item.description}</span>
-                                <span className="text-xs text-[#64748b] block mt-0.5 font-mono">
-                                  SKU {item.sku || 'FM-TCT'}
-                                </span>
-                                {item.notes && <span className="text-xs text-[#64748b] block">{item.notes}</span>}
                               </td>
-                              <td className="py-3 px-3 font-mono text-[13px] text-[#475569] hidden sm:table-cell">{item.ncm || '8207.70.00'}</td>
                               <td className="py-3 px-3 text-center font-bold text-[#0f172a]">{item.quantity}</td>
                               <td className="py-3 px-3 text-right font-mono text-[#334155]">{money(item.unitPrice)}</td>
                               <td className="py-3 px-3 text-right font-mono font-bold text-[#0f172a]">{money(item.totalPrice)}</td>

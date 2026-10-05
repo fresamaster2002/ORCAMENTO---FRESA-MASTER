@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   const corner =
     'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
   const tab =
-    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 focus:outline-none focus:border-[#ff6a00] focus:text-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)] active:border-[#ff6a00]';
+    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:text-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)] active:border-[#ff6a00]';
 
   return (
     <>

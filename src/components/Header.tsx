@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
-              title="Definições"
+              title="DefiniÃ§Ãµes"
               className={corner}
             >
               <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -133,9 +133,9 @@ export const Header: React.FC<HeaderProps> = ({
 
       <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800">
         <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
-          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao in�cio" className={tab}>
+          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={tab}>
             <House className="w-4 h-4" />
-            <span>In�cio</span>
+            <span>Início</span>
           </button>
           <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${tab} disabled:opacity-40 disabled:cursor-not-allowed`}>
             <FileSpreadsheet className="w-4 h-4" />

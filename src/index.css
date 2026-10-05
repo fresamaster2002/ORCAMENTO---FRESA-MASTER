@@ -382,40 +382,25 @@ a {
 
 /* Folha do orçamento em modo escuro (alternável no modal da proposta) */
 .printable-quote-paper.pdf-dark {
-  background: linear-gradient(180deg, #0b1220 0%, #0f1a2e 100%) !important;
+  background-color: #0b1220 !important;
   color: #f1f5f9 !important;
-  border: 1px solid #f59e0b !important;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18), 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+  border-color: #1e293b !important;
 }
-.pdf-dark [class~="text-[#0f172a]"], .pdf-dark [class~="text-[#1e293b]"] { color: #f8fafc !important; }
+.pdf-dark [class~="text-[#0f172a]"], .pdf-dark [class~="text-[#1e293b]"] { color: #f1f5f9 !important; }
 .pdf-dark [class~="text-[#334155]"], .pdf-dark [class~="text-[#475569]"] { color: #cbd5e1 !important; }
-.pdf-dark [class~="text-[#64748b]"] { color: #fbbf24 !important; }
-.pdf-dark [class~="text-[#94a3b8]"] { color: #94a3b8 !important; }
+.pdf-dark [class~="text-[#64748b]"], .pdf-dark [class~="text-[#94a3b8]"] { color: #94a3b8 !important; }
 .pdf-dark [class~="text-[#047857]"], .pdf-dark [class~="text-[#065f46]"] { color: #34d399 !important; }
 .pdf-dark [class~="text-[#e11d48]"] { color: #fb7185 !important; }
-.pdf-dark [class~="text-[#d97706]"] { color: #fbbf24 !important; }
-.pdf-dark [class~="bg-[#f8fafc]"] {
-  background-color: #14213a !important;
-  border-color: #b7791f !important;
-}
+.pdf-dark [class~="bg-[#f8fafc]"] { background-color: #111c30 !important; }
 .pdf-dark [class~="bg-[#ffffff]"] { background-color: #0b1220 !important; }
 .pdf-dark [class~="bg-[#d1fae5]"] { background-color: #064e3b !important; }
-.pdf-dark [class~="border-[#e2e8f0]"] { border-color: #3b4a66 !important; }
-.pdf-dark [class~="border-[#0f172a]"] { border-color: #f59e0b !important; }
-.pdf-dark [class~="border-l-[#0f172a]"] { border-left-color: #fbbf24 !important; }
-.pdf-dark [class~="border-l-[#f59e0b]"] { border-left-color: #f59e0b !important; }
-.pdf-dark [class~="h-2"][class~="bg-[#f59e0b]"] { background: linear-gradient(90deg, #b45309, #fbbf24, #b45309) !important; }
-.pdf-dark table { border-color: #b7791f !important; }
-.pdf-dark thead tr { background-color: #1e2d4a !important; border-bottom: 2px solid #f59e0b !important; }
-.pdf-dark thead th { color: #fcd34d !important; background-color: #1e2d4a !important; }
-.pdf-dark tbody tr { background-color: #0f1a2e !important; border-top-color: #2f3e5c !important; }
-.pdf-dark tbody tr:nth-child(even) { background-color: #14213a !important; }
-.pdf-dark span[class~="bg-[#0f172a]"] {
-  background-color: #f59e0b !important;
-  color: #0f172a !important;
-}
-.pdf-dark div[class~="bg-[#0f172a]"] {
-  background: linear-gradient(90deg, #b45309, #f59e0b) !important;
-}
+.pdf-dark [class~="border-[#e2e8f0]"] { border-color: #263449 !important; }
+.pdf-dark [class~="border-b-[#0f172a]"], .pdf-dark.printable-quote-paper [class~="border-[#0f172a]"] { border-color: #f59e0b !important; }
+.pdf-dark [class~="border-l-[#0f172a]"] { border-left-color: #64748b !important; }
+.pdf-dark thead tr { background-color: #1e293b !important; color: #fcd34d !important; }
+.pdf-dark thead th { color: #fcd34d !important; }
+.pdf-dark tbody tr { background-color: #0b1220 !important; }
+.pdf-dark tbody tr:nth-child(even) { background-color: #111c30 !important; }
+.pdf-dark span[class~="bg-[#0f172a]"], .pdf-dark div[class~="bg-[#0f172a]"] { background-color: #f59e0b !important; }
+.pdf-dark span[class~="bg-[#0f172a]"] { color: #0f172a !important; }
 .pdf-dark div[class~="bg-[#0f172a]"] span { color: #0f172a !important; }
-.pdf-dark strong[class~="bg-[#ffffff]"] { background-color: #0b1220 !important; border-color: #f59e0b !important; color: #fcd34d !important; }

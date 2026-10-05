@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
-              title="DefiniÃ§Ãµes"
+              title="Definições"
               className={corner}
             >
               <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />

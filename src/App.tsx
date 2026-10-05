@@ -9,6 +9,7 @@ import { ApiDocsModal } from './components/ApiDocsModal';
 import { ProposalModal } from './components/ProposalModal';
 import { BlingIntegrationModal } from './components/BlingIntegrationModal';
 import { SandboxShipmentModal } from './components/SandboxShipmentModal';
+import { SavedQuotesModal } from './components/SavedQuotesModal';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
@@ -147,9 +148,17 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
   notesForClient: 'Fresa Master • Especialistas em Fresas para Router CNC. Agradecemos a preferência!',
 };
 
-const createEmptyQuote = (): QuoteData => ({
+const nextQuoteId = (existingIds: string[]): string => {
+  const highest = existingIds.reduce((max, id) => {
+    const match = /^FM-(\d{1,4})$/.exec(id);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  return `FM-${String(highest + 1).padStart(3, '0')}`;
+};
+
+const createEmptyQuote = (existingIds: string[] = []): QuoteData => ({
   ...INITIAL_FRESA_MASTER_QUOTE,
-  id: `FM-${Math.floor(100000 + Math.random() * 900000)}`,
+  id: nextQuoteId(existingIds),
   status: 'draft',
   createdAt: new Date().toISOString(),
   client: {
@@ -377,6 +386,7 @@ export default function App() {
   const [isProposalOpen, setIsProposalOpen] = useState(false);
   const [isBlingOpen, setIsBlingOpen] = useState(false);
   const [isSandboxShipmentOpen, setIsSandboxShipmentOpen] = useState(false);
+  const [isSavedQuotesOpen, setIsSavedQuotesOpen] = useState(false);
 
   // Dark mode theme state (default: true for dark background)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -422,7 +432,7 @@ export default function App() {
           .from('quotes')
           .select('quote')
           .order('updated_at', { ascending: false })
-          .limit(25);
+          .limit(500);
         if (error) throw error;
 
         const savedQuotes = (data || [])
@@ -430,7 +440,7 @@ export default function App() {
           .filter((savedQuote): savedQuote is QuoteData => savedQuote !== null);
         if (!active) return;
         setRecentQuotes(savedQuotes);
-        setQuote(savedQuotes[0] || createEmptyQuote());
+        setQuote(savedQuotes[0] || createEmptyQuote(savedQuotes.map((savedQuote) => savedQuote.id)));
         setCloudSaveState(savedQuotes.length ? 'saved' : 'idle');
       } catch (error: any) {
         if (!active) return;
@@ -458,7 +468,7 @@ export default function App() {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'owner_id,id' });
         if (error) throw error;
-        setRecentQuotes((current) => [quote, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 25));
+        setRecentQuotes((current) => [quote, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
         setCloudSaveState('saved');
       } catch (error: any) {
         setCloudSaveState('error');
@@ -576,8 +586,40 @@ export default function App() {
     }
   };
 
+  const handleSaveNow = async () => {
+    if (!supabase || !supabaseUser) return;
+    setCloudSaveState('saving');
+    try {
+      const { error } = await supabase.from('quotes').upsert({
+        id: quote.id,
+        owner_id: supabaseUser.id,
+        quote: JSON.parse(JSON.stringify(quote)),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'owner_id,id' });
+      if (error) throw error;
+      setRecentQuotes((current) => [quote, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
+      setCloudSaveState('saved');
+    } catch (error: any) {
+      setCloudSaveState('error');
+      setAuthError(`Não foi possível salvar o orçamento: ${error.message}`);
+    }
+  };
+
+  const handleDeleteQuote = async (target: QuoteData) => {
+    if (!supabase || !supabaseUser) return;
+    const { error } = await supabase.from('quotes').delete().eq('id', target.id).eq('owner_id', supabaseUser.id);
+    if (error) {
+      setAuthError(`Não foi possível remover o orçamento: ${error.message}`);
+      return;
+    }
+    const remaining = recentQuotes.filter((savedQuote) => savedQuote.id !== target.id);
+    setRecentQuotes(remaining);
+    if (target.id === quote.id) {
+      setQuote(remaining[0] || createEmptyQuote(remaining.map((savedQuote) => savedQuote.id)));
+    }
+  };
   const handleNewQuote = () => {
-    setQuote(createEmptyQuote());
+    setQuote(createEmptyQuote([quote.id, ...recentQuotes.map((savedQuote) => savedQuote.id)]));
     setSummary('Novo orçamento Fresa Master em branco iniciado.');
     setMissingInfo([]);
   };
@@ -756,6 +798,8 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+                <button type="button" onClick={() => setIsSavedQuotesOpen(true)} className="cursor-pointer rounded-md bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-600">Orçamentos</button>
+                <button type="button" onClick={handleSaveNow} disabled={cloudSaveState === 'saving'} className="cursor-pointer rounded-md border border-emerald-600 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:text-emerald-400 dark:hover:bg-emerald-950/30">Salvar</button>
                 <span className={`text-[10px] font-semibold ${cloudSaveState === 'error' ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-400'}`}>
                   {cloudSaveState === 'saving' ? 'Sincronizando...' : cloudSaveState === 'saved' ? 'Salvo na nuvem' : cloudSaveState === 'error' ? 'Falha ao sincronizar' : 'Nuvem pronta'}
                 </span>
@@ -874,6 +918,15 @@ export default function App() {
         onClose={() => setIsBlingOpen(false)}
         quote={quote}
         onUpdateClient={handleUpdateClientFromBling}
+      />
+
+      <SavedQuotesModal
+        isOpen={isSavedQuotesOpen}
+        quotes={recentQuotes}
+        currentId={quote.id}
+        onClose={() => setIsSavedQuotesOpen(false)}
+        onOpen={(selected) => { setQuote(selected); setIsSavedQuotesOpen(false); }}
+        onDelete={handleDeleteQuote}
       />
 
       {isSandboxShipmentOpen && (

@@ -40,8 +40,8 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
         };
       case 'pdf':
         return {
-          title: 'text-xl font-black tracking-wider',
-          sub: 'text-[11px] font-extrabold tracking-[0.28em]',
+          title: 'text-3xl font-black tracking-wider',
+          sub: 'text-sm font-extrabold tracking-[0.28em]',
           badge: 'text-[10px] px-2 py-0.5',
           spacing: 'space-y-1',
         };
@@ -58,7 +58,7 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
 
   const style = getTypography();
 
-  const emblemPx = size === 'pdf' ? 72 : size === 'xl' ? 60 : size === 'lg' ? 52 : size === 'sm' ? 38 : 44;
+  const emblemPx = size === 'pdf' ? 92 : size === 'xl' ? 60 : size === 'lg' ? 52 : size === 'sm' ? 38 : 44;
 
   return (
     <div className={`inline-flex items-center gap-3 select-none ${className}`}>

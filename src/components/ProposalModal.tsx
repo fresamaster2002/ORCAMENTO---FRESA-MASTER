@@ -427,14 +427,14 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
                 <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff7a00 0%, #ff9a3c 60%, #f59e0b 100%)' }} />
-                <div className="relative overflow-hidden bg-[#0b1220] p-6 sm:p-10 border-b-4 border-[#ff7a00]" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
+                <div className="relative overflow-hidden bg-[#0b1220] border-b-4 border-[#ff7a00] px-6 py-4 sm:px-10 sm:py-5" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
                   <div aria-hidden="true" className="absolute top-0 bottom-0 right-[35%] w-3 bg-[#ff7a00] opacity-90" style={{ transform: 'skewX(-22deg)' }} />
                   <div aria-hidden="true" className="absolute top-0 bottom-0 right-[32%] w-1 bg-[#ff9a3c] opacity-70" style={{ transform: 'skewX(-22deg)' }} />
                   <div aria-hidden="true" className="absolute top-0 bottom-0 right-[30%] w-px bg-[#ffb86b] opacity-60" style={{ transform: 'skewX(-22deg)' }} />
                   <div className="relative flex flex-col sm:flex-row justify-between items-start gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <FresaMasterLogo size="pdf" theme="dark" />
-                      <div className="text-[11px] text-[#cbd5e1] leading-relaxed">
+                      <div className="text-[13px] text-[#cbd5e1] leading-snug">
                         <p className="font-semibold text-[#f8fafc]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>
                         <p>CNPJ 59.085.330/0001-70</p>
@@ -443,65 +443,65 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">
-                      <span className="inline-block text-[10px] uppercase tracking-[0.18em] font-extrabold px-3 py-1 rounded bg-[#f59e0b] text-[#0f172a]">
+                      <span className="inline-block text-xs uppercase tracking-[0.18em] font-extrabold px-3 py-1 rounded bg-[#f59e0b] text-[#0f172a]">
                         Proposta Comercial
                       </span>
-                      <div className="font-mono text-2xl font-black text-[#f8fafc] mt-1.5">{quote.id}</div>
-                      <div className="text-[11px] text-[#cbd5e1] mt-0.5">
+                      <div className="font-mono text-3xl font-black text-[#f8fafc] mt-1">{quote.id}</div>
+                      <div className="text-[13px] text-[#cbd5e1]">
                         Emissão: <strong className="text-[#f8fafc]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>
                       </div>
-                      <div className="text-[11px] font-bold text-[#34d399]">
+                      <div className="text-[13px] font-bold text-[#34d399]">
                         Válida por {quote.project.validityDays || 10} dias
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="p-6 sm:p-10 space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div className="p-4 rounded-lg border-2 border-[#cbd5e1] bg-[#f8fafc] shadow-sm border-l-4 border-l-[#f59e0b] space-y-1">
-                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Cliente</div>
-                      <div className="font-black text-sm text-[#0f172a]">{quote.client.name || 'Cliente / Empresa'}</div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-xs font-bold text-[#64748b] uppercase tracking-wider">Cliente</div>
+                      <div className="font-black text-base text-[#0f172a]">{quote.client.name || 'Cliente / Empresa'}</div>
+                      <div className="text-[13px] text-[#334155]">
                         CNPJ/CPF: <strong className="font-mono text-[#0f172a]">{quote.client.document || 'A confirmar'}</strong>
                       </div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-[13px] text-[#334155]">
                         Inscrição Estadual: <strong className="text-[#0f172a]">{quote.client.ie || 'ISENTO'}</strong>
                       </div>
                       {(quote.client.city || quote.client.state) && (
-                        <div className="text-[11px] text-[#334155]">
+                        <div className="text-[13px] text-[#334155]">
                           {quote.client.city}{quote.client.city && quote.client.state ? ' / ' : ''}{quote.client.state}
                         </div>
                       )}
                       {quote.client.phone && (
-                        <div className="text-[11px] text-[#334155]">Contato: {quote.client.phone}</div>
+                        <div className="text-[13px] text-[#334155]">Contato: {quote.client.phone}</div>
                       )}
                     </div>
 
                     <div className="p-4 rounded-lg border-2 border-[#cbd5e1] bg-[#f8fafc] shadow-sm border-l-4 border-l-[#0f172a] space-y-1">
-                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
-                        <Truck className="w-3.5 h-3.5 text-[#475569]" />
+                      <div className="text-xs font-bold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
+                        <Truck className="w-4 h-4 text-[#475569]" />
                         <span>Entrega</span>
                       </div>
-                      <div className="font-black text-sm text-[#0f172a]">
+                      <div className="font-black text-lg text-[#0f172a]">
                         {quote.shipping.selectedOption?.name || 'A combinar'}
                       </div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-[13px] text-[#334155]">
                         Destino: CEP {quote.client.cep || quote.shipping.destinationCep || 'A confirmar'}
                       </div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-[13px] text-[#334155]">
                         Peso estimado: <strong className="font-mono text-[#0f172a]">{quote.shipping.weightKg || 0.5} kg</strong>
                       </div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-[13px] text-[#334155]">
                         Prazo: <strong className="text-[#0f172a]">{quote.project.deadline || '2 a 4 dias úteis após despacho'}</strong>
                       </div>
                       <div className="pt-0.5">
                         {quote.shipping.insuranceEnabled ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded">
                             <ShieldCheck className="w-3 h-3" />
                             <span>Carga segurada</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-[#64748b]">
+                          <span className="inline-flex items-center gap-1 text-xs text-[#64748b]">
                             <ShieldAlert className="w-3 h-3" />
                             <span>Sem seguro adicional</span>
                           </span>
@@ -511,17 +511,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                   </div>
 
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider">Itens da proposta</div>
+                    <div className="text-xs uppercase font-bold text-[#64748b] tracking-wider">Itens da proposta</div>
                     <div className="overflow-hidden border-2 border-[#0f172a] rounded-lg">
-                      <table className="w-full text-xs text-left border-collapse">
+                      <table className="w-full text-sm text-left border-collapse">
                         <thead>
-                          <tr className="bg-[#0f172a] text-[#ffffff] font-bold text-[10px] uppercase tracking-wider">
-                            <th className="py-2.5 px-3 w-8">#</th>
-                            <th className="py-2.5 px-3">Descrição</th>
-                            <th className="py-2.5 px-3 w-20 hidden sm:table-cell">NCM</th>
-                            <th className="py-2.5 px-3 w-12 text-center">Qtd</th>
-                            <th className="py-2.5 px-2 sm:px-3 w-20 sm:w-24 text-right">Unitário</th>
-                            <th className="py-2.5 px-2 sm:px-3 w-24 sm:w-28 text-right">Total</th>
+                          <tr className="bg-[#0f172a] text-[#ffffff] font-bold text-xs uppercase tracking-wider">
+                            <th className="py-3 px-3 w-10">#</th>
+                            <th className="py-3 px-3">Descrição</th>
+                            <th className="py-3 px-3 w-24 hidden sm:table-cell">NCM</th>
+                            <th className="py-3 px-3 w-12 text-center">Qtd</th>
+                            <th className="py-2.5 px-2 sm:px-3 w-24 sm:w-28 text-right">Unitário</th>
+                            <th className="py-2.5 px-2 sm:px-3 w-28 sm:w-32 text-right">Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -531,18 +531,18 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                               className="border-t border-[#e2e8f0]"
                               style={{ backgroundColor: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}
                             >
-                              <td className="py-2.5 px-3 text-[#94a3b8] font-mono text-[11px]">{idx + 1}</td>
-                              <td className="py-2.5 px-3">
+                              <td className="py-3 px-3 text-[#94a3b8] font-mono text-[13px]">{idx + 1}</td>
+                              <td className="py-3 px-3">
                                 <span className="font-bold text-[#0f172a] block leading-tight">{item.description}</span>
-                                <span className="text-[10px] text-[#64748b] block mt-0.5 font-mono">
+                                <span className="text-xs text-[#64748b] block mt-0.5 font-mono">
                                   SKU {item.sku || 'FM-TCT'}
                                 </span>
-                                {item.notes && <span className="text-[10px] text-[#64748b] block">{item.notes}</span>}
+                                {item.notes && <span className="text-xs text-[#64748b] block">{item.notes}</span>}
                               </td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[#475569] hidden sm:table-cell">{item.ncm || '8207.70.00'}</td>
-                              <td className="py-2.5 px-3 text-center font-bold text-[#0f172a]">{item.quantity}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-[#334155]">{money(item.unitPrice)}</td>
-                              <td className="py-2.5 px-3 text-right font-mono font-bold text-[#0f172a]">{money(item.totalPrice)}</td>
+                              <td className="py-3 px-3 font-mono text-[13px] text-[#475569] hidden sm:table-cell">{item.ncm || '8207.70.00'}</td>
+                              <td className="py-3 px-3 text-center font-bold text-[#0f172a]">{item.quantity}</td>
+                              <td className="py-3 px-3 text-right font-mono text-[#334155]">{money(item.unitPrice)}</td>
+                              <td className="py-3 px-3 text-right font-mono font-bold text-[#0f172a]">{money(item.totalPrice)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -550,17 +550,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 text-sm">
                     <div className="sm:col-span-7 space-y-2">
-                      <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider">Pagamento</div>
+                      <div className="text-xs uppercase font-bold text-[#64748b] tracking-wider">Pagamento</div>
                       <div className="p-4 rounded-lg border-2 border-[#cbd5e1] bg-[#f8fafc] shadow-sm space-y-2">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-[#d97706]" />
+                          <CreditCard className="w-5 h-5 text-[#d97706]" />
                           <span className="font-bold text-[#0f172a]">
                             Pix ou link de pagamento com cartão de crédito
                           </span>
                         </div>
-                        <div className="text-[11px] text-[#334155]">
+                        <div className="text-[13px] text-[#334155]">
                           Chave Pix (CNPJ):{' '}
                           <strong data-pix-key className="font-mono text-[#0f172a] bg-[#ffffff] px-2 py-0.5 rounded border border-[#e2e8f0]">
                             {PIX_KEY}
@@ -573,20 +573,20 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                               setPixCopied(true);
                               setTimeout(() => setPixCopied(false), 2000);
                             }}
-                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#f59e0b] text-[#0f172a] font-bold text-[10px] cursor-pointer hover:bg-[#d97706] print:hidden"
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#f59e0b] text-[#0f172a] font-bold text-xs cursor-pointer hover:bg-[#d97706] print:hidden"
                           >
                             {pixCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                             <span>{pixCopied ? 'Copiado!' : 'Copiar'}</span>
                           </button>
                         </div>
-                        <p className="text-[10px] text-[#64748b] leading-snug">
+                        <p className="text-xs text-[#64748b] leading-snug">
                           Pagamento via cartão de crédito é feito por link e possui juros.
                         </p>
                       </div>
                     </div>
 
                     <div className="sm:col-span-5 space-y-2">
-                      <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider sm:text-right">Resumo</div>
+                      <div className="text-xs uppercase font-bold text-[#64748b] tracking-wider sm:text-right">Resumo</div>
                       <div className="space-y-1.5 p-4 rounded-lg bg-[#f8fafc] border-2 border-[#cbd5e1]">
                         <div className="flex justify-between text-[#475569]">
                           <span>Ferramentas</span>
@@ -609,16 +609,16 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           </div>
                         )}
                         <div className="mt-2 -mx-4 -mb-4 px-4 py-3 bg-[#0f172a] rounded-b-lg flex justify-between items-baseline">
-                          <span className="font-black text-[11px] uppercase tracking-wider text-[#fcd34d]">Total</span>
-                          <span className="font-mono font-black text-lg text-[#ffffff]">{money(quote.financials.totalAmount)}</span>
+                          <span className="font-black text-[13px] uppercase tracking-wider text-[#fcd34d]">Total</span>
+                          <span className="font-mono font-black text-2xl text-[#ffffff]">{money(quote.financials.totalAmount)}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t-2 border-[#f59e0b] text-center space-y-0.5">
-                    <p className="text-[11px] font-semibold text-[#334155]">Obrigado pela preferência! • Fresa Master CNC</p>
-                    <p className="text-[10px] text-[#94a3b8]">
+                    <p className="text-[13px] font-semibold text-[#334155]">Obrigado pela preferência! • Fresa Master CNC</p>
+                    <p className="text-xs text-[#94a3b8]">
                       CNPJ 59.085.330/0001-70 • fresamaster0@gmail.com • Salto/SP • Garantia contra defeitos de fabricação
                     </p>
                   </div>

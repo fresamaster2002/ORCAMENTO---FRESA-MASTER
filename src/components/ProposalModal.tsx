@@ -426,9 +426,12 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 className="printable-quote-paper bg-[#ffffff] text-[#0f172a] rounded-xl border-2 border-[#f59e0b] shadow-[0_0_0_4px_rgba(245,158,11,0.18),0_12px_32px_rgba(15,23,42,0.35)] max-w-3xl mx-auto font-sans overflow-hidden print:shadow-none print:border-none print:max-w-none"
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
-                <div className="h-2 bg-[#f59e0b]" />
-                <div className="bg-[#0b1220] p-6 sm:p-10 border-b-4 border-[#f59e0b]" style={{ backgroundColor: '#1e293b', backgroundImage: 'linear-gradient(135deg, #64748b 0%, #334155 40%, #111827 100%)', color: '#f8fafc' }}>
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff7a00 0%, #ff9a3c 60%, #f59e0b 100%)' }} />
+                <div className="relative overflow-hidden bg-[#0b1220] p-6 sm:p-10 border-b-4 border-[#ff7a00]" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[35%] w-3 bg-[#ff7a00] opacity-90" style={{ transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[32%] w-1 bg-[#ff9a3c] opacity-70" style={{ transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[30%] w-px bg-[#ffb86b] opacity-60" style={{ transform: 'skewX(-22deg)' }} />
+                  <div className="relative flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-2">
                       <FresaMasterLogo size="pdf" theme="dark" />
                       <div className="text-[11px] text-[#cbd5e1] leading-relaxed">

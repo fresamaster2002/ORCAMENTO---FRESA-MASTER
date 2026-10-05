@@ -134,7 +134,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
       const pixHolder: { box: { x: number; y: number; w: number; h: number } | null } = { box: null };
 
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 4,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
@@ -190,7 +190,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 8;
+      const margin = 3;
       const maxWidth = pageWidth - margin * 2;
       const maxHeight = pageHeight - margin * 2;
       const ratio = maxWidth / canvas.width;

@@ -247,13 +247,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         pdf.setFontSize(Math.max(6, boxHeightMm * 2.2));
         pdf.text(PIX_KEY, margin + pixBox.x * imgWidth, margin + yInPage + boxHeightMm * 0.75, { renderingMode: 'invisible' });
       }
-      linkBoxes.forEach((box) => {
-        const yMm = box.y * imgHeight;
-        const pageIndex = imgHeight <= maxHeight ? 0 : Math.floor(yMm / maxHeight);
-        const yInPage = imgHeight <= maxHeight ? yMm : yMm - pageIndex * maxHeight;
-        pdf.setPage(pageIndex + 1);
-        pdf.link(margin + box.x * imgWidth, margin + yInPage, box.w * imgWidth, box.h * imgHeight, { url: box.url });
-      });
       const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
       const pdfBlob = pdf.output('blob');
       const url = URL.createObjectURL(pdfBlob);

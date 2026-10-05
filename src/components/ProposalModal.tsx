@@ -426,11 +426,11 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 className="printable-quote-paper bg-[#ffffff] text-[#0f172a] rounded-xl border-2 border-[#f59e0b] shadow-[0_0_0_4px_rgba(245,158,11,0.18),0_12px_32px_rgba(15,23,42,0.35)] max-w-3xl mx-auto font-sans overflow-hidden print:shadow-none print:border-none print:max-w-none"
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
-                <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff7a00 0%, #ff9a3c 60%, #f59e0b 100%)' }} />
-                <div className="relative overflow-hidden bg-[#0b1220] border-b-4 border-[#ff7a00] px-6 py-4 sm:px-10 sm:py-5" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[35%] w-3 bg-[#ff7a00] opacity-90" style={{ transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[32%] w-1 bg-[#ff9a3c] opacity-70" style={{ transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[30%] w-px bg-[#ffb86b] opacity-60" style={{ transform: 'skewX(-22deg)' }} />
+                <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff6a00 0%, #ff8a1f 60%, #f59e0b 100%)' }} />
+                <div className="relative overflow-hidden bg-[#0b1220] border-b-4 border-[#ff6a00] px-6 py-4 sm:px-10 sm:py-5" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[35%] w-3 bg-[#ff6a00]" style={{ boxShadow: '0 0 16px 2px rgba(255,106,0,0.85)', transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[32%] w-1 bg-[#ff8a1f]" style={{ boxShadow: '0 0 10px rgba(255,138,31,0.8)', transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[30%] w-0.5 bg-[#ffa94d]" style={{ boxShadow: '0 0 8px rgba(255,169,77,0.8)', transform: 'skewX(-22deg)' }} />
                   <div className="relative flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-1.5">
                       <FresaMasterLogo size="pdf" theme="dark" />
@@ -443,9 +443,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">
-                      <span className="inline-block text-xs uppercase tracking-[0.18em] font-extrabold px-3 py-1 rounded bg-[#f59e0b] text-[#0f172a]">
-                        Proposta Comercial
-                      </span>
+                      <div style={{ display: 'inline-block', width: '210px', height: '32px', lineHeight: '18px', textAlign: 'center', borderRadius: '4px', backgroundColor: '#ff6a00', color: '#0b1220', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', textIndent: '0.12em' }}>Proposta Comercial</div>
                       <div className="font-mono text-3xl font-black text-[#f8fafc] mt-1">{quote.id}</div>
                       <div className="text-[13px] text-[#cbd5e1]">
                         Emissão: <strong className="text-[#f8fafc]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>

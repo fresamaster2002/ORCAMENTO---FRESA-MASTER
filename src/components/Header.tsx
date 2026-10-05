@@ -32,6 +32,21 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const sync = () => {
+      const bottom = navRef.current?.getBoundingClientRect().bottom ?? 0;
+      document.documentElement.style.setProperty('--fm-nav-h', `${Math.max(bottom, 0)}px`);
+    };
+    sync();
+    window.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    return () => {
+      window.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -57,27 +72,6 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <nav className="fixed top-0 inset-x-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
-          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
-            <House className="w-4 h-4" />
-            <span>Início</span>
-          </button>
-          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${cls('proposal')} disabled:opacity-40 disabled:cursor-not-allowed`}>
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Proposta</span>
-          </button>
-          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={cls('bling')}>
-            <Building className="w-4 h-4" />
-            <span>Bling</span>
-          </button>
-          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={cls('sandbox')}>
-            <Truck className="w-4 h-4" />
-            <span>Sandbox</span>
-          </button>
-        </div>
-      </nav>
-    <div aria-hidden className="h-[var(--fm-nav-h)] bg-white dark:bg-slate-900" />
     <header className="bg-white dark:bg-slate-900">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-3 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
         <div className="flex justify-start">
@@ -158,6 +152,26 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+      <nav ref={navRef} className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800">
+        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
+          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
+            <House className="w-4 h-4" />
+            <span>Início</span>
+          </button>
+          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${cls('proposal')} disabled:opacity-40 disabled:cursor-not-allowed`}>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Proposta</span>
+          </button>
+          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={cls('bling')}>
+            <Building className="w-4 h-4" />
+            <span>Bling</span>
+          </button>
+          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={cls('sandbox')}>
+            <Truck className="w-4 h-4" />
+            <span>Sandbox</span>
+          </button>
+        </div>
+      </nav>
 
     </>
   );

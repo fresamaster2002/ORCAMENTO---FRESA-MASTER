@@ -21,9 +21,10 @@ import {
   ExternalLink,
   Info,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { QuoteData } from '../types';
 import { FresaMasterLogo } from './FresaMasterLogo';
-import { buildProposalPdf, PIX_KEY } from '../pdf/buildProposalPdf';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -32,8 +33,45 @@ interface ProposalModalProps {
   onOpenBling?: () => void;
 }
 
+const PIX_KEY = '59.085.330/0001-70';
+
 const money = (value: number) =>
   (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const convertUnsupportedColorToRgb = (color: string) => {
+  const oklch = color.match(/^oklch\(\s*([\d.]+)(%)?\s+([\d.]+)\s+([\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/i);
+  const oklab = color.match(/^oklab\(\s*([\d.]+)(%)?\s+(-?[\d.]+)\s+(-?[\d.]+)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/i);
+  if (!oklch && !oklab) return '#000000';
+
+  const match = oklch || oklab!;
+  const lightness = Number(match[1]) / (match[2] ? 100 : 1);
+  const a = oklch
+    ? Number(match[3]) * Math.cos((Number(match[4]) * Math.PI) / 180)
+    : Number(match[3]);
+  const b = oklch
+    ? Number(match[3]) * Math.sin((Number(match[4]) * Math.PI) / 180)
+    : Number(match[4]);
+  const l = Math.pow(lightness + 0.3963377774 * a + 0.2158037573 * b, 3);
+  const m = Math.pow(lightness - 0.1055613458 * a - 0.0638541728 * b, 3);
+  const s = Math.pow(lightness - 0.0894841775 * a - 1.291485548 * b, 3);
+  const toSrgb = (value: number) => {
+    const linear = Math.max(0, Math.min(1, value));
+    const encoded = linear <= 0.0031308
+      ? linear * 12.92
+      : 1.055 * Math.pow(linear, 1 / 2.4) - 0.055;
+    return Math.round(encoded * 255);
+  };
+  const red = toSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
+  const green = toSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
+  const blue = toSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s);
+  const alpha = match[5]
+    ? Number(match[5]) / (match[6] ? 100 : 1)
+    : undefined;
+
+  return alpha === undefined
+    ? `rgb(${red}, ${green}, ${blue})`
+    : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
 
 export const ProposalModal: React.FC<ProposalModalProps> = ({
   isOpen,
@@ -83,7 +121,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
 
   if (!isOpen) return null;
 
-  // PDF vetorial com texto real (src/pdf/buildProposalPdf.ts)
+  // Direct PDF Download using html2canvas and jsPDF
   const handleDownloadPdf = async () => {
     if (!proposalSheetRef.current || isDownloadingPdf) return;
 
@@ -92,7 +130,103 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
     setPdfError(false);
 
     try {
-      const pdf = await buildProposalPdf(quote, import.meta.env.BASE_URL);
+      const element = proposalSheetRef.current;
+      const pixHolder: { box: { x: number; y: number; w: number; h: number } | null } = { box: null };
+
+      const canvas = await html2canvas(element, {
+        scale: 4,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 920,
+        onclone: (clonedDocument) => {
+          const clonedSheet = clonedDocument.querySelector('.printable-quote-paper');
+          if (!clonedSheet) return;
+
+          const clonedPix = clonedSheet.querySelector('[data-pix-key]');
+          if (clonedPix) {
+            const sheetRect = clonedSheet.getBoundingClientRect();
+            const pixRect = clonedPix.getBoundingClientRect();
+            if (sheetRect.width > 0 && sheetRect.height > 0) {
+              pixHolder.box = {
+                x: (pixRect.left - sheetRect.left) / sheetRect.width,
+                y: (pixRect.top - sheetRect.top) / sheetRect.height,
+                w: pixRect.width / sheetRect.width,
+                h: pixRect.height / sheetRect.height,
+              };
+            }
+          }
+
+          const elements = [clonedSheet, ...Array.from(clonedSheet.querySelectorAll('*'))];
+
+          for (const element of elements) {
+            const computedStyle = clonedDocument.defaultView?.getComputedStyle(element);
+            if (!computedStyle) continue;
+
+            for (let index = 0; index < computedStyle.length; index += 1) {
+              const property = computedStyle.item(index);
+              const isCustomProperty = property.startsWith('--');
+              if (isCustomProperty && element !== clonedSheet) continue;
+
+              const isColorProperty = isCustomProperty || /color$/i.test(property) || property === 'fill' || property === 'stroke';
+              if (!isColorProperty) continue;
+
+              const value = computedStyle.getPropertyValue(property);
+              if (!/oklch\(|oklab\(/i.test(value)) continue;
+
+              const normalizedValue = value.replace(/oklch\([^)]*\)|oklab\([^)]*\)/gi, convertUnsupportedColorToRgb);
+              element.setAttribute('style', `${element.getAttribute('style') || ''};${property}:${normalizedValue} !important`);
+            }
+          }
+        },
+      });
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 3;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = maxWidth / canvas.width;
+      const imgWidth = maxWidth;
+      const imgHeight = canvas.height * ratio;
+
+      if (imgHeight <= maxHeight) {
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, imgHeight, undefined, 'FAST');
+      } else {
+        const sliceHeightPx = Math.floor(maxHeight / ratio);
+        for (let offset = 0, page = 0; offset < canvas.height; offset += sliceHeightPx, page += 1) {
+          const currentHeight = Math.min(sliceHeightPx, canvas.height - offset);
+          const slice = document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = currentHeight;
+          const ctx = slice.getContext('2d');
+          if (!ctx) continue;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, slice.width, slice.height);
+          ctx.drawImage(canvas, 0, offset, canvas.width, currentHeight, 0, 0, canvas.width, currentHeight);
+          if (page > 0) pdf.addPage();
+          pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, currentHeight * ratio, undefined, 'FAST');
+        }
+      }
+
+      // Camada de texto invisível sobre a chave Pix para permitir selecionar/copiar no PDF
+      const pixBox = pixHolder.box;
+      if (pixBox) {
+        const yMm = pixBox.y * imgHeight;
+        const pageIndex = imgHeight <= maxHeight ? 0 : Math.floor(yMm / maxHeight);
+        const yInPage = imgHeight <= maxHeight ? yMm : yMm - pageIndex * maxHeight;
+        const boxHeightMm = pixBox.h * imgHeight;
+        pdf.setPage(pageIndex + 1);
+        pdf.setFontSize(Math.max(6, boxHeightMm * 2.2));
+        pdf.text(PIX_KEY, margin + pixBox.x * imgWidth, margin + yInPage + boxHeightMm * 0.75, { renderingMode: 'invisible' });
+      }
       const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
       const pdfBlob = pdf.output('blob');
       const url = URL.createObjectURL(pdfBlob);
@@ -307,7 +441,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">
-                      <div style={{ display: 'inline-block', width: '210px', height: '32px', lineHeight: '32px', textAlign: 'center', borderRadius: '4px', backgroundColor: '#ff6a00', color: '#0b1220', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', textIndent: '0.12em' }}>Proposta Comercial</div>
+                      <div style={{ display: 'inline-block', width: '210px', height: '32px', lineHeight: '18px', textAlign: 'center', borderRadius: '4px', backgroundColor: '#ff6a00', color: '#0b1220', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', textIndent: '0.12em' }}>Proposta Comercial</div>
                       <div className="font-mono text-3xl font-black text-[#f8fafc] mt-1">{quote.id}</div>
                       <div className="text-[13px] text-[#cbd5e1]">
                         Emissão: <strong className="text-[#f8fafc]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>

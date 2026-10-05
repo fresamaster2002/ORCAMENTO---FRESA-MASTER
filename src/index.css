@@ -379,3 +379,6 @@ a {
     color: #0f172a !important;
   }
 }
+
+:root { --fm-nav-h: 3rem; }
+.fixed.inset-0.z-50, .fixed.inset-0.z-\[70\] { top: var(--fm-nav-h); }

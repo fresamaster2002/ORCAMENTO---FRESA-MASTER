@@ -14,6 +14,7 @@ interface HeaderProps {
   userEmail?: string;
   onSignOut?: () => void;
   onOpenSandbox?: () => void;
+  activeTab?: 'home' | 'proposal' | 'bling' | 'sandbox' | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   userEmail,
   onSignOut,
   onOpenSandbox,
+  activeTab = 'home',
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -46,10 +48,36 @@ export const Header: React.FC<HeaderProps> = ({
   const corner =
     'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
   const tab =
-    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:text-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)] active:border-[#ff6a00]';
+    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent border focus:outline-none focus-visible:outline-none';
+  const tabIdle =
+    'text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500';
+  const tabOn =
+    'text-[#ff6a00] border-[#ff6a00] shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)]';
+  const cls = (k: string) => `${tab} ${activeTab === k ? tabOn : tabIdle}`;
 
   return (
     <>
+      <nav className="fixed top-0 inset-x-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
+          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={tab}>
+            <House className="w-4 h-4" />
+            <span>Início</span>
+          </button>
+          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${cls('proposal')} disabled:opacity-40 disabled:cursor-not-allowed`}>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Proposta</span>
+          </button>
+          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={cls('bling')}>
+            <Building className="w-4 h-4" />
+            <span>Bling</span>
+          </button>
+          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={cls('sandbox')}>
+            <Truck className="w-4 h-4" />
+            <span>Sandbox</span>
+          </button>
+        </div>
+      </nav>
+    <div aria-hidden className="h-[var(--fm-nav-h)] bg-white dark:bg-slate-900" />
     <header className="bg-white dark:bg-slate-900">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-3 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
         <div className="flex justify-start">
@@ -131,26 +159,6 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
 
-      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800">
-        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
-          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={tab}>
-            <House className="w-4 h-4" />
-            <span>Início</span>
-          </button>
-          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${tab} disabled:opacity-40 disabled:cursor-not-allowed`}>
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Proposta</span>
-          </button>
-          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={tab}>
-            <Building className="w-4 h-4" />
-            <span>Bling</span>
-          </button>
-          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={tab}>
-            <Truck className="w-4 h-4" />
-            <span>Sandbox</span>
-          </button>
-        </div>
-      </nav>
     </>
   );
 };

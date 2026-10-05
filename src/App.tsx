@@ -620,6 +620,14 @@ export default function App() {
   };
   const barBtn = 'cursor-pointer rounded-md border border-slate-300 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_10px_rgba(255,106,0,0.55)] active:border-[#ff6a00] dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500';
 
+  const openOnly = (target: 'proposal' | 'bling' | 'sandbox') => {
+    setIsApiDocsOpen(false);
+    setIsSavedQuotesOpen(false);
+    setIsProposalOpen(target === 'proposal');
+    setIsBlingOpen(target === 'bling');
+    setIsSandboxShipmentOpen(target === 'sandbox');
+  };
+
   const handleGoHome = () => {
     setIsApiDocsOpen(false);
     setIsProposalOpen(false);
@@ -775,15 +783,16 @@ export default function App() {
         <Header
           onOpenApiDocs={() => setIsApiDocsOpen(true)}
           onGoHome={handleGoHome}
-          onPreviewProposal={() => setIsProposalOpen(true)}
-          onOpenBlingModal={() => setIsBlingOpen(true)}
+          onPreviewProposal={() => openOnly('proposal')}
+          onOpenBlingModal={() => openOnly('bling')}
+          activeTab={isSandboxShipmentOpen ? 'sandbox' : isBlingOpen ? 'bling' : isProposalOpen ? 'proposal' : isApiDocsOpen || isSavedQuotesOpen ? null : 'home'}
           hasItems={quote.items.length > 0}
           isApproved={quote.status === 'approved'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={toggleDarkMode}
           userEmail={supabaseUser?.email ?? undefined}
           onSignOut={supabaseUser ? handleSignOut : undefined}
-          onOpenSandbox={() => setIsSandboxShipmentOpen(true)}
+          onOpenSandbox={() => openOnly('sandbox')}
         />
 
         {supabaseUser && (

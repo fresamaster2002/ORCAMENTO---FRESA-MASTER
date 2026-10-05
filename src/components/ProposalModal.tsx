@@ -73,6 +73,12 @@ const convertUnsupportedColorToRgb = (color: string) => {
     : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 };
 
+const STRIPE_POLYGONS: Array<[Array<[number, number]>, string]> = [
+  [[[230, 0], [242, 0], [128, 285], [116, 285]], '#ff6a00'],
+  [[[262, 0], [266, 0], [152, 285], [148, 285]], '#ff8a1f'],
+  [[[281, 0], [283, 0], [169, 285], [167, 285]], '#ffa94d'],
+];
+const STRIPES_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="285" viewBox="0 0 300 285" preserveAspectRatio="none">' + STRIPE_POLYGONS.map(([pts, c]) => '<polygon points="' + pts.map((q) => q.join(',')).join(' ') + '" fill="' + c + '"/>').join('') + '</svg>');
 export const ProposalModal: React.FC<ProposalModalProps> = ({
   isOpen,
   onClose,
@@ -132,6 +138,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
     try {
       const element = proposalSheetRef.current;
       const pixHolder: { box: { x: number; y: number; w: number; h: number } | null } = { box: null };
+      const stripesHolder: { box: { x: number; y: number; w: number; h: number } | null; sheetW: number } = { box: null, sheetW: 1 };
 
       const canvas = await html2canvas(element, {
         scale: 4,
@@ -157,6 +164,15 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
             }
           }
 
+          const clonedStripes = clonedSheet.querySelector('[data-stripes]');
+          if (clonedStripes) {
+            const sheetRect = clonedSheet.getBoundingClientRect();
+            const r = clonedStripes.getBoundingClientRect();
+            stripesHolder.box = { x: r.left - sheetRect.left, y: r.top - sheetRect.top, w: r.width, h: r.height };
+            stripesHolder.sheetW = sheetRect.width || 1;
+            clonedStripes.remove();
+          }
+
           const elements = [clonedSheet, ...Array.from(clonedSheet.querySelectorAll('*'))];
 
           for (const element of elements) {
@@ -180,6 +196,31 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           }
         },
       });
+
+      if (stripesHolder.box) {
+        const ctx = canvas.getContext('2d');
+        const k = canvas.width / stripesHolder.sheetW;
+        if (ctx) {
+          const b = stripesHolder.box;
+          const sx = (b.w / 300) * k;
+          const sy = (b.h / 285) * k;
+          const ox = b.x * k;
+          const oy = b.y * k;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.beginPath();
+          ctx.rect(ox, oy, b.w * k, b.h * k);
+          ctx.clip();
+          for (const [pts, color] of STRIPE_POLYGONS) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(ox + px * sx, oy + py * sy) : ctx.lineTo(ox + px * sx, oy + py * sy)));
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
 
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -428,9 +469,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               >
                 <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff6a00 0%, #ff8a1f 60%, #f59e0b 100%)' }} />
                 <div className="relative overflow-hidden bg-[#0b1220] border-b-4 border-[#ff6a00] px-6 py-4 sm:px-10 sm:py-5" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[45%] w-3 bg-[#ff6a00]" style={{ boxShadow: '0 0 16px 2px rgba(255,106,0,0.85)', transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[42%] w-1 bg-[#ff8a1f]" style={{ boxShadow: '0 0 10px rgba(255,138,31,0.8)', transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[40%] w-0.5 bg-[#ffa94d]" style={{ boxShadow: '0 0 8px rgba(255,169,77,0.8)', transform: 'skewX(-22deg)' }} />
+                  <img data-stripes aria-hidden="true" alt="" src={STRIPES_SVG} className="absolute top-0 right-[30%] h-full" style={{ width: 300 }} />
                   <div className="relative flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-1.5">
                       <FresaMasterLogo size="pdf" theme="dark" />

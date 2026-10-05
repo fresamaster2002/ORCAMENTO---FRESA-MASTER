@@ -428,9 +428,9 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               >
                 <div className="h-2" style={{ backgroundImage: 'linear-gradient(90deg, #ff6a00 0%, #ff8a1f 60%, #f59e0b 100%)' }} />
                 <div className="relative overflow-hidden bg-[#0b1220] border-b-4 border-[#ff6a00] px-6 py-4 sm:px-10 sm:py-5" style={{ backgroundColor: '#0b1220', backgroundImage: 'linear-gradient(100deg, #070b14 0%, #0f172a 38%, #1f2937 68%, #4b5563 100%)', color: '#f8fafc' }}>
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[35%] w-3 bg-[#ff6a00]" style={{ boxShadow: '0 0 16px 2px rgba(255,106,0,0.85)', transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[32%] w-1 bg-[#ff8a1f]" style={{ boxShadow: '0 0 10px rgba(255,138,31,0.8)', transform: 'skewX(-22deg)' }} />
-                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[30%] w-0.5 bg-[#ffa94d]" style={{ boxShadow: '0 0 8px rgba(255,169,77,0.8)', transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[45%] w-3 bg-[#ff6a00]" style={{ boxShadow: '0 0 16px 2px rgba(255,106,0,0.85)', transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[42%] w-1 bg-[#ff8a1f]" style={{ boxShadow: '0 0 10px rgba(255,138,31,0.8)', transform: 'skewX(-22deg)' }} />
+                  <div aria-hidden="true" className="absolute top-0 bottom-0 right-[40%] w-0.5 bg-[#ffa94d]" style={{ boxShadow: '0 0 8px rgba(255,169,77,0.8)', transform: 'skewX(-22deg)' }} />
                   <div className="relative flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-1.5">
                       <FresaMasterLogo size="pdf" theme="dark" />

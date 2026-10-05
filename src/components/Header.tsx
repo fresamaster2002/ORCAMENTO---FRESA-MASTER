@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyRound, FileSpreadsheet, RefreshCw, Building, Moon, Sun, Download, Settings, Truck, LogOut } from 'lucide-react';
+import { KeyRound, FileSpreadsheet, House, Building, Moon, Sun, Download, Settings, Truck, LogOut } from 'lucide-react';
 import { FresaMasterLogo } from './FresaMasterLogo';
 
 interface HeaderProps {
   onOpenApiDocs: () => void;
-  onNewQuote: () => void;
+  onGoHome: () => void;
   onPreviewProposal: () => void;
   onOpenBlingModal: () => void;
   hasItems: boolean;
@@ -18,7 +18,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenApiDocs,
-  onNewQuote,
+  onGoHome,
   onPreviewProposal,
   onOpenBlingModal,
   hasItems,
@@ -46,9 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   const corner =
     'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
   const tab =
-    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-4 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition cursor-pointer leading-tight';
-  const tabIdle =
-    'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700';
+    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 focus:outline-none focus:border-[#ff6a00] focus:text-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)] active:border-[#ff6a00]';
 
   return (
     <>
@@ -133,37 +131,22 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
 
-      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="max-w-3xl mx-auto px-2 sm:px-6 py-2 grid grid-cols-4 gap-1.5 sm:gap-2">
-          <button id="btn-reset-quote" type="button" onClick={onNewQuote} title="Iniciar novo orÃ§amento" className={`${tab} ${tabIdle}`}>
-            <RefreshCw className="w-5 h-5" />
-            <span>Novo</span>
+      <nav className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
+          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={tab}>
+            <House className="w-4 h-4" />
+            <span>Início</span>
           </button>
-
-          <button
-            id="btn-preview-proposal"
-            type="button"
-            onClick={onPreviewProposal}
-            disabled={!hasItems}
-            className={`${tab} ${hasItems ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'}`}
-          >
-            <FileSpreadsheet className="w-5 h-5" />
+          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${tab} disabled:opacity-40 disabled:cursor-not-allowed`}>
+            <FileSpreadsheet className="w-4 h-4" />
             <span>Proposta</span>
           </button>
-
-          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={`${tab} bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs`}>
-            <Building className="w-5 h-5 text-emerald-200" />
+          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={tab}>
+            <Building className="w-4 h-4" />
             <span>Bling</span>
           </button>
-
-          <button
-            id="btn-open-sandbox"
-            type="button"
-            onClick={onOpenSandbox}
-            title="Enviar no sandbox do Melhor Envio"
-            className={`${tab} bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xs`}
-          >
-            <Truck className="w-5 h-5" />
+          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={tab}>
+            <Truck className="w-4 h-4" />
             <span>Sandbox</span>
           </button>
         </div>

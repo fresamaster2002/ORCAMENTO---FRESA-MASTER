@@ -618,6 +618,17 @@ export default function App() {
       setQuote(remaining[0] || createEmptyQuote(remaining.map((savedQuote) => savedQuote.id)));
     }
   };
+  const barBtn = 'cursor-pointer rounded-md border border-slate-300 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 focus:outline-none focus:border-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_10px_rgba(255,106,0,0.55)] active:border-[#ff6a00] dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500';
+
+  const handleGoHome = () => {
+    setIsApiDocsOpen(false);
+    setIsProposalOpen(false);
+    setIsBlingOpen(false);
+    setIsSandboxShipmentOpen(false);
+    setIsSavedQuotesOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleNewQuote = () => {
     setQuote(createEmptyQuote([quote.id, ...recentQuotes.map((savedQuote) => savedQuote.id)]));
     setSummary('Novo orçamento Fresa Master em branco iniciado.');
@@ -763,7 +774,7 @@ export default function App() {
       <div className={`min-h-screen ${isDarkMode ? 'dark bg-[#090d16] text-slate-100' : 'bg-slate-100/70 text-slate-800'} flex flex-col font-sans antialiased transition-colors duration-200`}>
         <Header
           onOpenApiDocs={() => setIsApiDocsOpen(true)}
-          onNewQuote={handleNewQuote}
+          onGoHome={handleGoHome}
           onPreviewProposal={() => setIsProposalOpen(true)}
           onOpenBlingModal={() => setIsBlingOpen(true)}
           hasItems={quote.items.length > 0}
@@ -798,8 +809,9 @@ export default function App() {
                     </option>
                   ))}
                 </select>
-                <button type="button" onClick={() => setIsSavedQuotesOpen(true)} className="cursor-pointer rounded-md bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-600">Orçamentos</button>
-                <button type="button" onClick={handleSaveNow} disabled={cloudSaveState === 'saving'} className="cursor-pointer rounded-md border border-emerald-600 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:text-emerald-400 dark:hover:bg-emerald-950/30">Salvar</button>
+                <button type="button" onClick={() => setIsSavedQuotesOpen(true)} className={barBtn}>Orçamentos</button>
+                <button type="button" onClick={handleNewQuote} title="Iniciar novo orçamento" className={barBtn}>Novo</button>
+                <button type="button" onClick={handleSaveNow} disabled={cloudSaveState === 'saving'} className={`${barBtn} disabled:opacity-60`}>Salvar</button>
                 <span className={`text-[10px] font-semibold ${cloudSaveState === 'error' ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-400'}`}>
                   {cloudSaveState === 'saving' ? 'Sincronizando...' : cloudSaveState === 'saved' ? 'Salvo na nuvem' : cloudSaveState === 'error' ? 'Falha ao sincronizar' : 'Nuvem pronta'}
                 </span>

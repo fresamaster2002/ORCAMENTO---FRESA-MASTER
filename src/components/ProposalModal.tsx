@@ -29,7 +29,6 @@ import { FresaMasterLogo } from './FresaMasterLogo';
 const PIX_PAGE_URL = 'https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/pix.html';
 const WHATSAPP_URL = 'https://wa.me/5511998524939?text=' + encodeURIComponent('Olá! Quero falar sobre meu orçamento da Fresa Master.');
 const INSTAGRAM_URL = 'https://www.instagram.com/fresamaster';
-const EMAIL_URL = 'mailto:fresamaster0@gmail.com?subject=' + encodeURIComponent('Orçamento Fresa Master');
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -637,9 +636,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       </a>
                       <a data-pdf-link={INSTAGRAM_URL} href={INSTAGRAM_URL} target="_blank" rel="noreferrer" aria-label="Instagram" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#ff6a00', border: '2px solid #fed7aa' }}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#ffffff" stroke="none"/></svg>
-                      </a>
-                      <a data-pdf-link={EMAIL_URL} href={EMAIL_URL} aria-label="Gmail" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#ffffff', border: '2px solid #cbd5e1' }}>
-                        <svg width="26" height="26" viewBox="0 0 24 24"><path fill="#4285F4" d="M2 6.5V18a2 2 0 0 0 2 2h3V10.2L2 6.5z"/><path fill="#34A853" d="M17 20h3a2 2 0 0 0 2-2V6.5l-5 3.7V20z"/><path fill="#FBBC04" d="M17 4.9v5.3l5-3.7V5.7c0-1.9-2.2-3-3.7-1.8L17 4.9z"/><path fill="#EA4335" d="M7 10.2V4.9l5 3.7 5-3.7v5.3l-5 3.7-5-3.7z"/><path fill="#C5221F" d="M2 5.7v.8l5 3.7V4.9L5.7 3.9C4.2 2.7 2 3.8 2 5.7z"/></svg>
                       </a>
                     </div>
                   </div>

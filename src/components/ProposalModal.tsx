@@ -405,7 +405,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       <div className="text-[11px] text-[#475569] leading-relaxed">
                         <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>
-                        <p>Salto/SP • CEP {quote.shipping.originCep || '13321-472'}</p>
+                        <p>Salto/SP • CEP {quote.shipping.originCep || '13329-350'}</p>
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">

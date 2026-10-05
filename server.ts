@@ -186,7 +186,7 @@ function calculatePackageWeightKg(items: Array<{ description?: string; quantity?
 // Shipping simulator simulating Melhor Envio rates (Sedex, PAC, Jadlog) com peso dinâmico, dimensões do pacote e seguro opcional
 function calculateMelhorEnvioRates(
   destCep: string,
-  originCep = "13321-472",
+  originCep = "13329-350",
   weightKg = 0.5,
   dimensions?: { height?: number; width?: number; length?: number },
   customShipping?: { amount?: number; name?: string },
@@ -194,7 +194,7 @@ function calculateMelhorEnvioRates(
   declaredValue = 280
 ) {
   const cleanDest = destCep.replace(/\D/g, "");
-  const cleanOrigin = originCep.replace(/\D/g, "") || "13321472";
+  const cleanOrigin = originCep.replace(/\D/g, "") || "13329350";
 
   // Dígito de estado/região de destino e origem
   const firstDestDigit = cleanDest ? parseInt(cleanDest[0], 10) : 1;
@@ -204,7 +204,7 @@ function calculateMelhorEnvioRates(
   const isSameState = firstDestDigit === firstOriginDigit;
   const isCloseRegion = Math.abs(firstDestDigit - firstOriginDigit) <= 1;
 
-  // Fator de distância regional (13321-472 Salto/SP como centro logístico)
+  // Fator de distância regional (13329-350 Salto/SP como centro logístico)
   let zoneFactor = 1.0;
   if (isSameState) {
     zoneFactor = 0.95;
@@ -415,7 +415,7 @@ async function fetchMelhorEnvioLiveRates(
   if (!effectiveToken || effectiveToken.trim() === "") return null;
 
   const cleanDest = destCep.replace(/\D/g, "");
-  const cleanOrigin = originCep.replace(/\D/g, "") || "13321472";
+  const cleanOrigin = originCep.replace(/\D/g, "") || "13329350";
   if (cleanDest.length !== 8) return null;
 
   const isSandbox = isSandboxParam ?? (
@@ -534,7 +534,7 @@ app.post("/api/shipping/calculate", async (req, res) => {
   try {
     const {
       destinationCep,
-      originCep = "13321-472",
+      originCep = "13329-350",
       weightKg: customWeightKg,
       items,
       packageDimensions,
@@ -741,7 +741,7 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
           "User-Agent": "FresaMaster (fresamaster0@gmail.com)",
         },
         body: JSON.stringify({
-          from: { postal_code: "13321472" },
+          from: { postal_code: "13329350" },
           to: { postal_code: "01001000" },
           package: { height: 5, width: 12, length: 18, weight: 0.5 },
           services: "1,2",
@@ -908,7 +908,7 @@ app.post("/api/quote/extract", async (req, res) => {
     const ai = getGeminiClient();
 
     // Default origin CEP for Fresa Master (Salto/SP)
-    const originCep = currentQuote?.shipping?.originCep || "13321-472";
+    const originCep = currentQuote?.shipping?.originCep || "13329-350";
     const liveCatalog = blingCatalogAvailable === true
       ? normalizeBlingCatalogProducts(Array.isArray(blingProducts) ? blingProducts : [])
       : null;
@@ -2213,7 +2213,7 @@ app.get(["/manual", "/bling-manual"], (req, res) => {
     <ul>
       <li><strong>E-mail de Contato:</strong> fresamaster0@gmail.com</li>
       <li><strong>Empresa:</strong> Fresa Master CNC</li>
-      <li><strong>Origem Operacional:</strong> Salto / SP (CEP 13321-472)</li>
+      <li><strong>Origem Operacional:</strong> Salto / SP (CEP 13329-350)</li>
     </ul>
 
     <div class="footer">
@@ -2424,7 +2424,7 @@ function parseFresaMasterFallback(
       }
     : undefined;
 
-  const originCep = currentQuote?.shipping?.originCep || "13321-472";
+  const originCep = currentQuote?.shipping?.originCep || "13329-350";
 
   const shippingOptions = calculateMelhorEnvioRates(
     cep || "00000000",

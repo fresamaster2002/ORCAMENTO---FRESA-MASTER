@@ -31,7 +31,7 @@ interface ShippingCalculatorProps {
   onUpdateShipping?: (updatedShipping: ShippingInfo, selectedOption?: ShippingOption) => void;
 }
 
-const DEFAULT_ORIGIN_CEP = '13321-472'; // Salto / SP (Expedição Oficial Fresa Master)
+const DEFAULT_ORIGIN_CEP = '13329-350'; // Salto / SP (Expedição Oficial Fresa Master)
 
 export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   shipping,

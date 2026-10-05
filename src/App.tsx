@@ -58,7 +58,7 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
     },
   ],
   shipping: {
-    originCep: '13321-472',
+    originCep: '13329-350',
     destinationCep: '80010-000',
     weightKg: 0.5,
     weightDescription: '0,5 kg (padrão até 0,5 kg c/ embalagem)',

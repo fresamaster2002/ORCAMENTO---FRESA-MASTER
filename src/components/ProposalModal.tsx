@@ -122,7 +122,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   if (!isOpen) return null;
 
   // Direct PDF Download using html2canvas and jsPDF
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = async (shareFile?: unknown) => {
     if (!proposalSheetRef.current || isDownloadingPdf) return;
 
     setIsDownloadingPdf(true);
@@ -227,10 +227,23 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         pdf.setFontSize(Math.max(6, boxHeightMm * 2.2));
         pdf.text(PIX_KEY, margin + pixBox.x * imgWidth, margin + yInPage + boxHeightMm * 0.75, { renderingMode: 'invisible' });
       }
-      const clientSlug = (quote.client.name || 'Cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Cliente';
+      const clientSlug = (quote.client.name || 'Cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, ' ').trim().slice(0, 40) || 'Cliente';
       const issueDate = new Date(quote.createdAt).toLocaleDateString('pt-BR').replace(/\//g, '-');
-      const fileName = `${quote.id || 'FM'}_${clientSlug}_${issueDate}.pdf`;
+      const fileName = `${quote.id || 'FM'} ${clientSlug} ${issueDate}.pdf`;
       const pdfBlob = pdf.output('blob');
+      if (shareFile === true) {
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] });
+            setPdfSuccess(true);
+            setTimeout(() => setPdfSuccess(false), 5000);
+          } catch {
+            // compartilhamento cancelado pelo usuário
+          }
+          return;
+        }
+      }
       const url = URL.createObjectURL(pdfBlob);
 
       const anchor = document.createElement('a');
@@ -693,6 +706,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               )}
               <span>{isDownloadingPdf ? 'Processando...' : 'Salvar PDF'}</span>
             </button>
+
+            {typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && (
+              <button
+                type="button"
+                onClick={() => handleDownloadPdf(true)}
+                disabled={isDownloadingPdf}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer inline-flex items-center gap-1"
+              >
+                <span>Compartilhar PDF</span>
+              </button>
+            )}
 
             <button
               type="button"

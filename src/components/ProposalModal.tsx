@@ -84,7 +84,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const [pdfSuccess, setPdfSuccess] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [pdfDark, setPdfDark] = useState(true);
+  const [pdfDark, setPdfDark] = useState(false);
 
   const proposalSheetRef = useRef<HTMLDivElement>(null);
 

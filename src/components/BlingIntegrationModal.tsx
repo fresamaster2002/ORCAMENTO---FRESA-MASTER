@@ -325,7 +325,11 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
         });
         setStatusMessage(`Pedido #${data.blingOrderNumber} criado com sucesso diretamente no Bling ERP!`);
       } else {
-        setOrderError(data.error || 'Erro ao enviar o pedido para o Bling.');
+        setOrderError(
+          data.blingDetails?.error?.type === 'insufficient_scope'
+            ? 'O Bling conectado não tem permissão para criar Pedidos de Venda / NF-e (insufficient_scope).'
+            : data.error || 'Erro ao enviar o pedido para o Bling.'
+        );
       }
     } catch (err: any) {
       setOrderError(`Falha de rede ou servidor: ${err.message}`);
@@ -763,7 +767,9 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       <strong className="block">Erro no Bling ERP:</strong>
                       <span>{orderError}</span>
                       <p className="mt-1 text-[11px] text-red-700 dark:text-red-400">
-                        Dica: Verifique se os dados do cliente possuem Razão Social e CNPJ válidos na aba "📋 Dados do Cliente".
+                        {orderError.includes('permissão')
+                          ? 'No painel de desenvolvedor do Bling, abra o aplicativo, marque as permissões "Pedidos de Vendas" e "Notas Fiscais" (leitura e gravação), salve e depois reconecte o Bling.'
+                          : 'Dica: Verifique se os dados do cliente possuem Razão Social e CNPJ válidos na aba "📋 Dados do Cliente".'}
                       </p>
                     </div>
                   </div>

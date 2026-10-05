@@ -514,7 +514,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           <tr className="bg-[#0f172a] text-[#ffffff] font-bold text-xs uppercase tracking-wider">
                             <th className="py-3 px-3 w-10">#</th>
                             <th className="py-3 px-3">Descrição</th>
-                            <th className="py-3 px-3 w-24 hidden sm:table-cell">NCM</th>
                             <th className="py-3 px-3 w-12 text-center">Qtd</th>
                             <th className="py-2.5 px-2 sm:px-3 w-24 sm:w-28 text-right">Unitário</th>
                             <th className="py-2.5 px-2 sm:px-3 w-28 sm:w-32 text-right">Total</th>

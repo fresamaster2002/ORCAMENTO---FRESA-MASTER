@@ -84,7 +84,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const [pdfSuccess, setPdfSuccess] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [pdfDark, setPdfDark] = useState(true);
 
   const proposalSheetRef = useRef<HTMLDivElement>(null);
 
@@ -134,7 +133,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: pdfDark ? '#0b1220' : '#ffffff',
+        backgroundColor: '#ffffff',
         windowWidth: 920,
         onclone: (clonedDocument) => {
           const clonedSheet = clonedDocument.querySelector('.printable-quote-paper');
@@ -180,14 +179,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
       const imgWidth = maxWidth;
       const imgHeight = canvas.height * ratio;
 
-      const paintPageBackground = () => {
-        if (!pdfDark) return;
-        pdf.setFillColor(11, 18, 32);
-        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-      };
-
       if (imgHeight <= maxHeight) {
-        paintPageBackground();
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, imgHeight, undefined, 'FAST');
       } else {
         const sliceHeightPx = Math.floor(maxHeight / ratio);
@@ -198,11 +190,10 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           slice.height = currentHeight;
           const ctx = slice.getContext('2d');
           if (!ctx) continue;
-          ctx.fillStyle = pdfDark ? '#0b1220' : '#ffffff';
+          ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, slice.width, slice.height);
           ctx.drawImage(canvas, 0, offset, canvas.width, currentHeight, 0, 0, canvas.width, currentHeight);
           if (page > 0) pdf.addPage();
-          paintPageBackground();
           pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, imgWidth, currentHeight * ratio, undefined, 'FAST');
         }
       }
@@ -390,37 +381,27 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                     Clique em <strong>"Baixar Arquivo PDF"</strong> para salvar o documento timbrado pronto para anexar na conversa com seu cliente.
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setPdfDark((v) => !v)}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[11px] transition cursor-pointer"
-                  >
-                    {pdfDark ? 'Folha clara' : 'Folha escura'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadPdf}
-                    disabled={isDownloadingPdf}
-                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition cursor-pointer shrink-0"
-                  >
-                    {isDownloadingPdf ? 'Baixando...' : 'Baixar PDF Agora'}
-                  </button>
-                </div>
-
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition cursor-pointer shrink-0"
+                >
+                  {isDownloadingPdf ? 'Baixando...' : 'Baixar PDF Agora'}
+                </button>
               </div>
 
               {/* FOLHA TIMBRADA A4 - cores fixas, imune ao modo escuro */}
               <div
                 ref={proposalSheetRef}
-                className={`printable-quote-paper ${pdfDark ? 'pdf-dark' : ''} bg-[#ffffff] text-[#0f172a] rounded-xl border border-[#e2e8f0] shadow-sm max-w-3xl mx-auto font-sans overflow-hidden print:shadow-none print:border-none print:max-w-none`}
-                style={{ backgroundColor: pdfDark ? '#0b1220' : '#ffffff', color: pdfDark ? '#f1f5f9' : '#0f172a' }}
+                className="printable-quote-paper bg-[#ffffff] text-[#0f172a] rounded-xl border border-[#e2e8f0] shadow-sm max-w-3xl mx-auto font-sans overflow-hidden print:shadow-none print:border-none print:max-w-none"
+                style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
                 <div className="h-2 bg-[#f59e0b]" />
                 <div className="p-6 sm:p-10 space-y-6">
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b-2 border-[#0f172a]">
                     <div className="space-y-2">
-                      <FresaMasterLogo size="pdf" theme={pdfDark ? 'dark' : 'print'} />
+                      <FresaMasterLogo size="pdf" theme="print" />
                       <div className="text-[11px] text-[#475569] leading-relaxed">
                         <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>

@@ -475,9 +475,11 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       <div className="text-[13px] text-[#334155]">
                         CNPJ/CPF: <strong className="font-mono text-[#0f172a]">{quote.client.document || 'A confirmar'}</strong>
                       </div>
-                      <div className="text-[13px] text-[#334155]">
-                        Inscrição Estadual: <strong className="text-[#0f172a]">{quote.client.ie || 'ISENTO'}</strong>
-                      </div>
+                      {quote.client.ie && !/^\s*isent[oa]\s*$/i.test(quote.client.ie) && (
+                        <div className="text-[13px] text-[#334155]">
+                          Inscrição Estadual: <strong className="text-[#0f172a]">{quote.client.ie}</strong>
+                        </div>
+                      )}
                       {(quote.client.city || quote.client.state) && (
                         <div className="text-[13px] text-[#334155]">
                           {quote.client.city}{quote.client.city && quote.client.state ? ' / ' : ''}{quote.client.state}

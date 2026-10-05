@@ -398,12 +398,12 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
                 <div className="h-2 bg-[#f59e0b]" />
-                <div className="p-6 sm:p-10 space-y-6">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b-2 border-[#0f172a]">
+                <div className="bg-[#0b1220] p-6 sm:p-10 space-y-5 border-b-4 border-[#f59e0b]" style={{ backgroundColor: '#0b1220', color: '#f8fafc' }}>
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b-2 border-[#f59e0b]">
                     <div className="space-y-2">
-                      <FresaMasterLogo size="pdf" theme="print" />
-                      <div className="text-[11px] text-[#475569] leading-relaxed">
-                        <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
+                      <FresaMasterLogo size="pdf" theme="dark" />
+                      <div className="text-[11px] text-[#cbd5e1] leading-relaxed">
+                        <p className="font-semibold text-[#f8fafc]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>
                         <p>CNPJ 59.085.330/0001-70</p>
                         <p>(11) 99852-4939</p>
@@ -414,61 +414,61 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       <span className="inline-block text-[10px] uppercase tracking-[0.18em] font-extrabold px-3 py-1 rounded bg-[#0f172a] text-[#ffffff]">
                         Proposta Comercial
                       </span>
-                      <div className="font-mono text-2xl font-black text-[#0f172a] mt-1.5">{quote.id}</div>
-                      <div className="text-[11px] text-[#475569] mt-0.5">
-                        Emissão: <strong className="text-[#1e293b]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>
+                      <div className="font-mono text-2xl font-black text-[#f8fafc] mt-1.5">{quote.id}</div>
+                      <div className="text-[11px] text-[#cbd5e1] mt-0.5">
+                        Emissão: <strong className="text-[#f8fafc]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>
                       </div>
-                      <div className="text-[11px] font-bold text-[#047857]">
+                      <div className="text-[11px] font-bold text-[#34d399]">
                         Válida por {quote.project.validityDays || 10} dias
                       </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div className="p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] border-l-4 border-l-[#f59e0b] space-y-1">
-                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Cliente</div>
-                      <div className="font-black text-sm text-[#0f172a]">{quote.client.name || 'Cliente / Empresa'}</div>
-                      <div className="text-[11px] text-[#334155]">
-                        CNPJ/CPF: <strong className="font-mono text-[#0f172a]">{quote.client.document || 'A confirmar'}</strong>
+                    <div className="p-4 rounded-lg border border-[#b7791f] bg-[#14213a] border-l-4 border-l-[#f59e0b] space-y-1">
+                      <div className="text-[10px] font-bold text-[#fbbf24] uppercase tracking-wider">Cliente</div>
+                      <div className="font-black text-sm text-[#f8fafc]">{quote.client.name || 'Cliente / Empresa'}</div>
+                      <div className="text-[11px] text-[#cbd5e1]">
+                        CNPJ/CPF: <strong className="font-mono text-[#f8fafc]">{quote.client.document || 'A confirmar'}</strong>
                       </div>
-                      <div className="text-[11px] text-[#334155]">
-                        Inscrição Estadual: <strong className="text-[#0f172a]">{quote.client.ie || 'ISENTO'}</strong>
+                      <div className="text-[11px] text-[#cbd5e1]">
+                        Inscrição Estadual: <strong className="text-[#f8fafc]">{quote.client.ie || 'ISENTO'}</strong>
                       </div>
                       {(quote.client.city || quote.client.state) && (
-                        <div className="text-[11px] text-[#334155]">
+                        <div className="text-[11px] text-[#cbd5e1]">
                           {quote.client.city}{quote.client.city && quote.client.state ? ' / ' : ''}{quote.client.state}
                         </div>
                       )}
                       {quote.client.phone && (
-                        <div className="text-[11px] text-[#334155]">Contato: {quote.client.phone}</div>
+                        <div className="text-[11px] text-[#cbd5e1]">Contato: {quote.client.phone}</div>
                       )}
                     </div>
 
-                    <div className="p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] border-l-4 border-l-[#0f172a] space-y-1">
-                      <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
-                        <Truck className="w-3.5 h-3.5 text-[#475569]" />
+                    <div className="p-4 rounded-lg border border-[#b7791f] bg-[#14213a] border-l-4 border-l-[#fbbf24] space-y-1">
+                      <div className="text-[10px] font-bold text-[#fbbf24] uppercase tracking-wider flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-[#cbd5e1]" />
                         <span>Entrega</span>
                       </div>
-                      <div className="font-black text-sm text-[#0f172a]">
+                      <div className="font-black text-sm text-[#f8fafc]">
                         {quote.shipping.selectedOption?.name || 'A combinar'}
                       </div>
-                      <div className="text-[11px] text-[#334155]">
+                      <div className="text-[11px] text-[#cbd5e1]">
                         Destino: CEP {quote.client.cep || quote.shipping.destinationCep || 'A confirmar'}
                       </div>
-                      <div className="text-[11px] text-[#334155]">
-                        Peso estimado: <strong className="font-mono text-[#0f172a]">{quote.shipping.weightKg || 0.5} kg</strong>
+                      <div className="text-[11px] text-[#cbd5e1]">
+                        Peso estimado: <strong className="font-mono text-[#f8fafc]">{quote.shipping.weightKg || 0.5} kg</strong>
                       </div>
-                      <div className="text-[11px] text-[#334155]">
-                        Prazo: <strong className="text-[#0f172a]">{quote.project.deadline || '2 a 4 dias úteis após despacho'}</strong>
+                      <div className="text-[11px] text-[#cbd5e1]">
+                        Prazo: <strong className="text-[#f8fafc]">{quote.project.deadline || '2 a 4 dias úteis após despacho'}</strong>
                       </div>
                       <div className="pt-0.5">
                         {quote.shipping.insuranceEnabled ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6ee7b7] bg-[#064e3b] px-2 py-0.5 rounded">
                             <ShieldCheck className="w-3 h-3" />
                             <span>Carga segurada</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-[#64748b]">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#fbbf24]">
                             <ShieldAlert className="w-3 h-3" />
                             <span>Sem seguro adicional</span>
                           </span>
@@ -477,6 +477,9 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                     </div>
                   </div>
 
+                  
+                </div>
+                <div className="p-6 sm:p-10 space-y-6">
                   <div className="space-y-2">
                     <div className="text-[10px] uppercase font-bold text-[#64748b] tracking-wider">Itens da proposta</div>
                     <div className="overflow-hidden border border-[#e2e8f0] rounded-lg">

@@ -806,7 +806,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               </div>
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
-              Chave Pix Oficial: <strong className="font-mono text-slate-700 dark:text-slate-300">fresamaster0@gmail.com</strong>
+              Chave Pix (CNPJ): <strong className="font-mono text-slate-700 dark:text-slate-300">59.085.330/0001-70</strong>
             </div>
 
             {/* Quick One-Click Bling Emission Banner */}

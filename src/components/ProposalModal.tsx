@@ -33,6 +33,8 @@ interface ProposalModalProps {
   onOpenBling?: () => void;
 }
 
+const PIX_KEY = '59.085.330/0001-70';
+
 const money = (value: number) =>
   (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -84,6 +86,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const [pdfSuccess, setPdfSuccess] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pixCopied, setPixCopied] = useState(false);
 
   const proposalSheetRef = useRef<HTMLDivElement>(null);
 
@@ -128,6 +131,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
 
     try {
       const element = proposalSheetRef.current;
+      const pixHolder: { box: { x: number; y: number; w: number; h: number } | null } = { box: null };
 
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -138,6 +142,20 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         onclone: (clonedDocument) => {
           const clonedSheet = clonedDocument.querySelector('.printable-quote-paper');
           if (!clonedSheet) return;
+
+          const clonedPix = clonedSheet.querySelector('[data-pix-key]');
+          if (clonedPix) {
+            const sheetRect = clonedSheet.getBoundingClientRect();
+            const pixRect = clonedPix.getBoundingClientRect();
+            if (sheetRect.width > 0 && sheetRect.height > 0) {
+              pixHolder.box = {
+                x: (pixRect.left - sheetRect.left) / sheetRect.width,
+                y: (pixRect.top - sheetRect.top) / sheetRect.height,
+                w: pixRect.width / sheetRect.width,
+                h: pixRect.height / sheetRect.height,
+              };
+            }
+          }
 
           const elements = [clonedSheet, ...Array.from(clonedSheet.querySelectorAll('*'))];
 
@@ -198,6 +216,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         }
       }
 
+      // Camada de texto invisível sobre a chave Pix para permitir selecionar/copiar no PDF
+      const pixBox = pixHolder.box;
+      if (pixBox) {
+        const yMm = pixBox.y * imgHeight;
+        const pageIndex = imgHeight <= maxHeight ? 0 : Math.floor(yMm / maxHeight);
+        const yInPage = imgHeight <= maxHeight ? yMm : yMm - pageIndex * maxHeight;
+        const boxHeightMm = pixBox.h * imgHeight;
+        pdf.setPage(pageIndex + 1);
+        pdf.setFontSize(Math.max(6, boxHeightMm * 2.2));
+        pdf.text(PIX_KEY, margin + pixBox.x * imgWidth, margin + yInPage + boxHeightMm * 0.75, { renderingMode: 'invisible' });
+      }
       const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
       const pdfBlob = pdf.output('blob');
       const url = URL.createObjectURL(pdfBlob);
@@ -398,7 +427,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               >
                 <div className="h-2 bg-[#f59e0b]" />
-                <div className="bg-[#0b1220] p-6 sm:p-10 border-b-4 border-[#f59e0b]" style={{ backgroundColor: '#0b1220', color: '#f8fafc' }}>
+                <div className="bg-[#0b1220] p-6 sm:p-10 border-b-4 border-[#f59e0b]" style={{ backgroundColor: '#1e293b', backgroundImage: 'linear-gradient(135deg, #64748b 0%, #334155 40%, #111827 100%)', color: '#f8fafc' }}>
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-2">
                       <FresaMasterLogo size="pdf" theme="dark" />
@@ -525,17 +554,30 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                         <div className="flex items-center gap-2">
                           <CreditCard className="w-4 h-4 text-[#d97706]" />
                           <span className="font-bold text-[#0f172a]">
-                            {quote.financials.paymentTerms || 'À vista via Pix ou Boleto'}
+                            Pix ou link de pagamento com cartão de crédito
                           </span>
                         </div>
                         <div className="text-[11px] text-[#334155]">
-                          Chave Pix:{' '}
-                          <strong className="font-mono text-[#0f172a] bg-[#ffffff] px-2 py-0.5 rounded border border-[#e2e8f0]">
-                            fresamaster0@gmail.com
+                          Chave Pix (CNPJ):{' '}
+                          <strong data-pix-key className="font-mono text-[#0f172a] bg-[#ffffff] px-2 py-0.5 rounded border border-[#e2e8f0]">
+                            {PIX_KEY}
                           </strong>
+                          <button
+                            type="button"
+                            data-html2canvas-ignore="true"
+                            onClick={() => {
+                              navigator.clipboard.writeText(PIX_KEY);
+                              setPixCopied(true);
+                              setTimeout(() => setPixCopied(false), 2000);
+                            }}
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#f59e0b] text-[#0f172a] font-bold text-[10px] cursor-pointer hover:bg-[#d97706] print:hidden"
+                          >
+                            {pixCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            <span>{pixCopied ? 'Copiado!' : 'Copiar'}</span>
+                          </button>
                         </div>
                         <p className="text-[10px] text-[#64748b] leading-snug">
-                          A Nota Fiscal Eletrônica (NF-e) é emitida pelo Bling ERP e enviada junto com o pedido.
+                          Pagamento via cartão de crédito é feito por link e possui juros.
                         </p>
                       </div>
                     </div>

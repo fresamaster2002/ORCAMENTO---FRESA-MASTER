@@ -2346,7 +2346,7 @@ Peça gentilmente para o cliente confirmar o pedido e enviar os dados cadastrais
             `🔹 *${i.description}*\n   ${i.quantity} un x R$ ${Number(i.unitPrice).toFixed(2)} = R$ ${Number(i.totalPrice).toFixed(2)}`
         )
         .join("\n\n") +
-      `\n\n📦 *Frete:* ${shippingName} (${shippingCost}${weightLabel})${discountLine}\n⏱️ *Prazo de entrega:* ${quote.project?.deadline || "2 a 3 dias úteis"}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* ${quote.financials?.paymentTerms || "Pix ou Boleto"}\n\nAssim que aprovar, nos envie seus *dados cadastrais (CNPJ, Inscrição Estadual e endereço)* para já deixarmos sua *Nota Fiscal e envio prontos no Bling*! 🚀`;
+      `\n\n📦 *Frete:* ${shippingName} (${shippingCost}${weightLabel})${discountLine}\n⏱️ *Prazo de entrega:* ${quote.project?.deadline || "2 a 3 dias úteis"}\n\n💰 *VALOR TOTAL:* ${total}\n💳 *Pagamento:* Pix (chave CNPJ 59.085.330/0001-70) ou link de pagamento com cartão de crédito (com juros)\n\nAssim que aprovar, é só nos avisar que já preparamos seu pedido! 🚀`;
 
     return res.json({
       success: true,

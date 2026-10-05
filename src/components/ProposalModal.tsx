@@ -441,7 +441,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">
-                      <div style={{ display: 'inline-block', width: '210px', height: '32px', lineHeight: '18px', textAlign: 'center', borderRadius: '4px', backgroundColor: '#ff6a00', color: '#0b1220', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', textIndent: '0.12em' }}>Proposta Comercial</div>
+                      <div style={{ display: 'inline-block', width: '210px', height: '32px', lineHeight: '18px', textAlign: 'center', borderRadius: '4px', backgroundColor: '#92400e', color: '#ffffff', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', textIndent: '0.12em' }}>Proposta Comercial</div>
                       <div className="font-mono text-3xl font-black text-[#f8fafc] mt-1">{quote.id}</div>
                       <div className="text-[13px] text-[#cbd5e1]">
                         Emissão: <strong className="text-[#f8fafc]">{new Date(quote.createdAt).toLocaleDateString('pt-BR')}</strong>

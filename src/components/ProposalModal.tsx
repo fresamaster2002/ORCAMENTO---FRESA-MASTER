@@ -227,7 +227,9 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         pdf.setFontSize(Math.max(6, boxHeightMm * 2.2));
         pdf.text(PIX_KEY, margin + pixBox.x * imgWidth, margin + yInPage + boxHeightMm * 0.75, { renderingMode: 'invisible' });
       }
-      const fileName = `Orcamento_${quote.id || 'FM'}_Fresa_Master.pdf`;
+      const clientSlug = (quote.client.name || 'Cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Cliente';
+      const issueDate = new Date(quote.createdAt).toLocaleDateString('pt-BR').replace(/\//g, '-');
+      const fileName = `${quote.id || 'FM'}_${clientSlug}_${issueDate}.pdf`;
       const pdfBlob = pdf.output('blob');
       const url = URL.createObjectURL(pdfBlob);
 

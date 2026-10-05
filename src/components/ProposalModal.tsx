@@ -405,7 +405,9 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       <div className="text-[11px] text-[#475569] leading-relaxed">
                         <p className="font-semibold text-[#1e293b]">Ferramentas de Alta Precisão para Router CNC</p>
                         <p>fresamaster0@gmail.com</p>
-                        <p>Salto/SP • CEP {quote.shipping.originCep || '13329-350'}</p>
+                        <p>CNPJ 59.085.330/0001-70</p>
+                        <p>Rua das Nações Unidas, 600 - Olaria</p>
+                        <p>Salto/SP • CEP 13329-350 • (11) 99852-4939</p>
                       </div>
                     </div>
                     <div className="sm:text-right shrink-0">
@@ -571,7 +573,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                   <div className="pt-4 border-t border-[#e2e8f0] text-center space-y-0.5">
                     <p className="text-[11px] font-semibold text-[#334155]">Obrigado pela preferência! • Fresa Master CNC</p>
                     <p className="text-[10px] text-[#94a3b8]">
-                      fresamaster0@gmail.com • Salto/SP • Garantia contra defeitos de fabricação
+                      CNPJ 59.085.330/0001-70 • fresamaster0@gmail.com • Salto/SP • Garantia contra defeitos de fabricação
                     </p>
                   </div>
                 </div>

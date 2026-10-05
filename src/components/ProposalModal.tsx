@@ -26,10 +26,6 @@ import jsPDF from 'jspdf';
 import { QuoteData } from '../types';
 import { FresaMasterLogo } from './FresaMasterLogo';
 
-const PIX_PAGE_URL = 'https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/pix.html';
-const WHATSAPP_URL = 'https://wa.me/5511998524939?text=' + encodeURIComponent('Olá! Quero falar sobre meu orçamento da Fresa Master.');
-const INSTAGRAM_URL = 'https://www.instagram.com/fresamaster';
-
 interface ProposalModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -136,7 +132,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
     try {
       const element = proposalSheetRef.current;
       const pixHolder: { box: { x: number; y: number; w: number; h: number } | null } = { box: null };
-      const linkBoxes: Array<{ url: string; x: number; y: number; w: number; h: number }> = [];
 
       const canvas = await html2canvas(element, {
         scale: 4,
@@ -161,20 +156,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               };
             }
           }
-
-          const sheetBox = clonedSheet.getBoundingClientRect();
-          clonedSheet.querySelectorAll('[data-pdf-link]').forEach((el) => {
-            const r = el.getBoundingClientRect();
-            if (sheetBox.width > 0 && sheetBox.height > 0) {
-              linkBoxes.push({
-                url: el.getAttribute('data-pdf-link') || '',
-                x: (r.left - sheetBox.left) / sheetBox.width,
-                y: (r.top - sheetBox.top) / sheetBox.height,
-                w: r.width / sheetBox.width,
-                h: r.height / sheetBox.height,
-              });
-            }
-          });
 
           const elements = [clonedSheet, ...Array.from(clonedSheet.querySelectorAll('*'))];
 
@@ -576,16 +557,16 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           </strong>
                           <button
                             type="button"
-                            data-pdf-link={PIX_PAGE_URL}
+                            data-html2canvas-ignore="true"
                             onClick={() => {
                               navigator.clipboard.writeText(PIX_KEY);
                               setPixCopied(true);
                               setTimeout(() => setPixCopied(false), 2000);
                             }}
-                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#f59e0b] text-[#0f172a] font-bold text-xs cursor-pointer hover:bg-[#d97706]"
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#f59e0b] text-[#0f172a] font-bold text-xs cursor-pointer hover:bg-[#d97706] print:hidden"
                           >
-                            <Copy className="w-3 h-3" />
-                            <span>{pixCopied ? 'Copiado!' : 'Copiar Pix'}</span>
+                            {pixCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            <span>{pixCopied ? 'Copiado!' : 'Copiar'}</span>
                           </button>
                         </div>
                         <p className="text-xs text-[#64748b] leading-snug">
@@ -630,14 +611,6 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                     <p className="text-xs text-[#94a3b8]">
                       CNPJ 59.085.330/0001-70 • fresamaster0@gmail.com • Salto/SP • Garantia contra defeitos de fabricação
                     </p>
-                    <div className="flex justify-center gap-4 pt-3">
-                      <a data-pdf-link={WHATSAPP_URL} href={WHATSAPP_URL} target="_blank" rel="noreferrer" aria-label="WhatsApp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#16a34a', border: '2px solid #bbf7d0' }}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#ffffff"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.22 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.08 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35zM12.04 21.5a9.4 9.4 0 0 1-4.8-1.31l-.34-.2-3.57.94.95-3.48-.22-.36a9.43 9.43 0 1 1 8 4.41zM12.05 2a10.4 10.4 0 0 0-8.9 15.7L2 22l4.42-1.16A10.4 10.4 0 1 0 12.05 2z"/></svg>
-                      </a>
-                      <a data-pdf-link={INSTAGRAM_URL} href={INSTAGRAM_URL} target="_blank" rel="noreferrer" aria-label="Instagram" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#ff6a00', border: '2px solid #fed7aa' }}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#ffffff" stroke="none"/></svg>
-                      </a>
-                    </div>
                   </div>
                 </div>
               </div>

@@ -87,7 +87,7 @@ export const FresaMasterLogo: React.FC<FresaMasterLogoProps> = ({
             ? 'font-extrabold'
             : 'text-amber-600 dark:text-amber-400'
         }`}
-        style={{ letterSpacing: '0.22em', ...(isPrint ? { color: '#92400e' } : {}) }}
+        style={{ letterSpacing: '0.22em', ...(isPrint ? { color: '#92400e' } : size === 'pdf' ? { color: '#fbbf24' } : {}) }}
       >
         CNC MACHINING
       </span>

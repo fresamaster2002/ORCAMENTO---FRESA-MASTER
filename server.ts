@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import path from "path";
 import { createRequire } from "module";
 import { createServer as createViteServer } from "vite";
@@ -351,6 +351,32 @@ function calculateMelhorEnvioRates(
   return options;
 }
 
+// Dados de etiqueta/entrega: usa o endereço de entrega quando diferente do endereço fiscal (Cartão CNPJ)
+function buildShipTo(quote: any) {
+  const d = quote.shipping?.deliveryAddress;
+  if (d?.enabled) {
+    return {
+      nome: d.recipient || quote.client.name,
+      endereco: d.address || "",
+      numero: d.number || "S/N",
+      complemento: d.complement || "",
+      bairro: d.neighborhood || "",
+      cep: String(quote.shipping?.destinationCep || "").replace(/\D/g, ""),
+      municipio: d.city || "",
+      uf: d.state || "SP",
+    };
+  }
+  return {
+    nome: quote.client.name,
+    endereco: quote.client.address || "",
+    numero: quote.client.number || "S/N",
+    complemento: quote.client.complement || "",
+    bairro: quote.client.neighborhood || "",
+    cep: String(quote.client.cep || "").replace(/\D/g, ""),
+    municipio: quote.client.city || "",
+    uf: quote.client.state || "SP",
+  };
+}
 // Helper: Query ViaCEP public API
 async function lookupViaCep(cep: string) {
   const clean = cep.replace(/\D/g, "");
@@ -1539,6 +1565,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
           nome: quote.shipping?.selectedOption?.carrier || "Melhor Envio / Correios",
         },
         frete: Number(quote.financials?.shippingAmount) || 0,
+        etiqueta: buildShipTo(quote),
         volumes: [
           {
             servico: quote.shipping?.selectedOption?.name || "Sedex",
@@ -1572,6 +1599,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
       )
       .join("");
 
+    const shipTo = buildShipTo(quote);
     const blingXml = `<?xml version="1.0" encoding="UTF-8"?>
 <pedido>
   <cliente>
@@ -1594,12 +1622,14 @@ app.post("/api/bling/generate-payload", (req, res) => {
     <tipo_frete>R</tipo_frete>
     <servico_correios>${quote.shipping?.selectedOption?.name || "Sedex"}</servico_correios>
     <dados_etiqueta>
-      <nome><![CDATA[${quote.client.name}]]></nome>
-      <endereco><![CDATA[${quote.client.address || ""}]]></endereco>
-      <numero>${quote.client.number || "S/N"}</numero>
-      <cep>${cleanCep}</cep>
-      <municipio><![CDATA[${quote.client.city || ""}]]></municipio>
-      <uf>${quote.client.state || "SP"}</uf>
+      <nome><![CDATA[${shipTo.nome}]]></nome>
+      <endereco><![CDATA[${shipTo.endereco}]]></endereco>
+      <numero>${shipTo.numero}</numero>
+      <complemento><![CDATA[${shipTo.complemento}]]></complemento>
+      <bairro><![CDATA[${shipTo.bairro}]]></bairro>
+      <cep>${shipTo.cep}</cep>
+      <municipio><![CDATA[${shipTo.municipio}]]></municipio>
+      <uf>${shipTo.uf}</uf>
     </dados_etiqueta>
   </transporte>
   <itens>${xmlItems}
@@ -1778,6 +1808,7 @@ app.post("/api/bling/create-order", async (req, res) => {
           nome: quote.shipping?.selectedOption?.carrier || "Melhor Envio / Correios",
         },
         frete: Number(quote.financials?.shippingAmount) || 0,
+        etiqueta: buildShipTo(quote),
         volumes: [
           {
             servico: quote.shipping?.selectedOption?.name || "Sedex",

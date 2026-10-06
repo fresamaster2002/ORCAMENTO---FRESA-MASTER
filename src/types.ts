@@ -36,9 +36,22 @@ export interface PackageDimensions {
   length: number; // Comprimento em cm (min 16cm Correios)
 }
 
+// Endereço de entrega diferente do endereço fiscal (Cartão CNPJ). O CEP fica em ShippingInfo.destinationCep.
+export interface DeliveryAddress {
+  enabled: boolean;
+  recipient?: string; // Nome de quem recebe (opcional)
+  address?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+}
+
 export interface ShippingInfo {
   originCep: string;
   destinationCep: string;
+  deliveryAddress?: DeliveryAddress;
   weightKg?: number; // Peso estimado da encomenda em kg (padrão 0,5 kg)
   weightDescription?: string; // Detalhamento do peso das fresas e embalagem
   packageDimensions?: PackageDimensions;

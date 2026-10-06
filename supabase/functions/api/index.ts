@@ -1,4 +1,4 @@
-type EdgeRuntime = {
+﻿type EdgeRuntime = {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
 };
@@ -373,6 +373,14 @@ function calculateShippingRates(
   return options;
 }
 
+function buildShipTo(quote: JsonObject) {
+  const d = quote.shipping?.deliveryAddress;
+  if (d?.enabled) {
+    return { nome: d.recipient || quote.client?.name, endereco: d.address || '', numero: d.number || 'S/N', complemento: d.complement || '', bairro: d.neighborhood || '', cep: String(quote.shipping?.destinationCep || '').replace(/\D/g, ''), municipio: d.city || '', uf: d.state || 'SP' };
+  }
+  const c = quote.client || {};
+  return { nome: c.name, endereco: c.address || '', numero: c.number || 'S/N', complemento: c.complement || '', bairro: c.neighborhood || '', cep: String(c.cep || '').replace(/\D/g, ''), municipio: c.city || '', uf: c.state || 'SP' };
+}
 async function lookupViaCep(cep: string): Promise<JsonObject | null> {
   const clean = (cep || '').replace(/\D/g, '');
   if (clean.length !== 8) return null;
@@ -722,10 +730,11 @@ function generateBlingPayload(quote: JsonObject): JsonObject {
   const cleanPhone = String(client.phone || '').replace(/\D/g, '');
   const date = quote.project?.date || new Date().toISOString().split('T')[0];
   const items = quote.items || [];
-  const blingJson = { numero: String(quote.id || '').replace(/\D/g, '') || String(Date.now()).slice(-6), numeroLoja: 'FRESA-MASTER', data: date, dataSaida: date, contato: { nome: client.name, tipoPessoa: cleanDocument.length === 14 ? 'J' : 'F', numeroDocumento: cleanDocument, ie: client.ie || 'ISENTO', email: client.email || '', telefone: cleanPhone, endereco: { endereco: client.address || '', numero: client.number || 'S/N', complemento: client.complement || '', bairro: client.neighborhood || '', cep: cleanCep, municipio: client.city || '', uf: client.state || 'SP' } }, itens: items.map((item: JsonObject, index: number) => ({ codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: 0.35, pesoLiquido: 0.25 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Orçamento ${quote.id} gerado pela Fresa Master. ${(quote.observations || []).join(' ')}` };
+  const blingJson = { numero: String(quote.id || '').replace(/\D/g, '') || String(Date.now()).slice(-6), numeroLoja: 'FRESA-MASTER', data: date, dataSaida: date, contato: { nome: client.name, tipoPessoa: cleanDocument.length === 14 ? 'J' : 'F', numeroDocumento: cleanDocument, ie: client.ie || 'ISENTO', email: client.email || '', telefone: cleanPhone, endereco: { endereco: client.address || '', numero: client.number || 'S/N', complemento: client.complement || '', bairro: client.neighborhood || '', cep: cleanCep, municipio: client.city || '', uf: client.state || 'SP' } }, itens: items.map((item: JsonObject, index: number) => ({ codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, etiqueta: buildShipTo(quote), volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: 0.35, pesoLiquido: 0.25 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Orçamento ${quote.id} gerado pela Fresa Master. ${(quote.observations || []).join(' ')}` };
   const cdata = (value: unknown) => String(value || '').replace(/\]\]>/g, ']]]]><![CDATA[>');
   const xmlItems = items.map((item: JsonObject, index: number) => `<item><codigo>${item.sku || `FM-${index + 1}`}</codigo><descricao><![CDATA[${cdata(item.description)}]]></descricao><un>${item.unit || 'UN'}</un><qtde>${Number(item.quantity) || 1}</qtde><vlr_unit>${Number(item.unitPrice || 0).toFixed(2)}</vlr_unit><tipo>P</tipo><origem>0</origem><class_fiscal>${item.ncm || '8207.70.00'}</class_fiscal></item>`).join('');
-  const blingXml = `<?xml version="1.0" encoding="UTF-8"?><pedido><cliente><nome><![CDATA[${cdata(client.name)}]]></nome><tipoPessoa>${cleanDocument.length === 14 ? 'J' : 'F'}</tipoPessoa><cpf_cnpj>${cleanDocument}</cpf_cnpj><ie>${client.ie || 'ISENTO'}</ie><endereco><![CDATA[${cdata(client.address)}]]></endereco><numero>${client.number || 'S/N'}</numero><complemento><![CDATA[${cdata(client.complement)}]]></complemento><bairro><![CDATA[${cdata(client.neighborhood)}]]></bairro><cep>${cleanCep}</cep><cidade><![CDATA[${cdata(client.city)}]]></cidade><uf>${client.state || 'SP'}</uf><fone>${cleanPhone}</fone><email>${client.email || ''}</email></cliente><transporte><transportadora><![CDATA[${cdata(quote.shipping?.selectedOption?.carrier || 'Correios')}]]></transportadora><tipo_frete>R</tipo_frete><servico_correios>${quote.shipping?.selectedOption?.name || 'Sedex'}</servico_correios></transporte><itens>${xmlItems}</itens><vlr_frete>${Number(quote.financials?.shippingAmount || 0).toFixed(2)}</vlr_frete><vlr_desconto>${Number(quote.financials?.discountAmount || 0).toFixed(2)}</vlr_desconto><obs><![CDATA[Orçamento Fresa Master ${quote.id}.]]></obs></pedido>`;
+  const shipTo = buildShipTo(quote);
+  const blingXml = `<?xml version="1.0" encoding="UTF-8"?><pedido><cliente><nome><![CDATA[${cdata(client.name)}]]></nome><tipoPessoa>${cleanDocument.length === 14 ? 'J' : 'F'}</tipoPessoa><cpf_cnpj>${cleanDocument}</cpf_cnpj><ie>${client.ie || 'ISENTO'}</ie><endereco><![CDATA[${cdata(client.address)}]]></endereco><numero>${client.number || 'S/N'}</numero><complemento><![CDATA[${cdata(client.complement)}]]></complemento><bairro><![CDATA[${cdata(client.neighborhood)}]]></bairro><cep>${cleanCep}</cep><cidade><![CDATA[${cdata(client.city)}]]></cidade><uf>${client.state || 'SP'}</uf><fone>${cleanPhone}</fone><email>${client.email || ''}</email></cliente><transporte><transportadora><![CDATA[${cdata(quote.shipping?.selectedOption?.carrier || 'Correios')}]]></transportadora><tipo_frete>R</tipo_frete><servico_correios>${quote.shipping?.selectedOption?.name || 'Sedex'}</servico_correios><dados_etiqueta><nome><![CDATA[${cdata(shipTo.nome)}]]></nome><endereco><![CDATA[${cdata(shipTo.endereco)}]]></endereco><numero>${shipTo.numero}</numero><complemento><![CDATA[${cdata(shipTo.complemento)}]]></complemento><bairro><![CDATA[${cdata(shipTo.bairro)}]]></bairro><cep>${shipTo.cep}</cep><municipio><![CDATA[${cdata(shipTo.municipio)}]]></municipio><uf>${shipTo.uf}</uf></dados_etiqueta></transporte><itens>${xmlItems}</itens><vlr_frete>${Number(quote.financials?.shippingAmount || 0).toFixed(2)}</vlr_frete><vlr_desconto>${Number(quote.financials?.discountAmount || 0).toFixed(2)}</vlr_desconto><obs><![CDATA[Orçamento Fresa Master ${quote.id}.]]></obs></pedido>`;
   return { blingJson, blingXml };
 }
 
@@ -876,7 +885,7 @@ async function route(request: Request): Promise<Response> {
       const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
       if (missing.length) return json({ success: false, error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${missing.map((item: JsonObject) => item.description).join(', ')}.` }, 400);
       const doc = String(quote.client.document || '').replace(/\D/g, '');
-      const payload = { numeroLoja: quote.id, data: quote.project?.date || new Date().toISOString().slice(0, 10), dataSaida: quote.project?.date || new Date().toISOString().slice(0, 10), contato: { nome: quote.client.name || 'Cliente Fresa Master', tipoPessoa: doc.length === 14 ? 'J' : 'F', numeroDocumento: doc || undefined, ie: quote.client.ie || 'ISENTO', email: quote.client.email || undefined, telefone: String(quote.client.phone || '').replace(/\D/g, '') || undefined, endereco: { endereco: quote.client.address || 'Rua de Entrega', numero: quote.client.number || 'S/N', complemento: quote.client.complement || undefined, bairro: quote.client.neighborhood || 'Centro', cep: String(quote.client.cep || '').replace(/\D/g, '') || undefined, municipio: quote.client.city || 'Curitiba', uf: quote.client.state || 'PR' } }, itens: quote.items.map((item: JsonObject, index: number) => ({ ...(/^\d+$/.test(String(item.sku || '')) ? { produto: { id: Number(item.sku) } } : {}), codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: quote.shipping?.weightKg || 0.5 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}.` };
+      const payload = { numeroLoja: quote.id, data: quote.project?.date || new Date().toISOString().slice(0, 10), dataSaida: quote.project?.date || new Date().toISOString().slice(0, 10), contato: { nome: quote.client.name || 'Cliente Fresa Master', tipoPessoa: doc.length === 14 ? 'J' : 'F', numeroDocumento: doc || undefined, ie: quote.client.ie || 'ISENTO', email: quote.client.email || undefined, telefone: String(quote.client.phone || '').replace(/\D/g, '') || undefined, endereco: { endereco: quote.client.address || 'Rua de Entrega', numero: quote.client.number || 'S/N', complemento: quote.client.complement || undefined, bairro: quote.client.neighborhood || 'Centro', cep: String(quote.client.cep || '').replace(/\D/g, '') || undefined, municipio: quote.client.city || 'Curitiba', uf: quote.client.state || 'PR' } }, itens: quote.items.map((item: JsonObject, index: number) => ({ ...(/^\d+$/.test(String(item.sku || '')) ? { produto: { id: Number(item.sku) } } : {}), codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, etiqueta: buildShipTo(quote), volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: quote.shipping?.weightKg || 0.5 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}.` };
       const bh = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' };
       let contactId: number | undefined;
       if (doc) {
@@ -907,6 +916,26 @@ async function route(request: Request): Promise<Response> {
         const d = await r.json().catch(() => ({}));
         return { ok: r.ok, status: r.status, data: d };
       };
+      const ensureFiscal = async (nfeId: string | number, orderId?: string) => {
+        let info = await readNfe(nfeId);
+        let fiscalWarning: string | undefined;
+        let newId: string | number = nfeId;
+        const draft = info.ok ? info.data.data : null;
+        if (draft) {
+          const uf = String(draft.contato?.endereco?.uf || '').toUpperCase();
+          const cfop = uf === 'SP' ? '5102' : '6102';
+          const needsFix = (draft.itens || []).some((i: JsonObject) => String(i.cfop) !== cfop);
+          if (needsFix && uf) {
+            const { id: _id, chaveAcesso: _c, xml: _x, linkDanfe: _d, linkPDF: _p, situacao: _s, dataEmissao: _e, ...rest } = draft;
+            const orderItems = orderId ? ((await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${orderId}`, { headers }).then((r) => r.json()).catch(() => ({})))?.data?.itens || []) : [];
+            const updated = { ...rest, transporte: { ...(rest.transporte || {}), frete: Number(rest.valorFrete) || 0 }, itens: (draft.itens || []).map((i: JsonObject, idx: number) => ({ ...i, codigo: i.codigo || orderItems[idx]?.codigo || `FM-${idx + 1}`, cfop })) };
+            const u = await fetch(`https://api.bling.com.br/Api/v3/nfe/${nfeId}`, { method: 'PUT', headers, body: JSON.stringify(updated) });
+            if (!u.ok) fiscalWarning = `N?o foi poss?vel ajustar o CFOP automaticamente: ${JSON.stringify(await u.json().catch(() => ({}))).slice(0, 700)}`;
+            else info = await readNfe(nfeId);
+          }
+        }
+        return { info, fiscalWarning, nfeId: newId };
+      };
       if (path === '/bling/nfe/generate') {
         const orderId = String(body.orderId || '').trim();
         if (!orderId) return json({ success: false, error: 'Informe o ID do pedido de venda do Bling.' }, 400);
@@ -914,8 +943,11 @@ async function route(request: Request): Promise<Response> {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) return json({ success: false, error: d.error?.description || d.error?.message || `O Bling recusou gerar a NF-e (HTTP ${r.status}).`, details: d }, r.status);
         const nfeId = d.data?.id;
-        const info = nfeId ? await readNfe(nfeId) : null;
-        return json({ success: true, nfeId, nfe: info?.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e gerada no Bling como rascunho. Confira e envie à SEFAZ.' });
+        const fixed = nfeId ? await ensureFiscal(nfeId, orderId) : null;
+        const finalId = fixed?.nfeId ?? nfeId;
+        const info = fixed?.info ?? null;
+        const fiscalWarning = fixed?.fiscalWarning;
+        return json({ success: true, nfeId: finalId, fiscalWarning, nfe: info?.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e gerada no Bling como rascunho. Confira e envie à SEFAZ.' });
       }
       if (path === '/bling/nfe/send') {
         const nfeId = String(body.nfeId || '').trim();
@@ -929,9 +961,10 @@ async function route(request: Request): Promise<Response> {
       if (path === '/bling/nfe/status') {
         const nfeId = String(body.nfeId || '').trim();
         if (!nfeId) return json({ success: false, error: 'Informe o ID da NF-e.' }, 400);
+        if (body.fix) { const fx = await ensureFiscal(nfeId, String(body.orderId || '')); return json({ success: !fx.fiscalWarning, fiscalWarning: fx.fiscalWarning, nfe: fx.info.ok ? summarize(fx.info.data.data || {}) : undefined, raw: body.debug ? fx.info.data.data : undefined }); }
         const info = await readNfe(nfeId);
         if (!info.ok) return json({ success: false, error: info.data.error?.description || `Falha ao consultar a NF-e (HTTP ${info.status}).` }, info.status);
-        return json({ success: true, nfe: summarize(info.data.data || {}) });
+        return json({ success: true, nfe: summarize(info.data.data || {}), raw: body.debug ? info.data.data : undefined });
       }
     }
     if (path === '/bling/oauth/token-exchange' && request.method === 'POST') {

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { BlingCatalogProduct, QuoteData, QuoteItem, ShippingOption, ShippingInfo, ClientInfo } from '../types';
 import { ShippingCalculator } from './ShippingCalculator';
+import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
 
@@ -280,10 +281,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   const handleUpdateDestinationCep = (cep: string) => {
     onChange({
       ...quote,
-      client: {
-        ...quote.client,
-        cep,
-      },
+      // O CEP fiscal (Cartão CNPJ) só é preenchido aqui se ainda estiver vazio
+      client: quote.client.cep ? quote.client : { ...quote.client, cep },
       shipping: {
         ...quote.shipping,
         destinationCep: cep,
@@ -559,7 +558,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                  CEP de Destino:
+                  CEP Fiscal (Cartão CNPJ):
                 </label>
                 <input
                   type="text"
@@ -615,6 +614,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             </div>
           )}
         </div>
+
+        <DeliveryAddressCard
+          shipping={quote.shipping}
+          onChange={(shipping) => onChange({ ...quote, shipping })}
+        />
 
         {/* Section 2: Freight Shipping Calculator (Melhor Envio) */}
         <ShippingCalculator
@@ -1074,7 +1078,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               client: newClient,
               shipping: {
                 ...quote.shipping,
-                destinationCep: newClient.cep || quote.shipping.destinationCep,
+                destinationCep: quote.shipping.deliveryAddress?.enabled
+                  ? quote.shipping.destinationCep
+                  : newClient.cep || quote.shipping.destinationCep,
               },
             });
           }}

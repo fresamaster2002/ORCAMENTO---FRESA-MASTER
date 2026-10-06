@@ -1,4 +1,6 @@
-﻿type EdgeRuntime = {
+import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from '../_shared/deliveryExtraction.ts';
+
+type EdgeRuntime = {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
 };
@@ -618,6 +620,24 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });
 }
 
+async function extractDelivery(body: JsonObject): Promise<Response> {
+  const text = body.text;
+  if (typeof text !== 'string' || !text.trim()) return json({ error: 'Cole a mensagem com o endereço de entrega.' }, 400);
+  if (text.length > 5000) return json({ error: 'O endereço excede o limite de 5.000 caracteres.' }, 413);
+  try {
+    const parsed = await callGemini([{ text }], deliveryExtractionInstruction, deliveryExtractionSchema);
+    if (!parsed) {
+      console.error('IA indisponível na extração do endereço de entrega.');
+      return json({ error: 'Não foi possível consultar a IA. Tente novamente ou preencha o endereço manualmente.' }, 503);
+    }
+    const delivery = normalizeExtractedDelivery(parsed);
+    return json({ success: true, ...await completeDeliveryByCep(delivery) });
+  } catch (error) {
+    console.error('Erro na extração do endereço de entrega:', error);
+    return json({ error: error instanceof Error ? error.message : 'Não foi possível extrair o endereço de entrega.' }, 502);
+  }
+}
+
 async function extractCadastral(body: JsonObject): Promise<Response> {
   const text = typeof body.text === 'string' ? body.text : '';
   const file = body.file || {};
@@ -824,6 +844,7 @@ async function route(request: Request): Promise<Response> {
   try {
     if (path === '/health' && request.method === 'GET') return json({ status: 'ok', company: 'Fresa Master', hasApiKey: Boolean(env('GEMINI_API_KEY')), model: env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), timestamp: new Date().toISOString() });
     if (path === '/quote/extract' && request.method === 'POST') return await extractQuote(body);
+    if (path === '/shipping/extract-delivery' && request.method === 'POST') return await extractDelivery(body);
     if (path === '/bling/extract-cadastral' && request.method === 'POST') return await extractCadastral(body);
     if (path === '/bling/generate-payload' && request.method === 'POST') {
       if (!body.quote?.client) return json({ error: 'Orçamento inválido.' }, 400);

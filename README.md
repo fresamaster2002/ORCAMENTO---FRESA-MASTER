@@ -8,6 +8,14 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 - Supabase Edge Function para APIs de IA, Bling e Melhor Envio
 - GitHub Pages para hospedar a interface
 
+## Endereço de entrega por mensagem
+
+Marque **Entregar em outro endereço (diferente do Cartão CNPJ)**, cole a mensagem do cliente e clique em **Preencher entrega com IA**. A IA separa destinatário, CEP, rua, número e complemento; o ViaCEP completa/corrige rua, bairro, cidade e UF quando disponíveis para o CEP. O cadastro fiscal do CNPJ não é alterado.
+
+Número e complemento não são deduzidos pelo CEP. Dados obrigatórios ausentes, CEP não encontrado e falhas de consulta são avisados para conferência manual. CEPs gerais de cidade podem não identificar rua/bairro. Confira os campos e clique em **Calcular** para atualizar o frete.
+
+O recurso usa `/api/shipping/extract-delivery` no Express e `/shipping/extract-delivery` na Edge Function. Para disponibilizá-lo no app publicado, publique também a versão atualizada da função `api` no Supabase.
+
 ## Como rodar localmente
 
 ### 1. Instale as dependências

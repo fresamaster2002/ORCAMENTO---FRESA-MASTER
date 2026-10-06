@@ -13,6 +13,7 @@ import {
   normalizeBlingCatalogProducts,
 } from "./src/blingCatalog";
 import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
+import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1332,6 +1333,38 @@ Regras de negócio da Fresa Master:
       missingInfo: [],
       quote: fallbackQuote,
     });
+  }
+});
+
+app.post("/api/shipping/extract-delivery", async (req, res) => {
+  const text = req.body?.text;
+  if (typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "Cole a mensagem com o endereço de entrega." });
+  }
+  if (text.length > 5000) {
+    return res.status(413).json({ error: "O endereço excede o limite de 5.000 caracteres." });
+  }
+  const ai = getGeminiClient();
+  if (!ai) return res.status(503).json({ error: "IA indisponível. Configure a chave Gemini no servidor." });
+  try {
+    if (!await reserveGeminiRequest()) {
+      return res.status(429).json({ error: "Limite diário de uso da IA atingido ou controle de custo indisponível." });
+    }
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: text,
+      config: {
+        systemInstruction: deliveryExtractionInstruction,
+        responseMimeType: "application/json",
+        responseSchema: deliveryExtractionSchema,
+        maxOutputTokens: 1200,
+      },
+    });
+    const delivery = normalizeExtractedDelivery(JSON.parse(response.text || "null"));
+    return res.json({ success: true, ...await completeDeliveryByCep(delivery) });
+  } catch (error) {
+    console.error("Erro na extração do endereço de entrega:", error);
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Não foi possível extrair o endereço de entrega." });
   }
 });
 

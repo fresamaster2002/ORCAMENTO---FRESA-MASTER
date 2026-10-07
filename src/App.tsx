@@ -162,7 +162,7 @@ const createEmptyQuote = (existingIds: string[] = []): QuoteData => ({
   status: 'draft',
   createdAt: new Date().toISOString(),
   client: {
-    name: '', tradeName: '', company: '', email: '', phone: '', document: '', ie: 'ISENTO',
+    name: '', tradeName: '', company: '', email: '', phone: '', document: '', ie: '',
     cep: '', address: '', number: '', complement: '', neighborhood: '', city: '', state: '',
   },
   project: { ...INITIAL_FRESA_MASTER_QUOTE.project, description: '', deadline: '', date: new Date().toISOString().split('T')[0] },

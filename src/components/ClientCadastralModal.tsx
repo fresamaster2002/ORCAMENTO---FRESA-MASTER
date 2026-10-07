@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { apiFetch } from '../api';
+import { CnpjLookup } from './CnpjLookup';
 import { 
   Sparkles, 
   X, 
@@ -181,7 +182,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
     `Razão Social: ${c.name || ''}`,
     `Nome Fantasia: ${c.tradeName || ''}`,
     `CNPJ/CPF: ${c.document || ''}`,
-    `Inscrição Estadual: ${c.ie || 'ISENTO'}`,
+    `Inscrição Estadual: ${c.ie || ''}`,
     `Endereço: ${c.address || ''}, ${c.number || 'S/N'}${c.complement ? ' - ' + c.complement : ''}`,
     `Bairro: ${c.neighborhood || ''}`,
     `Cidade: ${c.city || ''} - ${c.state || ''}`,
@@ -189,6 +190,26 @@ Telefone/WhatsApp: (41) 98888-5544`;
     `E-mail: ${c.email || ''}`,
     `Telefone: ${c.phone || ''}`,
   ].join('\n');
+
+  const handleCnpjFound = (client: ClientInfo) => {
+    const base = extractedPreview || currentClient;
+    const sameClient = String(base.document || '').replace(/\D/g, '') === String(client.document || '').replace(/\D/g, '');
+    const nextClient = sameClient
+      ? {
+          ...base,
+          ...client,
+          email: client.email || base.email || '',
+          phone: client.phone || base.phone || '',
+          ie: client.ie || (/^\s*isent[oa]\s*$/i.test(base.ie || '') ? '' : base.ie || ''),
+        }
+      : client;
+    setAttachedDoc(null);
+    setExtractedPreview(nextClient);
+    setInputText(clientToText(nextClient));
+    setTextFromAi(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+  };
 
   const updateField = (key: keyof ClientInfo, value: string) => {
     setExtractedPreview((prev) => {
@@ -248,6 +269,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
         {/* Content Area */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs">
+          <CnpjLookup initialCnpj={currentClient.document} onFound={handleCnpjFound} />
+
           {/* Top Options / File Upload */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Column 1: Document Upload (Cartão CNPJ) */}

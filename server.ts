@@ -14,6 +14,7 @@ import {
 } from "./src/blingCatalog";
 import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
+import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1229,7 +1230,7 @@ Regras de negócio da Fresa Master:
           email: parsed.client?.email || "",
           phone: parsed.client?.phone || "",
           document: parsed.client?.document || "",
-          ie: parsed.client?.ie || "ISENTO",
+          ie: parsed.client?.ie || "",
           cep: cep,
           address: parsed.client?.address || addressInfo?.logradouro || "",
           number: parsed.client?.number || "",
@@ -1369,6 +1370,19 @@ app.post("/api/shipping/extract-delivery", async (req, res) => {
 });
 
 // Endpoint: Extract Cadastral Data from Client Card (Text, Image or PDF) for Bling NF-e
+app.post("/api/bling/lookup-cnpj", async (req, res) => {
+  try {
+    const result = await lookupCnpj(req.body?.cnpj);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof CnpjLookupError) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
+    console.error("Erro na consulta cadastral por CNPJ:", error);
+    return res.status(502).json({ success: false, error: "Não foi possível consultar os dados deste CNPJ." });
+  }
+});
+
 app.post("/api/bling/extract-cadastral", async (req, res) => {
   try {
     const { text, currentClient, file } = req.body;
@@ -1395,7 +1409,7 @@ Analise o documento e/ou texto fornecido e extraia com máxima precisão fiscal 
 - Razão Social (name) - Nome empresarial oficial
 - Nome Fantasia (tradeName) - Se não houver, use o mesmo da Razão Social
 - CNPJ ou CPF (document) - remova pontuações e mantenha apenas números ou formato padrão
-- Inscrição Estadual (ie) - se não tiver expressa, preencha "ISENTO"
+- Inscrição Estadual (ie) - use somente a IE expressa; se não estiver disponível, deixe em branco e não presuma "ISENTO"
 - CEP (formato 00000-000)
 - Logradouro (address - rua, avenida, rodovia)
 - Número (number)
@@ -1528,7 +1542,7 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
       ...currentClient,
       name: nameMatch ? nameMatch[1].trim() : currentClient?.name || "Empresa Cliente Ltda",
       document: cnpjMatch ? cnpjMatch[0] : currentClient?.document || "",
-      ie: ieMatch ? ieMatch[1].trim().toUpperCase() : (currentClient?.ie || "ISENTO"),
+      ie: ieMatch ? ieMatch[1].trim().toUpperCase() : (currentClient?.ie || ""),
       cep: detectedCep,
       address: addressMatch ? addressMatch[0].trim() : (addressInfo?.logradouro || currentClient?.address || ""),
       neighborhood: addressInfo?.bairro || currentClient?.neighborhood || "",
@@ -1571,7 +1585,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
         nome: quote.client.name,
         tipoPessoa: cleanCnpj.length === 14 ? "J" : "F",
         numeroDocumento: cleanCnpj,
-        ie: quote.client.ie || "ISENTO",
+        ie: quote.client.ie || "",
         email: quote.client.email || "",
         telefone: cleanPhone,
         endereco: {
@@ -1639,7 +1653,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
     <nome><![CDATA[${quote.client.name}]]></nome>
     <tipoPessoa>${cleanCnpj.length === 14 ? "J" : "F"}</tipoPessoa>
     <cpf_cnpj>${cleanCnpj}</cpf_cnpj>
-    <ie>${quote.client.ie || "ISENTO"}</ie>
+    <ie>${quote.client.ie || ""}</ie>
     <endereco><![CDATA[${quote.client.address || ""}]]></endereco>
     <numero>${quote.client.number || "S/N"}</numero>
     <complemento><![CDATA[${quote.client.complement || ""}]]></complemento>
@@ -1814,7 +1828,7 @@ app.post("/api/bling/create-order", async (req, res) => {
         nome: quote.client.name || "Cliente Fresa Master",
         tipoPessoa: cleanCnpj.length === 14 ? "J" : "F",
         numeroDocumento: cleanCnpj || undefined,
-        ie: quote.client.ie || "ISENTO",
+        ie: quote.client.ie || "",
         email: quote.client.email || undefined,
         telefone: cleanPhone || undefined,
         endereco: {
@@ -2564,7 +2578,7 @@ function parseFresaMasterFallback(
       email: "",
       phone: "",
       document: "",
-      ie: "ISENTO",
+      ie: "",
       cep,
       address: "Endereço a confirmar",
       number: "",

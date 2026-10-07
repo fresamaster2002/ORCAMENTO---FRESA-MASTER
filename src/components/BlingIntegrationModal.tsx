@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
+import { CnpjLookup } from './CnpjLookup';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -433,6 +434,23 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleCnpjFound = async (lookupClient: ClientInfo) => {
+    const sameClient = String(clientData.document || '').replace(/\D/g, '') === String(lookupClient.document || '').replace(/\D/g, '');
+    const nextClient = sameClient
+      ? {
+          ...clientData,
+          ...lookupClient,
+          email: lookupClient.email || clientData.email || '',
+          phone: lookupClient.phone || clientData.phone || '',
+          ie: lookupClient.ie || (/^\s*isent[oa]\s*$/i.test(clientData.ie || '') ? '' : clientData.ie || ''),
+        }
+      : lookupClient;
+    setClientData(nextClient);
+    onUpdateClient(nextClient);
+    await fetchBlingPayload(nextClient);
+    setStatusMessage('Cadastro localizado. Confira os dados e a Inscrição Estadual antes de emitir a NF-e.');
   };
 
   const handleDownloadXml = () => {
@@ -1137,6 +1155,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
           {/* TAB: CADASTRAL DATA / CARTAO CNPJ */}
           {activeTab === 'cadastral' && (
             <div className="space-y-4">
+              <CnpjLookup initialCnpj={clientData.document} onFound={handleCnpjFound} />
+
               <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-xl p-4">
                 <h4 className="font-bold text-blue-900 dark:text-blue-200 mb-1 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-blue-600" />
@@ -1253,7 +1273,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-[11px] text-slate-600 dark:text-slate-400">
                   <p><strong>Razão Social:</strong> {clientData.name || 'Não informado'}</p>
                   <p><strong>Nome Fantasia:</strong> {clientData.tradeName || '-'}</p>
-                  <p><strong>Inscrição Estadual:</strong> {clientData.ie || 'ISENTO'}</p>
+                  <p><strong>Inscrição Estadual:</strong> {clientData.ie || 'Não informada'}</p>
                   <p><strong>CEP:</strong> {clientData.cep || 'Não informado'}</p>
                   <p><strong>Cidade/UF:</strong> {clientData.city || '-'}/{clientData.state || '-'}</p>
                   <p><strong>E-mail NF-e:</strong> {clientData.email || 'Não informado'}</p>
@@ -1390,7 +1410,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 {[
                   { label: 'Razão Social', val: clientData.name, key: 'name' },
                   { label: 'CNPJ / CPF', val: clientData.document, key: 'doc' },
-                  { label: 'Inscrição Estadual', val: clientData.ie || 'ISENTO', key: 'ie' },
+                  { label: 'Inscrição Estadual', val: clientData.ie, key: 'ie' },
                   { label: 'CEP', val: clientData.cep, key: 'cep' },
                   { label: 'Endereço', val: `${clientData.address || ''}, ${clientData.number || 'S/N'}`, key: 'addr' },
                   { label: 'Bairro', val: clientData.neighborhood, key: 'bairro' },

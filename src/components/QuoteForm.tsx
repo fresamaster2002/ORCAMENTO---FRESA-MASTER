@@ -509,7 +509,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             <div className="p-2.5 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700">
               <span className="text-[10px] text-slate-400 font-semibold block uppercase">Inscrição Estadual</span>
               <span className="font-medium text-slate-800 dark:text-slate-200 truncate block mt-0.5">
-                {quote.client.ie || 'ISENTO'}
+                {quote.client.ie || 'Não informada'}
               </span>
             </div>
           </div>
@@ -549,9 +549,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={quote.client.ie || 'ISENTO'}
+                  value={quote.client.ie || ''}
                   onChange={(e) => updateClient('ie', e.target.value)}
-                  placeholder="ISENTO ou número"
+                  placeholder="IE ou ISENTO se confirmado"
                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-amber-500"
                 />
               </div>

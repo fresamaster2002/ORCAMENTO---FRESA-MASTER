@@ -22,6 +22,22 @@ Na janela **Preencher c/ IA (Cartão CNPJ)** e na aba cadastral do Bling, inform
 
 Confira os dados retornados antes de emitir a NF-e. A consulta pode não localizar uma IE ou estar desatualizada; nesses casos, o campo fica em branco e o app recomenda confirmação com o cliente/SEFAZ. A ausência de IE na consulta não significa que a empresa seja isenta. Informe a IE ou confirme manualmente a condição de isento antes do faturamento.
 
+## Rejeição de pedido no Bling
+
+O app exibe a mensagem geral e os detalhes de validação retornados pelo Bling. O bloqueio de venda duplicada (código 3, namespace `VENDAS`) significa que o Bling encontrou informações idênticas à última venda salva. Confira **Vendas > Pedidos de Venda** e continue o faturamento no pedido existente; não altere os dados apenas para contornar o bloqueio. O app não repete o envio automaticamente nem trata a rejeição como pedido criado.
+
+### Validação de NF-e e pendências
+
+Em 07/10/2026, um teste pela API do app gerou e transmitiu a NF-e nº 000036, série 1, em homologação. O XML confirmou `tpAmb=2` e `cStat=100` (autorizada, sem valor fiscal). A configuração do Bling foi restaurada para produção e conferida após recarregar.
+
+Esse resultado valida a comunicação, não a correção fiscal do fluxo. Antes de considerar a emissão pelo app pronta para produção, corrigir e testar:
+
+- NCM: o orçamento enviou `8207.70.00`, mas o XML gerado continha `00000000`. A tentativa de ajuste manual no Bling foi recusada; não foi persistida.
+- Pagamento: o orçamento indicava Pix, mas o XML continha `tPag=01` (dinheiro).
+- ID da NF-e: a geração retornou `data.idNotaFiscal`, enquanto o backend atualmente procura `data.id`; isso impede a continuação correta pela interface.
+
+O teste usou um pedido separado identificado por `TESTE-HOMOLOGACAO-1791342197496`; pedidos de venda não são isolados pela troca do ambiente de NF-e. Esse pedido de teste permanece no Bling e não deve ser faturado em produção.
+
 ## Como rodar localmente
 
 ### 1. Instale as dependências

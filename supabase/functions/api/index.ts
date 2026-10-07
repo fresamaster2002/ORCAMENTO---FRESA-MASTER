@@ -1,5 +1,6 @@
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from '../_shared/deliveryExtraction.ts';
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
+import { formatBlingError } from '../_shared/blingErrors.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -932,7 +933,7 @@ async function route(request: Request): Promise<Response> {
       (payload as JsonObject).contato = { id: contactId };
       const response = await fetch('https://api.bling.com.br/Api/v3/pedidos/vendas', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) return json({ success: false, error: data.error?.message || data.message || 'O Bling recusou o pedido de venda.', blingDetails: data }, response.status);
+      if (!response.ok) return json({ success: false, error: formatBlingError(data), blingDetails: data }, response.status);
       const orderId = data?.data?.id || data?.id;
       const orderNumber = data?.data?.numero || data?.numero || payload.numeroLoja;
       return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });

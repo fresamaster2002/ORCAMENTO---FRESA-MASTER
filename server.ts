@@ -15,6 +15,7 @@ import {
 import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceFromText, extractUnitPricesFromText } from "./src/quoteParsing";
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
+import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1903,22 +1904,9 @@ app.post("/api/bling/create-order", async (req, res) => {
       });
     }
 
-    // Parse Bling validation errors to make them friendly to the user
-    let errorMessage = "O Bling recusou o pedido de venda.";
-    if (responseData?.error) {
-      const bErr = responseData.error;
-      if (bErr.message) errorMessage = bErr.message;
-      if (Array.isArray(bErr.fields) && bErr.fields.length > 0) {
-        const details = bErr.fields.map((f: any) => `${f.element || 'Campo'}: ${f.message}`).join("; ");
-        errorMessage += ` Detalhes: ${details}`;
-      }
-    } else if (responseData?.message) {
-      errorMessage = responseData.message;
-    }
-
     return res.status(response.status).json({
       success: false,
-      error: errorMessage,
+      error: formatBlingError(responseData),
       blingDetails: responseData,
     });
   } catch (err: any) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
+import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -59,6 +60,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     orderUrl?: string;
   } | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [duplicateOrder, setDuplicateOrder] = useState(false);
 
   // NF-e State
   const [nfe, setNfe] = useState<any | null>(null);
@@ -299,6 +301,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
   const handleCreateDirectOrder = async () => {    setIsSubmittingOrder(true);
     setOrderError(null);
+    setDuplicateOrder(false);
     setOrderResult(null);
     setNfe(null);
     setNfeError(null);
@@ -326,10 +329,11 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
         });
         setStatusMessage(`Pedido #${data.blingOrderNumber} criado com sucesso diretamente no Bling ERP!`);
       } else {
+        setDuplicateOrder(isDuplicateBlingSale(data.blingDetails));
         setOrderError(
           data.blingDetails?.error?.type === 'insufficient_scope'
             ? 'O Bling conectado não tem permissão para criar Pedidos de Venda / NF-e (insufficient_scope).'
-            : data.error || 'Erro ao enviar o pedido para o Bling.'
+            : formatBlingError(data.blingDetails, data.error || 'Erro ao enviar o pedido para o Bling.')
         );
       }
     } catch (err: any) {
@@ -785,10 +789,17 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       <strong className="block">Erro no Bling ERP:</strong>
                       <span>{orderError}</span>
                       <p className="mt-1 text-[11px] text-red-700 dark:text-red-400">
-                        {orderError.includes('permissão')
+                        {duplicateOrder
+                          ? 'O Bling bloqueou uma venda duplicada. Confira o pedido já salvo em Vendas > Pedidos de Venda e continue o faturamento nele. Não altere os dados apenas para contornar esse bloqueio.'
+                          : orderError.includes('permissão')
                           ? 'No painel de desenvolvedor do Bling, abra o aplicativo, marque as permissões "Pedidos de Vendas" e "Notas Fiscais" (leitura e gravação), salve e depois reconecte o Bling.'
                           : 'Dica: Verifique se os dados do cliente possuem Razão Social e CNPJ válidos na aba "📋 Dados do Cliente".'}
                       </p>
+                      {duplicateOrder && (
+                        <a href="https://www.bling.com.br/b/vendas.php" target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 font-bold underline">
+                          Conferir pedidos no Bling <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   </div>
                 )}

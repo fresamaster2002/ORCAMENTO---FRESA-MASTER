@@ -16,6 +16,7 @@ import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceF
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
+import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1565,7 +1566,7 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
 });
 
 // Endpoint: Generate Bling API v3 Payload & XML for Sales Order / NF-e
-app.post("/api/bling/generate-payload", (req, res) => {
+app.post("/api/bling/generate-payload", async (req, res) => {
   try {
     const { quote } = req.body;
     if (!quote || !quote.client) {
@@ -1576,6 +1577,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
     const cleanCep = (quote.client.cep || "").replace(/\D/g, "");
     const cleanPhone = (quote.client.phone || "").replace(/\D/g, "");
 
+    const payment = await buildSalePayment(req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "", quote);
     // 1. Bling API v3 JSON Structure (/pedidos/vendas)
     const blingJson = {
       numero: quote.id.replace(/\D/g, "") || String(Date.now()).slice(-6),
@@ -1599,14 +1601,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
           uf: quote.client.state || "SP",
         },
       },
-      itens: (quote.items || []).map((it: any, idx: number) => ({
-        codigo: it.sku || `FM-${idx + 1}`,
-        descricao: it.description,
-        unidade: it.unit || "UN",
-        quantidade: Number(it.quantity) || 1,
-        valor: Number(it.unitPrice) || 0,
-        ncm: it.ncm || "8207.70.00",
-      })),
+      itens: buildSaleItems(quote.items),
       transporte: {
         fretePorConta: 0, // 0 = Contratação do Frete por conta do Remetente (CIF), 1 = Destinatário (FOB)
         transportador: {
@@ -1622,11 +1617,7 @@ app.post("/api/bling/generate-payload", (req, res) => {
           },
         ],
       },
-      pagamento: {
-        formaPagamento: {
-          descricao: quote.financials?.paymentMethod || "Pix",
-        },
-      },
+      ...payment,
       observacoes: `Orçamento ${quote.id} gerado pela Fresa Master. ${quote.observations?.join(" ") || ""}`,
     };
 
@@ -1693,6 +1684,8 @@ app.post("/api/bling/generate-payload", (req, res) => {
       blingXml,
     });
   } catch (err: any) {
+    if (err instanceof BlingFiscalError) return res.status(err.status).json({ success: false, error: err.message, details: err.details });
+    console.error("Erro ao gerar arquivos do Bling:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1790,7 +1783,7 @@ app.post("/api/bling/test-connection", async (req, res) => {
 app.post("/api/bling/create-order", async (req, res) => {
   try {
     const { quote, token } = req.body;
-    const effectiveToken = token || process.env.BLING_API_TOKEN;
+    const effectiveToken = token || persistedBlingToken || process.env.BLING_API_TOKEN;
 
     if (!quote || !quote.client) {
       return res.status(400).json({
@@ -1816,6 +1809,7 @@ app.post("/api/bling/create-order", async (req, res) => {
       });
     }
 
+    const salePayment = await buildSalePayment(effectiveToken, quote);
     const cleanCnpj = (quote.client.document || "").replace(/\D/g, "");
     const cleanCep = (quote.client.cep || "").replace(/\D/g, "");
     const cleanPhone = (quote.client.phone || "").replace(/\D/g, "");
@@ -1842,14 +1836,7 @@ app.post("/api/bling/create-order", async (req, res) => {
           uf: quote.client.state || "PR",
         },
       },
-      itens: (quote.items || []).map((it: any, idx: number) => ({
-        codigo: it.sku || `FM-${idx + 1}`,
-        descricao: it.description,
-        unidade: it.unit || "UN",
-        quantidade: Number(it.quantity) || 1,
-        valor: Number(it.unitPrice) || 0,
-        ncm: it.ncm || "8207.70.00",
-      })),
+      itens: buildSaleItems(quote.items),
       transporte: {
         fretePorConta: 0,
         transportador: {
@@ -1864,12 +1851,8 @@ app.post("/api/bling/create-order", async (req, res) => {
           },
         ],
       },
-      pagamento: {
-        formaPagamento: {
-          descricao: quote.financials?.paymentMethod || "Pix",
-        },
-      },
-      observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}. Frete: ${quote.shipping?.selectedOption?.name || 'Sedex'} (R$ ${Number(quote.financials?.shippingAmount || 0).toFixed(2)}). NCM das ferramentas: 8207.70.00`,
+      ...salePayment,
+      observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}. Frete: ${quote.shipping?.selectedOption?.name || 'Sedex'} (R$ ${Number(quote.financials?.shippingAmount || 0).toFixed(2)}).`,
     };
 
     const controller = new AbortController();
@@ -1911,11 +1894,18 @@ app.post("/api/bling/create-order", async (req, res) => {
     });
   } catch (err: any) {
     console.error("Erro ao enviar pedido para o Bling:", err);
+    if (err instanceof BlingFiscalError) return res.status(err.status).json({ success: false, error: err.message, blingDetails: err.details });
     return res.status(500).json({
       success: false,
       error: `Erro ao comunicar com o Bling: ${err.message}`,
     });
   }
+});
+
+app.post("/api/bling/nfe/:action", async (req, res) => {
+  const token = req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "";
+  const result = await handleBlingNfe(req.params.action, req.body, token);
+  return res.status(result.status).json(result.body);
 });
 
 // Endpoint: Fetch live catalog / products from Bling API v3

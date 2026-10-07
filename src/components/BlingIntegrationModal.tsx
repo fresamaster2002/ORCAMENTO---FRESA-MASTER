@@ -66,6 +66,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [nfe, setNfe] = useState<any | null>(null);
   const [nfeBusy, setNfeBusy] = useState<'generate' | 'send' | 'status' | null>(null);
   const [nfeError, setNfeError] = useState<string | null>(null);
+  const [nfeReadyToSend, setNfeReadyToSend] = useState(false);
+  const [nfeFiscalIssues, setNfeFiscalIssues] = useState<string[]>([]);
 
   // Live Products Sync State
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
@@ -85,6 +87,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [blingXml, setBlingXml] = useState('');
   const [blingJson, setBlingJson] = useState<any>(null);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'direct' | 'app_register' | 'cadastral' | 'products' | 'xml' | 'json' | 'manual'>('direct');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
@@ -144,11 +147,15 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   }, [isOpen, quote]);
 
   const fetchBlingPayload = async (clientToUse: ClientInfo) => {
+    setPayloadError(null);
+    setBlingJson(null);
+    setBlingXml('');
     try {
       const res = await apiFetch('/api/bling/generate-payload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          token: blingToken.trim() || undefined,
           quote: {
             ...quote,
             client: clientToUse,
@@ -159,9 +166,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       if (data.success) {
         setBlingXml(data.blingXml);
         setBlingJson(data.blingJson);
-      }
+      } else setPayloadError(data.error || 'Não foi possível gerar os arquivos do Bling.');
     } catch (err) {
       console.error('Erro ao gerar payload Bling:', err);
+      setPayloadError('Falha de comunicação ao gerar os arquivos do Bling.');
     }
   };
 
@@ -280,18 +288,20 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const callNfe = async (action: 'generate' | 'send' | 'status', payload: Record<string, unknown>) => {
     setNfeBusy(action);
     setNfeError(null);
+    setNfeReadyToSend(false);
     try {
       const res = await apiFetch(`/api/bling/nfe/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, paymentMethod: quote.financials.paymentMethod, token: blingToken.trim() || undefined }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.nfeId || data.nfe?.id) {
         setNfe((prev: any) => ({ ...(prev || {}), ...(data.nfe || {}), id: data.nfeId ?? data.nfe?.id ?? prev?.id }));
-      } else {
-        setNfeError(data.error || 'Erro ao processar a NF-e no Bling.');
       }
+      setNfeReadyToSend(data.success === true && data.readyToSend === true);
+      setNfeFiscalIssues(Array.isArray(data.fiscalIssues) ? data.fiscalIssues : []);
+      if (!data.success) setNfeError(formatBlingError(data.details, data.error || 'Erro ao processar a NF-e no Bling.'));
     } catch (err: any) {
       setNfeError(`Falha de rede ou servidor: ${err.message}`);
     } finally {
@@ -305,6 +315,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setOrderResult(null);
     setNfe(null);
     setNfeError(null);
+    setNfeReadyToSend(false);
+    setNfeFiscalIssues([]);
 
     try {
       const res = await apiFetch('/api/bling/create-order', {
@@ -503,7 +515,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 )}
               </div>
               <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
-                Fresa Master ➔ Criação automática de Pedido de Venda com NCM 8207.70.00 e cálculo de frete
+                Fresa Master ➔ Pedido de Venda com classificação fiscal conferida e cálculo de frete
               </p>
             </div>
           </div>
@@ -737,7 +749,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       <span>Criar Pedido de Venda Diretamente no Bling ERP</span>
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400 text-xs mt-0.5">
-                      Envia o pedido completo via API v3 com itens, NCM de usinagem 8207.70.00, frete e dados cadastrais.
+                      Envia o pedido via API v3 com itens, pagamento, frete e dados cadastrais. Confirme o NCM vigente de cada item antes de emitir.
                     </p>
                   </div>
                   <div className="text-right shrink-0">
@@ -763,7 +775,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   <div className="bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                     <span className="text-slate-400 block font-medium">Fresas & Ferramentas:</span>
                     <strong className="text-slate-800 dark:text-slate-200 block">
-                      {quote.items.length} {quote.items.length === 1 ? 'ferramenta' : 'ferramentas'} (NCM 8207.70.00)
+                      {quote.items.length} {quote.items.length === 1 ? 'ferramenta' : 'ferramentas'} (NCM por item)
                     </strong>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
                       Subtotal: R$ {Number(quote.financials?.subtotal || 0).toFixed(2).replace('.', ',')}
@@ -841,7 +853,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     {!nfe?.id ? (
                       <button
                         type="button"
-                        onClick={() => callNfe('generate', { orderId: orderResult.orderId })}
+                        onClick={() => callNfe('generate', { orderId: orderResult.orderId, quote: { items: quote.items, financials: quote.financials } })}
                         disabled={nfeBusy !== null}
                         className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                       >
@@ -857,7 +869,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
-                          <button type="button" onClick={() => { if (window.confirm('Enviar esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                          <button type="button" onClick={() => { if (window.confirm('Enviar esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
                             {nfeBusy === 'send' ? 'Enviando...' : 'Enviar à SEFAZ'}
                           </button>
                           <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
@@ -868,6 +880,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       </div>
                     )}
                     {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}
+                    {nfeFiscalIssues.length > 0 && <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{nfeFiscalIssues.join(' ')}</p>}
                   </div>
                 )}
 
@@ -907,7 +920,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
             const manualUrl = `${origin}/manual`;
             const logoUrl = `${origin}/logo.svg`;
             const scopesList = [
-              { code: 'pedidos:vendas:write', label: 'Pedidos de Venda - Gravação', desc: 'Necessário para enviar o pedido aprovado com fresas, NCM 8207.70.00 e frete.' },
+              { code: 'pedidos:vendas:write', label: 'Pedidos de Venda - Gravação', desc: 'Necessário para enviar o pedido aprovado com fresas e frete.' },
               { code: 'pedidos:vendas:read', label: 'Pedidos de Venda - Leitura', desc: 'Para consultar o número do pedido gerado no Bling e acompanhar faturamento.' },
               { code: 'contatos:write', label: 'Contatos / Clientes - Gravação', desc: 'Para cadastrar a Razão Social, CNPJ, IE e endereço de entrega do cliente.' },
               { code: 'contatos:read', label: 'Contatos / Clientes - Leitura', desc: 'Para buscar clientes já cadastrados e evitar duplicidade.' },
@@ -1345,6 +1358,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           {/* TAB: XML FILE */}
           {activeTab === 'xml' && (
             <div className="space-y-4">
+              {payloadError && <p className="text-xs text-red-600 font-semibold">{payloadError}</p>}
               <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="font-bold text-emerald-900 dark:text-emerald-200 mb-1 flex items-center gap-1.5">
@@ -1352,12 +1366,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     Arquivo de Importação XML Pronto para o Bling
                   </h4>
                   <p className="text-emerald-800 dark:text-emerald-300 text-[11px] leading-relaxed">
-                    Baixe o arquivo XML abaixo. No Bling, acesse <strong>Vendas &gt; Pedidos de Venda &gt; Opções &gt; Importar Pedidos de Venda via XML</strong>. O pedido entrará completo com os itens de fresas (NCM 8207.70.00), frete Melhor Envio e dados do cliente para emissão imediata da NF-e!
+                    Baixe o arquivo XML abaixo. No Bling, acesse <strong>Vendas &gt; Pedidos de Venda &gt; Opções &gt; Importar Pedidos de Venda via XML</strong>. Confira o NCM dos itens, pagamento, frete e cadastro fiscal antes de gerar a NF-e.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleDownloadXml}
+                  disabled={!blingXml}
                   className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
@@ -1371,6 +1386,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   <button
                     type="button"
                     onClick={() => copyText(blingXml, 'xml')}
+                    disabled={!blingXml}
                     className="text-blue-600 hover:underline cursor-pointer flex items-center gap-1"
                   >
                     {copiedKey === 'xml' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
@@ -1387,6 +1403,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           {/* TAB: JSON PAYLOAD */}
           {activeTab === 'json' && (
             <div className="space-y-3">
+              {payloadError && <p className="text-xs text-red-600 font-semibold">{payloadError}</p>}
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-slate-800 dark:text-slate-200">Payload Bling API v3 (/pedidos/vendas)</h4>
@@ -1396,6 +1413,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 </div>
                 <button
                   type="button"
+                  disabled={!blingJson}
                   onClick={() => copyText(JSON.stringify(blingJson, null, 2), 'json')}
                   className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
                 >
@@ -1456,7 +1474,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
         {/* Footer */}
         <div className="p-4 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            Fresa Master ➔ Bling Pedido de Venda com NCM de Usinagem <strong>8207.70.00</strong>
+            Fresa Master ➔ Bling Pedido de Venda com <strong>NCM confirmado por item</strong>
           </div>
           <div className="flex items-center gap-2">
             <button

@@ -1,6 +1,7 @@
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from '../_shared/deliveryExtraction.ts';
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
+import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -858,7 +859,17 @@ async function route(request: Request): Promise<Response> {
     if (path === '/bling/extract-cadastral' && request.method === 'POST') return await extractCadastral(body);
     if (path === '/bling/generate-payload' && request.method === 'POST') {
       if (!body.quote?.client) return json({ error: 'Orçamento inválido.' }, 400);
-      return json({ success: true, ...generateBlingPayload(body.quote) });
+      try {
+        const payment = await buildSalePayment(body.token || await getBlingToken(), body.quote);
+        const generated = generateBlingPayload(body.quote);
+        delete generated.blingJson.pagamento;
+        generated.blingJson.itens = buildSaleItems(body.quote.items);
+        Object.assign(generated.blingJson, payment);
+        return json({ success: true, ...generated });
+      } catch (error) {
+        if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, details: error.details }, error.status);
+        throw error;
+      }
     }
     if (path === '/quote/generate-proposal' && request.method === 'POST') {
       const quote = body.quote || {};
@@ -915,9 +926,18 @@ async function route(request: Request): Promise<Response> {
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
       if (missing.length) return json({ success: false, error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${missing.map((item: JsonObject) => item.description).join(', ')}.` }, 400);
+      let salePayment;
+      try { salePayment = await buildSalePayment(token, quote); }
+      catch (error) {
+        if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, blingDetails: error.details }, error.status);
+        throw error;
+      }
       const doc = String(quote.client.document || '').replace(/\D/g, '');
       const payload = { numeroLoja: quote.id, data: quote.project?.date || new Date().toISOString().slice(0, 10), dataSaida: quote.project?.date || new Date().toISOString().slice(0, 10), contato: { nome: quote.client.name || 'Cliente Fresa Master', tipoPessoa: doc.length === 14 ? 'J' : 'F', numeroDocumento: doc || undefined, ie: quote.client.ie || '', email: quote.client.email || undefined, telefone: String(quote.client.phone || '').replace(/\D/g, '') || undefined, endereco: { endereco: quote.client.address || 'Rua de Entrega', numero: quote.client.number || 'S/N', complemento: quote.client.complement || undefined, bairro: quote.client.neighborhood || 'Centro', cep: String(quote.client.cep || '').replace(/\D/g, '') || undefined, municipio: quote.client.city || 'Curitiba', uf: quote.client.state || 'PR' } }, itens: quote.items.map((item: JsonObject, index: number) => ({ ...(/^\d+$/.test(String(item.sku || '')) ? { produto: { id: Number(item.sku) } } : {}), codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, etiqueta: buildShipTo(quote), volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: quote.shipping?.weightKg || 0.5 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}.` };
       const bh = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' };
+      delete (payload as JsonObject).pagamento;
+      payload.itens = buildSaleItems(quote.items);
+      Object.assign(payload, salePayment);
       let contactId: number | undefined;
       if (doc) {
         const found = await fetch('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh }).then((r) => r.json()).catch(() => ({}));
@@ -939,65 +959,9 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
     }
     if (path.startsWith('/bling/nfe/') && request.method === 'POST') {
-      const token = await getBlingToken();
-      if (!token) return json({ success: false, error: 'Conecte o Bling antes de emitir a NF-e.' }, 401);
-      const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
-      const summarize = (n: JsonObject) => ({ id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, chaveAcesso: n.chaveAcesso, linkDanfe: n.linkDanfe || n.linkPDF, xml: n.xml, linkXml: n.xml, tipo: n.tipo });
-      const readNfe = async (id: string | number) => {
-        const r = await fetch(`https://api.bling.com.br/Api/v3/nfe/${id}`, { headers });
-        const d = await r.json().catch(() => ({}));
-        return { ok: r.ok, status: r.status, data: d };
-      };
-      const ensureFiscal = async (nfeId: string | number, orderId?: string) => {
-        let info = await readNfe(nfeId);
-        let fiscalWarning: string | undefined;
-        let newId: string | number = nfeId;
-        const draft = info.ok ? info.data.data : null;
-        if (draft) {
-          const uf = String(draft.contato?.endereco?.uf || '').toUpperCase();
-          const cfop = uf === 'SP' ? '5102' : '6102';
-          const needsFix = (draft.itens || []).some((i: JsonObject) => String(i.cfop) !== cfop);
-          if (needsFix && uf) {
-            const { id: _id, chaveAcesso: _c, xml: _x, linkDanfe: _d, linkPDF: _p, situacao: _s, dataEmissao: _e, ...rest } = draft;
-            const orderItems = orderId ? ((await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${orderId}`, { headers }).then((r) => r.json()).catch(() => ({})))?.data?.itens || []) : [];
-            const updated = { ...rest, transporte: { ...(rest.transporte || {}), frete: Number(rest.valorFrete) || 0 }, itens: (draft.itens || []).map((i: JsonObject, idx: number) => ({ ...i, codigo: i.codigo || orderItems[idx]?.codigo || `FM-${idx + 1}`, cfop })) };
-            const u = await fetch(`https://api.bling.com.br/Api/v3/nfe/${nfeId}`, { method: 'PUT', headers, body: JSON.stringify(updated) });
-            if (!u.ok) fiscalWarning = `N?o foi poss?vel ajustar o CFOP automaticamente: ${JSON.stringify(await u.json().catch(() => ({}))).slice(0, 700)}`;
-            else info = await readNfe(nfeId);
-          }
-        }
-        return { info, fiscalWarning, nfeId: newId };
-      };
-      if (path === '/bling/nfe/generate') {
-        const orderId = String(body.orderId || '').trim();
-        if (!orderId) return json({ success: false, error: 'Informe o ID do pedido de venda do Bling.' }, 400);
-        const r = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${orderId}/gerar-nfe`, { method: 'POST', headers });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) return json({ success: false, error: d.error?.description || d.error?.message || `O Bling recusou gerar a NF-e (HTTP ${r.status}).`, details: d }, r.status);
-        const nfeId = d.data?.id;
-        const fixed = nfeId ? await ensureFiscal(nfeId, orderId) : null;
-        const finalId = fixed?.nfeId ?? nfeId;
-        const info = fixed?.info ?? null;
-        const fiscalWarning = fixed?.fiscalWarning;
-        return json({ success: true, nfeId: finalId, fiscalWarning, nfe: info?.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e gerada no Bling como rascunho. Confira e envie à SEFAZ.' });
-      }
-      if (path === '/bling/nfe/send') {
-        const nfeId = String(body.nfeId || '').trim();
-        if (!nfeId) return json({ success: false, error: 'Informe o ID da NF-e.' }, 400);
-        const r = await fetch(`https://api.bling.com.br/Api/v3/nfe/${nfeId}/enviar`, { method: 'POST', headers });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) return json({ success: false, error: d.error?.description || d.error?.message || `A SEFAZ/Bling recusou o envio (HTTP ${r.status}).`, details: d }, r.status);
-        const info = await readNfe(nfeId);
-        return json({ success: true, nfe: info.ok ? summarize(info.data.data || {}) : d.data, message: 'NF-e enviada para autorização.' });
-      }
-      if (path === '/bling/nfe/status') {
-        const nfeId = String(body.nfeId || '').trim();
-        if (!nfeId) return json({ success: false, error: 'Informe o ID da NF-e.' }, 400);
-        if (body.fix) { const fx = await ensureFiscal(nfeId, String(body.orderId || '')); return json({ success: !fx.fiscalWarning, fiscalWarning: fx.fiscalWarning, nfe: fx.info.ok ? summarize(fx.info.data.data || {}) : undefined, raw: body.debug ? fx.info.data.data : undefined }); }
-        const info = await readNfe(nfeId);
-        if (!info.ok) return json({ success: false, error: info.data.error?.description || `Falha ao consultar a NF-e (HTTP ${info.status}).` }, info.status);
-        return json({ success: true, nfe: summarize(info.data.data || {}), raw: body.debug ? info.data.data : undefined });
-      }
+      const token = body.token || await getBlingToken();
+      const result = await handleBlingNfe(path.slice('/bling/nfe/'.length), body, token);
+      return json(result.body, result.status);
     }
     if (path === '/bling/oauth/token-exchange' && request.method === 'POST') {
       const { code, clientId, clientSecret, redirectUri } = body;

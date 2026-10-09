@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
+import { DEFAULT_PACKAGE_DIMENSIONS } from '../../supabase/functions/_shared/shippingDefaults';
 import {
   Truck,
   Check,
@@ -45,6 +46,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   const [cepInput, setCepInput] = useState(shipping.destinationCep || '');
   const [isCalculating, setIsCalculating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [meStatus, setMeStatus] = useState<{ state: 'checking' | 'connected' | 'disconnected'; detail?: string }>({ state: 'checking' });
 
@@ -79,9 +81,9 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   );
 
   // Package Dimensions
-  const [heightCm, setHeightCm] = useState(shipping.packageDimensions?.height || 5);
-  const [widthCm, setWidthCm] = useState(shipping.packageDimensions?.width || 12);
-  const [lengthCm, setLengthCm] = useState(shipping.packageDimensions?.length || 18);
+  const [heightCm, setHeightCm] = useState(shipping.packageDimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height);
+  const [widthCm, setWidthCm] = useState(shipping.packageDimensions?.width || DEFAULT_PACKAGE_DIMENSIONS.width);
+  const [lengthCm, setLengthCm] = useState(shipping.packageDimensions?.length || DEFAULT_PACKAGE_DIMENSIONS.length);
 
   // Custom shipping
   const [customShippingName, setCustomShippingName] = useState(
@@ -148,6 +150,12 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   }, [shipping.destinationCep]);
 
   useEffect(() => {
+    setHeightCm(shipping.packageDimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height);
+    setWidthCm(shipping.packageDimensions?.width || DEFAULT_PACKAGE_DIMENSIONS.width);
+    setLengthCm(shipping.packageDimensions?.length || DEFAULT_PACKAGE_DIMENSIONS.length);
+  }, [shipping.packageDimensions?.height, shipping.packageDimensions?.width, shipping.packageDimensions?.length]);
+
+  useEffect(() => {
     if (shipping.insuranceEnabled !== undefined && shipping.insuranceEnabled !== insuranceEnabled) {
       setInsuranceEnabled(shipping.insuranceEnabled);
     }
@@ -178,12 +186,17 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
 
     if (isRecalculating) return;
 
+    const dimsToUse = dims || { height: heightCm, width: widthCm, length: lengthCm };
+    if (Object.values(dimsToUse).some((value) => !Number.isFinite(value)) || dimsToUse.height < 2 || dimsToUse.width < 11 || dimsToUse.length < 16) {
+      setCalculationError('Informe medidas válidas: altura mínima 2 cm, largura 11 cm e comprimento 16 cm.');
+      return;
+    }
+    setCalculationError(null);
     setIsCalculating(true);
     setIsRecalculating(true);
 
     const weightToUse = weightVal !== undefined ? weightVal : parseWeightValue(customWeight);
     const originCepToUse = originVal || originCep;
-    const dimsToUse = dims || { height: heightCm, width: widthCm, length: lengthCm };
     const insuranceToUse = insuranceVal !== undefined ? insuranceVal : insuranceEnabled;
 
     let customShippingPayload = undefined;
@@ -213,6 +226,9 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
       });
 
       const data = await res.json();
+      if (!res.ok || !data.success || !data.options?.length) {
+        throw new Error(data.error || 'Não foi possível recalcular o frete com essas medidas.');
+      }
       if (data.success && data.options) {
         let selected =
           data.options.find((o: ShippingOption) => o.service === shipping.selectedOption?.service) ||
@@ -241,6 +257,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
       }
     } catch (err) {
       console.error('Erro ao recalcular frete:', err);
+      setCalculationError(err instanceof Error ? err.message : 'Não foi possível recalcular o frete.');
     } finally {
       setIsCalculating(false);
       setIsRecalculating(false);
@@ -318,6 +335,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
       </div>
 
       <div className="p-5 space-y-4">
+        {calculationError && <p role="alert" className="text-sm font-semibold text-red-600 dark:text-red-400">{calculationError}</p>}
         {/* Shipping Type Selector: Motoboy, Melhor Envio, Retirada, Por Conta da Fresa */}
         <div>
           <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
@@ -733,6 +751,8 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
+                    aria-label="Altura do pacote em cm"
+                    min="2"
                     value={heightCm}
                     onChange={(e) => setHeightCm(Number(e.target.value))}
                     className="w-12 px-1.5 py-1.5 text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
@@ -740,6 +760,8 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   <span className="text-slate-400">x</span>
                   <input
                     type="number"
+                    aria-label="Largura do pacote em cm"
+                    min="11"
                     value={widthCm}
                     onChange={(e) => setWidthCm(Number(e.target.value))}
                     className="w-12 px-1.5 py-1.5 text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
@@ -747,10 +769,34 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   <span className="text-slate-400">x</span>
                   <input
                     type="number"
+                    aria-label="Comprimento do pacote em cm"
+                    min="16"
                     value={lengthCm}
                     onChange={(e) => setLengthCm(Number(e.target.value))}
                     className="w-12 px-1.5 py-1.5 text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
                   />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeightCm(DEFAULT_PACKAGE_DIMENSIONS.height);
+                      setWidthCm(DEFAULT_PACKAGE_DIMENSIONS.width);
+                      setLengthCm(DEFAULT_PACKAGE_DIMENSIONS.length);
+                      handleRecalculate(undefined, undefined, { ...DEFAULT_PACKAGE_DIMENSIONS });
+                    }}
+                    className="text-xs font-bold text-amber-700 dark:text-amber-400"
+                  >
+                    Padrão 7 × 12 × 17 cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRecalculate()}
+                    disabled={isRecalculating}
+                    className="px-2.5 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-xs disabled:opacity-50"
+                  >
+                    Aplicar medidas
+                  </button>
                 </div>
               </div>
 

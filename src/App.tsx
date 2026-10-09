@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
+import { DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
 import { Header } from './components/Header';
 import { AuthGate } from './components/AuthGate';
 import { QuickOrderInput } from './components/QuickOrderInput';
@@ -63,11 +64,7 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
     destinationCep: '80010-000',
     weightKg: 0.5,
     weightDescription: '0,5 kg (padrão até 0,5 kg c/ embalagem)',
-    packageDimensions: {
-      height: 5,
-      width: 12,
-      length: 18,
-    },
+    packageDimensions: { ...DEFAULT_PACKAGE_DIMENSIONS },
     insuranceEnabled: false,
     declaredValue: 280,
     insuranceAmount: 0,

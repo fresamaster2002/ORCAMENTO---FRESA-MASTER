@@ -28,16 +28,16 @@ interface SandboxShipmentModalProps {
 const initialSender: SenderData = {
   name: 'Fresa Master',
   document: '59.085.330/0001-70',
-  ie: 'ISENTO',
+  ie: '600320622110',
   email: 'fresamaster0@gmail.com',
   phone: '(11) 99852-4939',
-  address: 'Rua das Nações Unidas',
-  number: '600',
+  address: 'Rua Presidente Geisel',
+  number: '62',
   complement: '',
-  neighborhood: 'Olaria',
+  neighborhood: 'Jardim Santo Antonio',
   city: 'Salto',
   state: 'SP',
-  cep: '13329-350',
+  cep: '13321-472',
 };
 
 const SENDER_STORAGE_KEY = 'fresa_master_sender_v2';
@@ -54,7 +54,7 @@ function loadSender(): SenderData {
 const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }> = [
   { key: 'name', label: 'Nome / Razão social', required: true },
   { key: 'document', label: 'CPF / CNPJ', required: true },
-  { key: 'ie', label: 'Inscrição estadual' },
+  { key: 'ie', label: 'Inscrição estadual / isenção confirmada', required: true },
   { key: 'email', label: 'E-mail' },
   { key: 'phone', label: 'Telefone' },
   { key: 'address', label: 'Endereço', required: true },
@@ -69,6 +69,7 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
 export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(loadSender);
   const [invoiceKey, setInvoiceKey] = useState('');
+  const [sandboxToken, setSandboxToken] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,15 +94,16 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
       const response = await apiFetch('/api/shipping/create-sandbox-shipment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quote, sender, invoiceKey }),
+        body: JSON.stringify({ quote, sender, invoiceKey, sandboxToken }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Não foi possível adicionar o envio ao carrinho de teste.');
       }
+      if (!result.shipmentId) throw new Error('O servidor respondeu sem o ID do envio. Confira o carrinho antes de repetir.');
 
       onCreated({
-        id: result.shipmentId || null,
+        id: result.shipmentId,
         protocol: result.protocol || null,
         createdAt: new Date().toISOString(),
       });
@@ -130,7 +132,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
         <form onSubmit={submit} className="space-y-5 p-5">
           <div className="flex gap-3 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <AlertTriangle className="h-5 w-5 shrink-0" />
-            <p>Este passo exige a chave de uma NF-e já emitida no Bling. Ele apenas cria o envio no carrinho sandbox; não compra nem paga a etiqueta e não vale para postagem real.</p>
+            <p>Este passo exige a chave de uma NF-e série 2 já emitida no Bling. Confira o remetente e o mesmo CEP de origem cotado ({quote.shipping.originCep}). Ele apenas cria o envio no carrinho sandbox; não compra nem paga a etiqueta e não vale para postagem real.</p>
           </div>
 
           {missing.length > 0 && (
@@ -163,6 +165,11 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
             </div>
           </div>
 
+          <label className="block space-y-1 text-xs font-semibold text-slate-700">
+            <span>Token do Melhor Envio Sandbox (opcional se configurado no servidor)</span>
+            <input className={inputClass} type="password" autoComplete="off" value={sandboxToken} onChange={(event) => setSandboxToken(event.target.value)} placeholder="Use somente um token da conta Sandbox" />
+            <span className="block font-normal">Não é salvo no navegador. Nunca use o token da conta de produção.</span>
+          </label>
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Chave de acesso da NF-e (44 dígitos) *</span>
             <input

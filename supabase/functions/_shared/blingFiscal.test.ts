@@ -55,7 +55,7 @@ test('NCM inválido impede criação e geração antes de qualquer chamada ao Bl
 test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e confere persistência', async (t) => {
   const calls: { path: string; method: string; body?: Record<string, unknown> }[] = [];
   let draft = {
-    id: 99, numero: '001', situacao: 1, valorFrete: 27.07, valorNota: 187.07,
+    id: 99, numero: '001', serie: 2, situacao: 1, valorFrete: 27.07, valorNota: 187.07,
     contato: { endereco: { uf: 'SP' } },
     itens: [{ codigo: '123', descricao: item.description, quantidade: 2, valor: 85, classificacaoFiscal: '0000.00.00', cfop: '6102' }],
     parcelas: [{ data: '2026-10-07', valor: 187.07, formaPagamento: { id: 1 } }],
@@ -154,5 +154,14 @@ test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e con
     assert.equal(result.body.success, true);
     assert.equal(result.body.readyToSend, false);
     assert.equal((result.body.nfe as { situacao: number }).situacao, 5);
+  });
+  await t.test('série 1 bloqueia transmissão mesmo com NCM e Pix corretos', async () => {
+    calls.length = 0;
+    draft.situacao = 1;
+    draft.serie = 1;
+    const result = await handleBlingNfe('send', { nfeId: 99, paymentMethod: 'Pix' }, 'test-token');
+    assert.equal(result.status, 409);
+    assert.match(String(result.body.error), /série 2/);
+    assert.equal(calls.some((c) => c.path.endsWith('/enviar')), false);
   });
 });

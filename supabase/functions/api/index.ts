@@ -2,6 +2,8 @@ import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractio
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
+import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
+import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -341,7 +343,7 @@ function calculateShippingRates(
   destinationCep: string,
   originCep = '13329-350',
   weightKg = 0.5,
-  dimensions: JsonObject = { height: 5, width: 12, length: 18 },
+  dimensions: JsonObject = { ...DEFAULT_PACKAGE_DIMENSIONS },
   customShipping?: JsonObject,
   insuranceEnabled = false,
   declaredValue = 280,
@@ -354,7 +356,7 @@ function calculateShippingRates(
   const closeRegion = Math.abs(destDigit - originDigit) <= 1;
   const zoneFactor = sameState ? 0.95 : closeRegion ? 1.15 : 1.35;
   const extraWeight = Math.max(0, weightKg - 0.5);
-  const cubicWeight = ((dimensions.height || 5) * (dimensions.width || 12) * (dimensions.length || 18)) / 6000;
+  const cubicWeight = ((dimensions.height || DEFAULT_PACKAGE_DIMENSIONS.height) * (dimensions.width || DEFAULT_PACKAGE_DIMENSIONS.width) * (dimensions.length || DEFAULT_PACKAGE_DIMENSIONS.length)) / 6000;
   const effectiveExtra = Math.max(extraWeight, cubicWeight > 1 ? cubicWeight - 0.5 : 0);
   const insuranceCost = declaredValue > 0 ? Number(Math.max(3.5, declaredValue * 0.015).toFixed(2)) : 0;
   const sedexBase = Number((28.5 * zoneFactor + effectiveExtra * 5.8 * zoneFactor).toFixed(2));
@@ -412,7 +414,7 @@ async function liveShippingRates(destinationCep: string, originCep: string, weig
       body: JSON.stringify({
         from: { postal_code: (originCep || '13329-350').replace(/\D/g, '') },
         to: { postal_code: destination },
-        package: { height: Math.max(2, Number(dimensions.height) || 5), width: Math.max(11, Number(dimensions.width) || 12), length: Math.max(16, Number(dimensions.length) || 18), weight: Math.max(0.1, weightKg || 0.5) },
+        package: { height: Math.max(2, Number(dimensions.height) || DEFAULT_PACKAGE_DIMENSIONS.height), width: Math.max(11, Number(dimensions.width) || DEFAULT_PACKAGE_DIMENSIONS.width), length: Math.max(16, Number(dimensions.length) || DEFAULT_PACKAGE_DIMENSIONS.length), weight: Math.max(0.1, weightKg || 0.5) },
         options: { insurance_value: insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
         services: '1,2,3,4,17',
       }),
@@ -527,7 +529,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   };
   const weight = calculatePackageWeight([item]);
   const shipping = currentQuote.shipping || {};
-  const dimensions = shipping.packageDimensions || { height: 5, width: 12, length: 18 };
+  const dimensions = shipping.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
   const customShipping = shipping.customShippingAmount === undefined ? undefined : { amount: shipping.customShippingAmount, name: shipping.customShippingName };
   const subtotal = quantity * unitPrice;
   const spokenDiscount = extractDiscountAmountFromText(text);
@@ -619,7 +621,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
     subtotal,
     spokenDiscount ?? 0,
   ).toFixed(2));
-  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { height: 5, width: 12, length: 18 }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
+  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
   return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });
 }
 
@@ -767,7 +769,7 @@ async function shippingCalculate(body: JsonObject): Promise<Response> {
   let weight = Number(body.weightKg) > 0 ? Number(body.weightKg) : items.length ? calculatePackageWeight(items).weightKg : 0.5;
   const weightDescription = Number(body.weightKg) > 0 ? `${weight.toFixed(1).replace('.', ',')} kg (definido manualmente)` : calculatePackageWeight(items).description;
   let declaredValue = Number(body.declaredValue) || items.reduce((sum: number, item: JsonObject) => sum + (Number(item.totalPrice) || 0), 0) || 280;
-  const dimensions = body.packageDimensions || { height: 5, width: 12, length: 18 };
+  const dimensions = body.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
   const originCep = body.originCep || '13329-350';
   const insuranceEnabled = Boolean(body.insuranceEnabled);
   let options = await liveShippingRates(destinationCep, originCep, weight, dimensions, insuranceEnabled, declaredValue, body.melhorEnvioToken);
@@ -887,7 +889,15 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, messageText: messageText || fallback });
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
-    if (path === '/shipping/create-sandbox-shipment' && request.method === 'POST') return json({ success: false, error: 'A criação de remessas sandbox ainda não está disponível nesta aplicação.' }, 501);
+    if (path === '/shipping/create-sandbox-shipment' && request.method === 'POST') {
+      try {
+        return json(await createSandboxShipment(body, body.sandboxToken || env('MELHOR_ENVIO_SANDBOX_TOKEN') || (env('MELHOR_ENVIO_SANDBOX') === 'true' ? env('MELHOR_ENVIO_TOKEN') : '')));
+      } catch (error) {
+        if (error instanceof SandboxShipmentError) return json({ success: false, error: error.message }, error.status);
+        console.error('Falha de comunicação com o Melhor Envio Sandbox:', error);
+        return json({ success: false, error: 'Falha de comunicação com o Sandbox. Confira o carrinho antes de repetir, pois o envio pode ter sido criado.' }, 502);
+      }
+    }
     if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(await getBlingToken()), hasToken: Boolean(await getBlingToken()), authorizeUrl: `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${env('BLING_CLIENT_ID')}&state=fresa_master` });
     if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || await getBlingToken()));
     if (path === '/bling/products' && request.method === 'GET') {
@@ -992,7 +1002,9 @@ async function route(request: Request): Promise<Response> {
       return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Bling - Fresa Master</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><p>${escape(error || 'O Bling autorizou a integração Fresa Master.')}</p><code id="code">${escape(code)}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'BLING_AUTH_CODE',code},'*');</script></body></html>`);
     }
     if (path === '/shipping/test-melhor-envio' && request.method === 'POST') {
-      const token = body.token || env('MELHOR_ENVIO_TOKEN');
+      const token = body.token || (body.isSandbox
+        ? env('MELHOR_ENVIO_SANDBOX_TOKEN') || (env('MELHOR_ENVIO_SANDBOX') === 'true' ? env('MELHOR_ENVIO_TOKEN') : '')
+        : env('MELHOR_ENVIO_TOKEN'));
       if (!token) return json({ success: false, connected: false, message: 'Nenhum token do Melhor Envio fornecido.' }, 400);
       const host = body.isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
       const response = await fetch(`${host}/api/v2/me`, { headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' } });

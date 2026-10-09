@@ -106,6 +106,7 @@ async function readNfe(token: string, id: string): Promise<Data> {
 
 async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string): Promise<string[]> {
   const issues: string[] = [];
+  if (Number(nfe.serie) !== 2) issues.push('A NF-e precisa estar na série 2. Ajuste a série e a numeração no Bling antes de transmitir.');
   const items = records(nfe.itens);
   if (!items.length) issues.push('A NF-e não contém itens.');
   items.forEach((item) => {

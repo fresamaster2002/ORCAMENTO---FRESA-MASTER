@@ -17,6 +17,8 @@ import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractio
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
+import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
+import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -222,9 +224,9 @@ function calculateMelhorEnvioRates(
   const extraWeightKg = Math.max(0, weightKg - 0.5);
 
   // Cálculo de peso cubado (padrão Correios/Melhor Envio: C x L x A / 6000)
-  const h = dimensions?.height || 5;
-  const w = dimensions?.width || 12;
-  const l = dimensions?.length || 18;
+  const h = dimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height;
+  const w = dimensions?.width || DEFAULT_PACKAGE_DIMENSIONS.width;
+  const l = dimensions?.length || DEFAULT_PACKAGE_DIMENSIONS.length;
   const cubicWeight = (h * w * l) / 6000;
   const effectiveExtraWeight = Math.max(extraWeightKg, cubicWeight > 1.0 ? cubicWeight - 0.5 : 0);
 
@@ -456,9 +458,9 @@ async function fetchMelhorEnvioLiveRates(
     ? "https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate"
     : "https://melhorenvio.com.br/api/v2/me/shipment/calculate";
 
-  const height = Math.max(2, dimensions?.height || 5);
-  const width = Math.max(11, dimensions?.width || 12);
-  const length = Math.max(16, dimensions?.length || 18);
+  const height = Math.max(2, dimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height);
+  const width = Math.max(11, dimensions?.width || DEFAULT_PACKAGE_DIMENSIONS.width);
+  const length = Math.max(16, dimensions?.length || DEFAULT_PACKAGE_DIMENSIONS.length);
 
   const payload = {
     from: { postal_code: cleanOrigin },
@@ -560,6 +562,17 @@ async function fetchMelhorEnvioLiveRates(
 }
 
 // Shipping calculation endpoint
+app.post("/api/shipping/create-sandbox-shipment", async (req, res) => {
+  try {
+    const token = req.body.sandboxToken || process.env.MELHOR_ENVIO_SANDBOX_TOKEN || (process.env.MELHOR_ENVIO_SANDBOX === "true" ? process.env.MELHOR_ENVIO_TOKEN : "") || "";
+    res.json(await createSandboxShipment(req.body, token));
+  } catch (error) {
+    if (error instanceof SandboxShipmentError) return res.status(error.status).json({ success: false, error: error.message });
+    console.error("Falha de comunicação com o Melhor Envio Sandbox:", error);
+    res.status(502).json({ success: false, error: "Falha de comunicação com o Sandbox. Confira o carrinho antes de repetir, pois o envio pode ter sido criado." });
+  }
+});
+
 app.post("/api/shipping/calculate", async (req, res) => {
   try {
     const {
@@ -597,7 +610,7 @@ app.post("/api/shipping/calculate", async (req, res) => {
     if (!effectiveDeclaredValue) effectiveDeclaredValue = 280;
 
     // Try real-time live Melhor Envio API first
-    const dims = packageDimensions || { height: 5, width: 12, length: 18 };
+    const dims = packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
     let options: any[] | null = null;
     let isLiveApi = false;
 
@@ -711,7 +724,9 @@ app.post("/api/shipping/calculate", async (req, res) => {
 app.post("/api/shipping/test-melhor-envio", async (req, res) => {
   try {
     const { token, isSandbox } = req.body;
-    const effectiveToken = token || process.env.MELHOR_ENVIO_TOKEN;
+    const effectiveToken = token || (isSandbox
+      ? process.env.MELHOR_ENVIO_SANDBOX_TOKEN || (process.env.MELHOR_ENVIO_SANDBOX === "true" ? process.env.MELHOR_ENVIO_TOKEN : "")
+      : process.env.MELHOR_ENVIO_TOKEN);
 
     if (!effectiveToken || effectiveToken.trim() === "") {
       return res.status(400).json({
@@ -773,7 +788,7 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
         body: JSON.stringify({
           from: { postal_code: "13329350" },
           to: { postal_code: "01001000" },
-          package: { height: 5, width: 12, length: 18, weight: 0.5 },
+          package: { ...DEFAULT_PACKAGE_DIMENSIONS, weight: 0.5 },
           services: "1,2",
         }),
       });
@@ -1125,7 +1140,7 @@ Regras de negócio da Fresa Master:
           : autoWeight;
 
         // Preserve previous package dimensions, insurance, and custom shipping if present
-        const packageDimensions = currentQuote?.shipping?.packageDimensions || { height: 5, width: 12, length: 18 };
+        const packageDimensions = currentQuote?.shipping?.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
         const insuranceEnabled = currentQuote?.shipping?.insuranceEnabled ?? (text.toLowerCase().includes("com seguro") ? true : false);
         const customShipping = currentQuote?.shipping?.customShippingAmount !== undefined
           ? {
@@ -2472,7 +2487,7 @@ function parseFresaMasterFallback(
   ];
 
   const weightInfo = calculatePackageWeightKg(items);
-  const packageDimensions = currentQuote?.shipping?.packageDimensions || { height: 5, width: 12, length: 18 };
+  const packageDimensions = currentQuote?.shipping?.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
   const customShipping = currentQuote?.shipping?.customShippingAmount !== undefined
     ? {
         amount: currentQuote.shipping.customShippingAmount,

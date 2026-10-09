@@ -93,7 +93,7 @@ Este arquivo documenta as regras de negócio, arquitetura e estado atual do apli
   - Exibido no cabeçalho do painel de logística e na aba dedicada **"Origem Fresa Master"**.
   - O operador pode alterar o CEP de expedição a qualquer momento digitando um novo CEP com 1 clique em "Salvar & Recalcular", ou restaurar para o padrão `13321-472`.
   - Integrado diretamente ao cálculo de frete com o Melhor Envio (Sedex, PAC e Jadlog recalculados com base na nova rota).
-- **Aba "Tamanho do Pacote":** Medidas padrão configuradas em **5 cm de altura x 12 cm de largura x 18 cm de comprimento**. Permite ajuste numérico imediato ou via atalhos (Padrão 5x12x18, Média 8x16x24, Grande 12x20x30 cm).
+- **Tamanho do Pacote:** Medidas padrão configuradas em **7 cm de altura x 12 cm de largura x 17 cm de comprimento**. Permite ajuste numérico em Configurações, com "Aplicar medidas" para recalcular e "Padrão 7 × 12 × 17 cm" para restaurar. Medidas explícitas de orçamentos salvos são preservadas.
 - **Aba "Meu Frete / Próprio":** Permite definir um frete fixo próprio (ex: transportadora própria, Braspress, Motoboy local ou frete grátis negociado) com valor e nome personalizáveis, adicionado automaticamente às opções de frete disponíveis no orçamento.
 
 ---
@@ -102,4 +102,3 @@ Este arquivo documenta as regras de negócio, arquitetura e estado atual do apli
 - **Melhor Envio / Correios:** Se o operador falar "melhor envio", "correios", "sedex" ou "pac", o sistema calcula e abre automaticamente as cotações oficiais do Melhor Envio (Sedex, PAC e Jadlog).
 - **Motoboy Simplificado:** Quando o envio for por motoboy, não é necessário selecionar qual aplicativo foi contratado. O sistema solicita e exibe apenas o valor do frete (ex: se o operador ditar *"envio por motoboy 45 reais"*, a IA seleciona automaticamente a modalidade **Motoboy** e preenche o valor de **R$ 45,00** somado ao total).
 - **Por Nossa Conta (Frete Grátis):** Se o operador ditar *"envio por nossa conta"*, *"frete grátis"* ou *"cortesia"*, o frete é selecionado automaticamente como cortesia Fresa Master com valor **R$ 0,00**.
-

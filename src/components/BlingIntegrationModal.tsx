@@ -616,7 +616,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
             }`}
           >
             <Zap className="w-4 h-4 text-emerald-600" />
-            <span>🚀 Conectar &amp; Criar Pedido</span>
+            <span>Emitir NF-e</span>
           </button>
           <button
             type="button"
@@ -689,9 +689,9 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
           {/* TAB: DIRECT BLING CONNECTION & INSTANT ORDER CREATION */}
           {activeTab === 'direct' && (
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               {/* Token Configuration Box */}
-              <div className="bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-slate-50 dark:to-slate-950/80 border border-emerald-500/30 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
+              <div className="order-2 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-slate-50 dark:to-slate-950/80 border border-emerald-500/30 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200/50 dark:border-slate-800/80 pb-3">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -798,7 +798,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
               </div>
 
               {/* Instant Order Creation Action Card */}
-              <div className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/40 border-2 border-emerald-500/40 rounded-2xl p-5 space-y-4 shadow-sm">
+              <div className="order-1 bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/40 border-2 border-emerald-500/40 rounded-2xl p-5 flex flex-col gap-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200/60 dark:border-emerald-900/40 pb-3">
                   <div>
                     <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -918,9 +918,17 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   </div>
                 )}
 
-                {orderResult && (
-                  <div className="p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
+                <div className="order-first p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
                     <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
+                    {!orderResult ? (
+                      <div className="space-y-2">
+                        <p>Primeiro crie o pedido de venda. Depois, os botões para gerar a NF-e série 2 e enviar à SEFAZ aparecerão aqui.</p>
+                        {readinessIssues.length > 0 && <p role="alert" className="text-amber-700 dark:text-amber-300">{readinessIssues.join(' ')}</p>}
+                        <button type="button" onClick={handleCreateDirectOrder} disabled={isSubmittingOrder || readinessIssues.length > 0 || isResolvingProducts} className="w-full px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                          {isSubmittingOrder ? 'Criando pedido...' : '1. Criar pedido para emitir NF-e'}
+                        </button>
+                      </div>
+                    ) : <>
                     {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.</p>}
                     {!nfe?.id ? (
                       <button
@@ -934,27 +942,31 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     ) : (
                       <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
                         <p>
-                          Situação: <strong>{String(nfe.situacao ?? 'rascunho')}</strong>
+                          Situação: <strong>{Number(nfe.situacao) === 5 ? 'Autorizada' : Number(nfe.situacao) === 1 ? 'Pendente de envio' : String(nfe.situacao ?? 'rascunho')}</strong>
                           {nfe.numero ? <> • Número: <strong>{nfe.numero}</strong></> : null}
                           {nfe.serie ? <> • Série: <strong>{nfe.serie}</strong></> : null}
                         </p>
+                        {Number(nfe.situacao) === 5 ? (
+                          <p className="font-semibold text-emerald-700 dark:text-emerald-300">Esta NF-e já foi autorizada. Não é necessário emitir novamente. Abra o DANFE para visualizar.</p>
+                        ) : !nfeReadyToSend && nfeBusy === null && !nfeError && nfeFiscalIssues.length === 0 ? (
+                          <p>Para liberar o envio, clique em <strong>Conferir NF-e e liberar envio</strong>. O app verificará série, NCM, valores e pagamento.</p>
+                        ) : null}
                         {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
-                          <button type="button" onClick={() => { if (window.confirm('Confirme o ambiente da nota no Bling e a série 2 antes de enviar. Transmitir esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend || orderChanged || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                          {Number(nfe.situacao) !== 5 && <button type="button" onClick={() => { if (window.confirm('Confirme o ambiente da nota no Bling e a série 2 antes de enviar. Transmitir esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend || orderChanged || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
                             {nfeBusy === 'send' ? 'Enviando...' : 'Enviar à SEFAZ'}
-                          </button>
+                          </button>}
                           <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
-                            {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar status'}
+                            {nfeBusy === 'status' ? 'Consultando...' : Number(nfe.situacao) === 5 ? 'Atualizar status' : 'Conferir NF-e e liberar envio'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
                         </div>
                       </div>
-                    )}
+                    )}</>}
                     {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}
                     {nfeFiscalIssues.length > 0 && <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{nfeFiscalIssues.join(' ')}</p>}
                   </div>
-                )}
 
                 {/* Big Action Submit Button */}                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
                   <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">

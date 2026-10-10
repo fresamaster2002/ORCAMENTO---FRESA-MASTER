@@ -404,17 +404,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     );
   });
 
-  const invoiceRequired = ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(
-    quote.shipping.selectedOption?.service || ''
-  );
-
   const workflowSteps = [
     { label: '1. Pedido', done: quote.items.length > 0 || Boolean(quote.client.name || quote.client.phone) },
     { label: '2. Orçamento', done: quote.financials.totalAmount > 0 },
     { label: '3. Aprovado', done: quote.status === 'approved' },
     {
-      label: invoiceRequired ? '4. NF Bling' : '4. Sem NF',
-      done: invoiceRequired ? quote.status === 'approved' : true,
+      label: Number(quote.bling?.nfe?.situacao) === 5 ? '4. NF-e autorizada' : '4. Emitir NF-e',
+      done: Number(quote.bling?.nfe?.situacao) === 5,
     },
   ];
 
@@ -867,7 +863,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Crie o pedido de venda no Bling com 1 clique para emissão de nota
+                    Crie o pedido, gere a NF-e série 2 e envie à SEFAZ pelo app.
                   </p>
                 </div>
               </div>
@@ -877,7 +873,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
               >
                 <Zap className="w-4 h-4 text-amber-300" />
-                <span>Emitir Pedido no Bling</span>
+                <span>{Number(quote.bling?.nfe?.situacao) === 5 ? 'Ver NF-e emitida' : 'Emitir NF-e'}</span>
               </button>
             </div>
           </div>

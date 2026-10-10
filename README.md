@@ -86,6 +86,8 @@ A transmissão faz uma nova conferência no backend e fica bloqueada na interfac
 
 ### Série 2 e carrinho Sandbox
 
+Na tela do orçamento, **Emitir NF-e** abre a aba de emissão do Bling. A seção **Nota Fiscal (NF-e)** aparece primeiro, antes das configurações de conexão, inclusive no celular. Sem venda vinculada, mostra **1. Criar pedido para emitir NF-e** e as pendências cadastrais/fiscais; após criar a venda, libera **Gerar NF-e a partir do pedido**. Ao reabrir uma nota pendente, use **Conferir NF-e e liberar envio** antes de **Enviar à SEFAZ**. Não há transmissão automática. Notas autorizadas mostram **Autorizada** e acesso ao DANFE, sem oferecer uma nova transmissão. O indicador do orçamento considera a situação da NF-e, não a modalidade de frete.
+
 A conferência da NF-e exige **série 2**, inclusive imediatamente antes da transmissão. A API documentada de geração por pedido não recebe série: ela é definida na **natureza de operação** do Bling. Conforme a [orientação oficial do Bling](https://ajuda.bling.com.br/hc/pt-br/articles/360036464953), acesse **Todas as configurações > Notas Fiscais > Naturezas de operação**, abra a natureza usada na venda e configure **Série = 2**. Não altere tributos nem reinicie a numeração para resolver a série.
 
 Em 10/10/2026, a natureza padrão de venda usada pela integração, **Venda de mercadoria a não contribuinte** (ID `15110327797`), foi alterada de série 1 para 2 e conferida após reabrir. Nenhum outro campo fiscal ou sequência foi editado. Essa configuração vale também para novas vendas que usem a mesma natureza no Bling; outras naturezas não foram alteradas. Se uma venda usar outra natureza, confira sua série antes de transmitir. Rascunhos antigos não são corrigidos retroativamente.

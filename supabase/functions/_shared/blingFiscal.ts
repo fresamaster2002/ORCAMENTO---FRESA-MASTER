@@ -1,7 +1,8 @@
 import { formatBlingError } from './blingErrors.ts';
+import { resolveBlingProducts } from './blingProducts.ts';
 
 type Data = Record<string, unknown>;
-export type FiscalItem = { sku?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
+export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
 export type PaymentQuote = {
   items: FiscalItem[];
   project?: { date?: string };
@@ -32,22 +33,38 @@ export function validateFiscalItems(items: FiscalItem[]): void {
     if (!/^\d{8}$/.test(ncm) || ncm === '00000000' || ncm === '82077000') {
       throw new BlingFiscalError(`NCM inválido ou não confirmado para ${item.description}: ${item.ncm || 'não informado'}. Confirme o código vigente com o contador; 8207.70.00 não é aceito para emissão.`);
     }
-    if (!String(item.sku || '').trim() || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0) {
-      throw new BlingFiscalError(`Confira SKU, quantidade e preço do item ${item.description} antes de emitir.`);
+    if (!String(item.description || '').trim() || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0) {
+      throw new BlingFiscalError(`Confira descrição, quantidade e preço do item ${item.description} antes de emitir.`);
     }
   }
 }
 
-async function requestBling(token: string, path: string, method = 'GET', body?: unknown): Promise<Data> {
-  const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(15000),
-  });
-  const data: unknown = await response.json();
-  if (!response.ok) throw new BlingFiscalError(formatBlingError(data, `Falha ao consultar o Bling (HTTP ${response.status}).`), response.status, data);
-  return object(data);
+let nextReadAt = 0;
+
+export async function requestBling(token: string, path: string, method = 'GET', body?: unknown): Promise<Data> {
+  for (let attempt = 0; ; attempt++) {
+    if (method === 'GET') {
+      const slot = Math.max(Date.now(), nextReadAt);
+      nextReadAt = slot + 400;
+      const wait = slot - Date.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data: unknown = await response.json();
+    if (method === 'GET' && response.status === 429 && attempt < 2) {
+      const retryAfter = Number(response.headers.get('Retry-After'));
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 1000;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
+    if (!response.ok) throw new BlingFiscalError(formatBlingError(data, `Falha ao consultar o Bling (HTTP ${response.status}).`), response.status, data);
+    return object(data);
+  }
 }
 
 export async function resolvePayment(token: string, method: string): Promise<number> {
@@ -87,8 +104,8 @@ export async function buildSalePayment(token: string, quote: PaymentQuote) {
 
 export function buildSaleItems(items: Array<FiscalItem & { unit?: string }>) {
   return items.map((item) => ({
-    ...(/^\d+$/.test(String(item.sku || '')) ? { produto: { id: Number(item.sku) } } : {}),
-    codigo: item.sku, descricao: item.description, unidade: item.unit || 'UN',
+    ...(validId(item.blingProductId || item.sku) ? { produto: { id: Number(item.blingProductId || item.sku) } } : {}),
+    ...(item.sku ? { codigo: item.sku } : {}), descricao: item.description, unidade: item.unit || 'UN',
     quantidade: Number(item.quantity), valor: Number(item.unitPrice),
   }));
 }
@@ -147,7 +164,11 @@ function validateOrderMatchesQuote(order: Data, quote: Data): void {
     const sku = String(supplied?.sku || '');
     return !supplied || normalize(supplied.description) !== normalize(sale.descricao)
       || Number(supplied.quantity) !== Number(sale.quantidade) || Number(supplied.unitPrice) !== Number(sale.valor)
-      || (sku !== String(sale.codigo || '') && sku !== String(object(sale.produto).id || ''));
+      || (supplied.blingProductId
+        ? (validId(object(sale.produto).id)
+          ? String(supplied.blingProductId) !== String(object(sale.produto).id)
+          : !sku || sku !== String(sale.codigo || ''))
+        : Boolean(sku) && sku !== String(sale.codigo || '') && sku !== String(object(sale.produto).id || ''));
   })) throw new BlingFiscalError('O orçamento não corresponde aos itens do pedido salvo. Confira antes de gerar a nota.', 409);
 }
 
@@ -203,12 +224,23 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
     if (action === 'generate') {
       const orderId = String(input.orderId || '');
       if (!validId(orderId)) throw new BlingFiscalError('Informe o ID do pedido de venda do Bling.');
-      if (input.quote) validateFiscalItems(records(object(input.quote).items).map((item) => ({ sku: String(item.sku || ''), description: String(item.description || ''), quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), ncm: String(item.ncm || '') })));
       const order = object((await requestBling(token, `/pedidos/vendas/${orderId}`)).data);
       if (!validId(order.id)) throw new BlingFiscalError('O Bling não retornou o pedido de venda.', 502);
       const linkedId = object(order.notaFiscal).id;
       if (validId(linkedId)) nfeId = String(linkedId);
       if (input.quote) validateOrderMatchesQuote(order, object(input.quote));
+      if (input.quote) {
+        const quote = object(input.quote);
+        const supplied = records(quote.items).map((item, index) => ({
+          ...item,
+          sku: String(item.sku || ''),
+          blingProductId: String(object(records(order.itens)[index].produto).id || item.blingProductId || ''),
+          description: String(item.description || ''), quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), ncm: String(item.ncm || ''),
+        }));
+        const resolved = await resolveBlingProducts(token, supplied);
+        validateFiscalItems(resolved.items);
+        input = { ...input, quote: { ...quote, items: resolved.items } };
+      }
       if (!validId(linkedId)) {
         const response = await requestBling(token, `/pedidos/vendas/${orderId}/gerar-nfe`, 'POST');
         const data = object(response.data);

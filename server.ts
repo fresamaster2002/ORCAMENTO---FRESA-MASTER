@@ -17,6 +17,7 @@ import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractio
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
+import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
@@ -1123,6 +1124,7 @@ Regras de negócio da Fresa Master:
             description,
             category,
             sku,
+            blingProductId: matchedBlingProduct && /^\d+$/.test(matchedBlingProduct.id) ? matchedBlingProduct.id : undefined,
             ncm,
             quantity: qty,
             unit: (typeof it.unit === "string" && it.unit.length <= 4) ? it.unit : "un",
@@ -1584,7 +1586,7 @@ ${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
 // Endpoint: Generate Bling API v3 Payload & XML for Sales Order / NF-e
 app.post("/api/bling/generate-payload", async (req, res) => {
   try {
-    const { quote } = req.body;
+    let { quote } = req.body;
     if (!quote || !quote.client) {
       return res.status(400).json({ error: "Orçamento inválido" });
     }
@@ -1593,7 +1595,10 @@ app.post("/api/bling/generate-payload", async (req, res) => {
     const cleanCep = (quote.client.cep || "").replace(/\D/g, "");
     const cleanPhone = (quote.client.phone || "").replace(/\D/g, "");
 
-    const payment = await buildSalePayment(req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "", quote);
+    const token = req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "";
+    const resolved = await resolveBlingProducts(token, quote.items);
+    quote = { ...quote, items: resolved.items };
+    const payment = await buildSalePayment(token, quote);
     // 1. Bling API v3 JSON Structure (/pedidos/vendas)
     const blingJson = {
       numero: quote.id.replace(/\D/g, "") || String(Date.now()).slice(-6),
@@ -1798,7 +1803,8 @@ app.post("/api/bling/test-connection", async (req, res) => {
 // Endpoint: Create Sales Order directly in Bling ERP via API v3 (/pedidos/vendas)
 app.post("/api/bling/create-order", async (req, res) => {
   try {
-    const { quote, token } = req.body;
+    let { quote } = req.body;
+    const { token } = req.body;
     const effectiveToken = token || persistedBlingToken || process.env.BLING_API_TOKEN;
 
     if (!quote || !quote.client) {
@@ -1815,21 +1821,16 @@ app.post("/api/bling/create-order", async (req, res) => {
       });
     }
 
-    const itemsMissingBlingData = (quote.items || []).filter((item: any) =>
-      !String(item.sku || "").trim() || String(item.ncm || "").replace(/\D/g, "").length !== 8 || Number(item.unitPrice) <= 0,
-    );
     if (quote.bling?.orderId) {
       return res.status(409).json({ success: false, error: "Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.", blingOrderId: quote.bling.orderId });
     }
+    const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false });
+    if (nonFiscalIssues.length) return res.status(400).json({ success: false, error: nonFiscalIssues.join(" "), issues: nonFiscalIssues });
+    const resolved = await resolveBlingProducts(effectiveToken, quote.items);
+    quote = { ...quote, items: resolved.items };
     const readiness = blingReadinessIssues(quote);
     if (readiness.length) {
       return res.status(400).json({ success: false, error: readiness.join(" "), issues: readiness });
-    }
-    if (itemsMissingBlingData.length) {
-      return res.status(400).json({
-        success: false,
-        error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${itemsMissingBlingData.map((item: any) => item.description).join(", ")}.`,
-      });
     }
 
     const salePayment = await buildSalePayment(effectiveToken, quote);
@@ -1904,6 +1905,7 @@ app.post("/api/bling/create-order", async (req, res) => {
       return res.json({
         success: true,
         blingOrderId: orderId,
+        items: quote.items,
         blingOrderNumber: orderNumber,
         blingOrderUrl: orderUrl,
         message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`,
@@ -2010,6 +2012,17 @@ app.get("/api/bling/products", async (req, res) => {
       success: false,
       error: err.message,
     });
+  }
+});
+
+app.post("/api/bling/resolve-products", async (req, res) => {
+  try {
+    const token = req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "";
+    return res.json({ success: true, ...await resolveBlingProducts(token, req.body.items) });
+  } catch (error) {
+    if (error instanceof BlingFiscalError) return res.status(error.status).json({ success: false, error: error.message, details: error.details });
+    console.error("Falha ao consultar produtos do Bling:", error);
+    return res.status(502).json({ success: false, error: "Falha de comunicação ao consultar os produtos do Bling." });
   }
 });
 
@@ -2505,6 +2518,7 @@ function parseFresaMasterFallback(
       description: itemDesc,
       category: itemCat,
       sku: itemSku,
+      blingProductId: matchedBlingProduct && /^\d+$/.test(matchedBlingProduct.id) ? matchedBlingProduct.id : undefined,
       ncm: itemNcm,
       quantity: qty,
       unit: "un",

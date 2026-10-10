@@ -602,11 +602,11 @@ export default function App() {
     }
   };
 
-  const handleUpdateBling = async (quoteId: string, bling: NonNullable<QuoteData['bling']>) => {
+  const handlePersistBlingUpdate = async (quoteId: string, patch: Pick<Partial<QuoteData>, 'bling' | 'items'>) => {
     const original = quote.id === quoteId ? quote : recentQuotes.find((saved) => saved.id === quoteId);
     if (!original) throw new Error('Não foi possível localizar o orçamento para salvar o vínculo do Bling.');
-    const updated = { ...original, bling };
-    setQuote((current) => current.id === quoteId ? { ...current, bling } : current);
+    const updated = { ...original, ...patch };
+    setQuote((current) => current.id === quoteId ? { ...current, ...patch } : current);
     setRecentQuotes((current) => [updated, ...current.filter((saved) => saved.id !== quoteId)].slice(0, 500));
     if (!supabase || !supabaseUser) throw new Error('O vínculo do Bling está na memória, mas é necessário entrar para salvá-lo na nuvem. Não repita a criação da venda.');
     setCloudSaveState('saving');
@@ -958,7 +958,8 @@ export default function App() {
         onClose={() => setIsBlingOpen(false)}
         quote={quote}
         onUpdateClient={handleUpdateClientFromBling}
-        onUpdateBling={handleUpdateBling}
+        onUpdateBling={(quoteId, bling, items) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}) })}
+        onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
       />
 
       <SavedQuotesModal

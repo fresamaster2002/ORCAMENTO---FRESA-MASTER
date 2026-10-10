@@ -93,6 +93,7 @@ export interface QuoteItem {
   description: string;
   category?: string;
   sku?: string;
+  blingProductId?: string; // ID interno do produto no Bling, independente do SKU
   ncm?: string; // Classificação fiscal confirmada por produto
   quantity: number;
   unit: string;

@@ -12,4 +12,6 @@ test('catálogo sem NCM não inventa código e seleção preserva classificaçã
   assert.equal(resolveSelectedProductNcm({ ...item, description: 'Outro produto' }, product), '');
   assert.equal(resolveSelectedProductNcm({ ...item, ncm: '8207.70.00' }, product), '');
   assert.equal(resolveSelectedProductNcm({ ...item, description: 'Outro produto' }, { ...product, ncm: '8207.70.90' }), '8207.70.90');
+  assert.equal(resolveSelectedProductNcm(item, { ...product, ncm: '8207.70.90' }), '8207.70.90');
+  assert.equal(normalizeBlingCatalogProducts([{ id: 456, nome: 'Fresa sem código' }])[0].sku, '');
 });

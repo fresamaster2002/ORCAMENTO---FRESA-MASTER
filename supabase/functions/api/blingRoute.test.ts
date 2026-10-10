@@ -23,6 +23,8 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     if (url.endsWith('/pedidos/vendas') && init?.method === 'POST') return Response.json({ data: { id: 22, numero: 5 } }, { status: 201 });
     if (url.endsWith('/nfe/33')) return Response.json({ data: { id: 33, situacao: 1, itens: [{ descricao: 'Fresa', classificacaoFiscal: '0000.00.00' }], parcelas: [{ formaPagamento: { id: 17 } }] } });
     if (url.endsWith('/produtos/123')) return Response.json({ data: { id: 123, nome: 'Fresa de topo', codigo: 'FM-TCT-6X22', tributacao: { ncm: '8207.70.10' } } });
+    if (url.endsWith('/produtos/456')) return Response.json({ data: { id: 456, nome: 'Fresa sem SKU', codigo: '', tributacao: { ncm: '8207.70.10' } } });
+    if (url.includes('/produtos?')) return Response.json({ data: [] });
     throw new Error(`Requisição inesperada: ${url}`);
   });
   await import('./index.ts');
@@ -53,12 +55,29 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     assert.equal(response.status, 400);
     assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
   });
-  await t.test('NCM genérico não cria contato nem venda', async () => {
+  await t.test('NCM genérico é substituído pelo cadastro confirmado antes da venda', async () => {
     calls.length = 0;
     const r = await post('create-order', { quote: { ...quote, items: [{ ...quote.items[0], ncm: '8207.70.00' }] } });
+    assert.equal(r.status, 200);
+    assert.ok(calls.some((call) => call.url.endsWith('/produtos/123')));
+  });
+  await t.test('NCM inválido em item avulso não cria contato nem venda', async () => {
+    calls.length = 0;
+    const r = await post('create-order', { quote: { ...quote, items: [{ ...quote.items[0], sku: '', ncm: '8207.70.00' }] } });
     assert.equal(r.status, 400);
-    assert.match((await r.json()).error, /contador/);
-    assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
+    assert.equal(calls.some((call) => call.method === 'POST' && call.url.includes('api.bling.com.br')), false);
+  });
+  await t.test('consulta e venda sem SKU usam ID e NCM do cadastro, sem código inventado', async () => {
+    calls.length = 0;
+    const items = [{ ...quote.items[0], sku: '', blingProductId: '456', ncm: '' }];
+    const resolved = await (await post('resolve-products', { items })).json();
+    assert.equal(resolved.items[0].ncm, '8207.70.10');
+    assert.equal(calls.some((call) => call.method === 'POST' && call.url.includes('api.bling.com.br')), false);
+    const response = await post('create-order', { quote: { ...quote, items } });
+    assert.equal(response.status, 200);
+    const payload = calls.find((call) => call.url.endsWith('/pedidos/vendas'))!.body;
+    assert.deepEqual((payload.itens as Record<string, unknown>[])[0].produto, { id: 456 });
+    assert.equal('codigo' in (payload.itens as Record<string, unknown>[])[0], false);
   });
   await t.test('pedido e exportação usam parcelas oficiais, sem pagamento ignorado', async () => {
     const r = await post('create-order', { quote });

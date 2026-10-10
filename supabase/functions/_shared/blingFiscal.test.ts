@@ -1,10 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe, resolvePayment, validateFiscalItems } from './blingFiscal.ts';
+import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe, requestBling, resolvePayment, validateFiscalItems } from './blingFiscal.ts';
 
 const item = { sku: '123', description: 'Fresa de topo teste', quantity: 2, unitPrice: 85, ncm: '8207.70.10' };
 const quote = { items: [item], project: { date: '2026-10-07' }, financials: { paymentMethod: 'Pix', shippingAmount: 27.07, discountAmount: 10 } };
 const pix = { id: 17, descricao: 'Pix', tipoPagamento: 17, situacao: 1, finalidade: 2 };
+
+test('repete somente leituras limitadas em 429; gravação não é repetida', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return calls === 1 ? Response.json({ error: { message: 'Limite' } }, { status: 429, headers: { 'Retry-After': '0.001' } }) : Response.json({ data: { id: 123 } });
+  });
+  assert.deepEqual((await requestBling('test', '/produtos/123')).data, { id: 123 });
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(requestBling('test', '/nfe/99/enviar', 'POST'), /Limite/);
+  assert.equal(calls, 1);
+});
 
 test('bloqueia NCM ausente, genérico ou zerado sem inferir classificação', () => {
   for (const ncm of ['', '0000.00.00', '8207.70.00']) {
@@ -43,13 +56,45 @@ test('falta de permissão para formas de pagamento é exibida explicitamente', a
   await assert.rejects(buildSalePayment('test-token', quote), (error: BlingFiscalError) => error.status === 403 && error.message === 'Permissão negada');
 });
 
-test('NCM inválido impede criação e geração antes de qualquer chamada ao Bling', async (t) => {
+test('NCM inválido impede criação antes de qualquer chamada ao Bling', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('Não deve chamar a API'); });
   const invalid = { ...quote, items: [{ ...item, ncm: '8207.70.00' }] };
   await assert.rejects(buildSalePayment('test-token', invalid), /NCM/);
-  const result = await handleBlingNfe('generate', { orderId: 1, quote: invalid }, 'test-token');
-  assert.equal(result.status, 400);
-  assert.equal(result.body.success, false);
+});
+
+test('geração sem SKU usa ID e NCM cadastrado no Bling, antes de criar a nota', async (t) => {
+  const calls: string[] = [];
+  let ncm = '8207.70.10';
+  let draft = {
+    id: 99, numero: '1', serie: 2, situacao: 1, valorNota: 170, valorFrete: 0,
+    contato: { endereco: { uf: 'SP' } },
+    itens: [{ descricao: item.description, quantidade: 2, valor: 85, classificacaoFiscal: '0000.00.00', cfop: '5102' }],
+    parcelas: [{ formaPagamento: { id: 17 }, valor: 170 }],
+  };
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = new URL(String(input)).pathname;
+    calls.push(`${init?.method || 'GET'} ${path}`);
+    if (path.endsWith('/pedidos/vendas/1')) return Response.json({ data: { id: 1, itens: [{ produto: { id: 123 }, descricao: item.description, quantidade: 2, valor: 85 }], parcelas: [{ dataVencimento: '2026-10-07', valor: 170, formaPagamento: { id: 17 } }] } });
+    if (path.endsWith('/produtos/123')) return Response.json({ data: { id: 123, codigo: '', tributacao: { ncm } } });
+    if (path.endsWith('/gerar-nfe')) return Response.json({ data: { idNotaFiscal: 99 } });
+    if (path.endsWith('/nfe/99') && init?.method === 'PUT') {
+      draft = { ...draft, ...JSON.parse(String(init.body)) };
+      return Response.json({ data: { id: 99 } });
+    }
+    if (path.endsWith('/nfe/99')) return Response.json({ data: draft });
+    if (path.endsWith('/formas-pagamentos')) return Response.json({ data: [pix] });
+    throw new Error(`Chamada inesperada: ${path}`);
+  });
+  const input = { orderId: 1, quote: { items: [{ ...item, sku: '', blingProductId: '123', ncm: '' }], financials: { paymentMethod: 'Pix', shippingAmount: 0 } } };
+  const result = await handleBlingNfe('generate', input, 'test-token');
+  assert.equal(result.status, 200);
+  assert.equal(result.body.readyToSend, true);
+  assert.equal(draft.itens[0].classificacaoFiscal, '8207.70.10');
+  calls.length = 0;
+  ncm = '8207.70.00';
+  const invalid = await handleBlingNfe('generate', input, 'test-token');
+  assert.equal(invalid.status, 400);
+  assert.equal(calls.some((call) => call.startsWith('POST') || call.startsWith('PUT')), false);
 });
 
 test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e confere persistência', async (t) => {
@@ -70,6 +115,7 @@ test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e con
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ path, method, body });
     if (path.endsWith('/formas-pagamentos')) return Response.json({ data: [pix] });
+    if (path.endsWith('/produtos/123')) return Response.json({ data: { id: 123, codigo: '123', nome: item.description, tributacao: { ncm: '8207.70.10' } } });
     if (path.endsWith('/nfe/99/enviar')) {
       draft.situacao = 5;
       return Response.json({ data: {} });

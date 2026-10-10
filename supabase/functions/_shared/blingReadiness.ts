@@ -5,7 +5,7 @@ export function blingReadinessIssues(quote: {
   items?: Item[];
   client?: Client;
   financials?: { paymentMethod?: string; shippingAmount?: number; discountAmount?: number };
-}): string[] {
+}, options: { checkNcm?: boolean } = {}): string[] {
   const issues: string[] = [];
   const client = quote.client || {};
   if (!client.name?.trim()) issues.push('Informe a razão social ou nome do cliente.');
@@ -32,9 +32,8 @@ export function blingReadinessIssues(quote: {
   for (const [index, item] of (quote.items || []).entries()) {
     const label = item.description?.trim() || `Item ${index + 1}`;
     if (!item.description?.trim()) issues.push(`${label}: informe a descrição.`);
-    if (!item.sku?.trim()) issues.push(`${label}: selecione o produto no catálogo do Bling ou informe o SKU cadastrado.`);
     const ncm = String(item.ncm || '').replace(/\D/g, '');
-    if (!/^\d{8}$/.test(ncm) || ['00000000', '82077000'].includes(ncm)) issues.push(`${label}: NCM inválido ou não confirmado (${item.ncm || 'ausente'}). Confirme o código com o contador.`);
+    if (options.checkNcm !== false && (!/^\d{8}$/.test(ncm) || ['00000000', '82077000'].includes(ncm))) issues.push(`${label}: NCM inválido ou não confirmado (${item.ncm || 'ausente'}). Consulte o cadastro do produto no Bling ou confirme o código com o contador.`);
     if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) issues.push(`${label}: confira a quantidade.`);
     if (!Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0) issues.push(`${label}: confira o preço unitário.`);
   }

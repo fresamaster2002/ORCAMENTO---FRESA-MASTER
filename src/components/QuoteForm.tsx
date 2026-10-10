@@ -114,6 +114,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             ...item,
             description: product.description,
             sku: product.sku,
+            blingProductId: /^\d+$/.test(product.id) ? product.id : undefined,
             ncm: resolveSelectedProductNcm(item, product),
             category: product.category,
             unit: product.unit || item.unit,
@@ -125,6 +126,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             id: `bling-${Date.now()}`,
             description: product.description,
             sku: product.sku,
+            blingProductId: /^\d+$/.test(product.id) ? product.id : undefined,
             ncm: product.ncm,
             category: product.category,
             quantity: 1,
@@ -187,7 +189,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       if (!response.ok || !data.success) throw new Error(data.error || 'O Bling não confirmou o cadastro.');
 
       const created = normalizeBlingCatalogProducts([data.product])[0] || {
-        id: newProductSku,
+        id: String(data.product?.id || newProductSku),
         sku: newProductSku,
         description: newProductName,
         category: 'Produtos Bling',
@@ -199,7 +201,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       };
       setLiveBlingCatalog((current) => {
         const products = current ?? [];
-        return [...products.filter((item) => item.sku !== created.sku), created];
+        return [...products.filter((item) => item.id !== created.id), created];
       });
       await addBlingProduct(created, pendingQuoteItemId);
     } catch (error: any) {
@@ -737,7 +739,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         value={item.description}
                         onChange={(value) => updateItem(item.id, 'description', value)}
                       />
-                      {(!item.sku || item.notes?.includes('Não encontrado no catálogo do Bling')) && (
+                      {((!item.sku && !item.blingProductId) || item.notes?.includes('Não encontrado no catálogo do Bling')) && (
                         <button
                           type="button"
                           onClick={() => openCatalogForItem(item)}
@@ -778,8 +780,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         type="text"
                         aria-label={`SKU de ${item.description}`}
                         value={item.sku || ''}
-                        placeholder="Pendente"
-                        onChange={(e) => updateItem(item.id, 'sku', e.target.value)}
+                        placeholder="Opcional"
+                        onChange={(e) => {
+                          const items = quote.items.map((current) => current.id === item.id ? { ...current, sku: e.target.value, blingProductId: undefined } : current);
+                          recalculateFinancials(items, quote.shipping.selectedOption);
+                        }}
                         className="w-full text-slate-600 dark:text-slate-400 bg-transparent outline-none"
                       />
                     </td>
@@ -1015,7 +1020,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   <div>
                     <div className="font-bold text-xs text-slate-900 dark:text-slate-100">{prod.description}</div>
                     <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5 font-mono">
-                      <span>SKU: {prod.sku}</span>
+                      <span>{prod.sku ? `SKU: ${prod.sku}` : `ID Bling: ${prod.id} • Sem SKU`}</span>
                       <span>• NCM: {prod.ncm || 'consultado ao selecionar'}</span>
                       <span>• Categoria: {prod.category}</span>
                     </div>

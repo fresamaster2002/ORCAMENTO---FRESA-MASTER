@@ -212,7 +212,7 @@ export function normalizeBlingCatalogProducts(records: unknown[]): BlingCatalogP
     const description = product.nome?.trim() || product.descricao?.trim() || product.descricaoCurta?.trim();
     if (!description) return [];
 
-    const sku = product.codigo?.trim() || String(product.id || `BLING-${index + 1}`);
+    const sku = product.codigo?.trim() || '';
     const category = product.categoriaProduto?.descricao || 'Produtos Bling';
     const price = Number(product.preco) || 0;
     const weight = Number(product.pesoLiquido) || 0;

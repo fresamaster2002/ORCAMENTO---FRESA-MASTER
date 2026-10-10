@@ -2,6 +2,7 @@ import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractio
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
+import { resolveBlingProducts } from '../_shared/blingProducts.ts';
 import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
@@ -524,7 +525,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const unitPrice = spokenPrices[0] || matched?.unitPrice || 0;
   const item = {
     id: 'item-1', description: matched?.description || parsedDescription, category: matched?.category || 'Fresas Router CNC',
-    sku: matched?.sku || '', ncm: matched?.ncm || '', quantity, unit: 'un', unitPrice,
+    sku: matched?.sku || '', blingProductId: matched && /^\d+$/.test(matched.id) ? matched.id : undefined, ncm: matched?.ncm || '', quantity, unit: 'un', unitPrice,
     totalPrice: quantity * unitPrice,
     notes: matched ? `Item cadastrado no Bling ERP (${matched.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.',
   };
@@ -604,7 +605,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
     const quantity = Number(item.quantity) || 1;
     const spokenPrice = unitPrices.length === 1 ? unitPrices[0] : unitPrices[index];
     const unitPrice = spokenPrice || (match ? match.unitPrice : Number(item.unitPrice) || 0);
-    return { id: `item-${index + 1}`, description: match?.description || item.description || 'Fresa para Router CNC', category: match?.category || item.category || 'Fresas Router CNC', sku: match?.sku || '', ncm: match?.ncm || '', quantity, unit: item.unit || 'un', unitPrice, totalPrice: quantity * unitPrice, notes: match ? `Item cadastrado no Bling ERP (${match.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.' };
+    return { id: `item-${index + 1}`, description: match?.description || item.description || 'Fresa para Router CNC', category: match?.category || item.category || 'Fresas Router CNC', sku: match?.sku || '', blingProductId: match && /^\d+$/.test(match.id) ? match.id : undefined, ncm: match?.ncm || '', quantity, unit: item.unit || 'un', unitPrice, totalPrice: quantity * unitPrice, notes: match ? `Item cadastrado no Bling ERP (${match.sku})` : 'Não localizado no catálogo real do Bling. Revise ou cadastre antes de faturar.' };
   });
   const cep = extractCepFromText(text) || parsed.detectedCep || parsed.client?.cep || current.client?.cep || '';
   const weight = calculatePackageWeight(items);
@@ -863,10 +864,13 @@ async function route(request: Request): Promise<Response> {
     if (path === '/bling/generate-payload' && request.method === 'POST') {
       if (!body.quote?.client) return json({ error: 'Orçamento inválido.' }, 400);
       try {
-        const payment = await buildSalePayment(body.token || await getBlingToken(), body.quote);
-        const generated = generateBlingPayload(body.quote);
+        const token = body.token || await getBlingToken();
+        const resolved = await resolveBlingProducts(token, body.quote.items);
+        const quote = { ...body.quote, items: resolved.items };
+        const payment = await buildSalePayment(token, quote);
+        const generated = generateBlingPayload(quote);
         delete generated.blingJson.pagamento;
-        generated.blingJson.itens = buildSaleItems(body.quote.items);
+        generated.blingJson.itens = buildSaleItems(quote.items);
         Object.assign(generated.blingJson, payment);
         return json({ success: true, ...generated });
       } catch (error) {
@@ -942,15 +946,33 @@ async function route(request: Request): Promise<Response> {
       if (!response.ok) return json({ success: false, error: data.error?.description || data.message || 'O Bling recusou o cadastro do produto.', details: data }, response.status);
       return json({ success: true, product: data.data }, 201);
     }
+    if (path === '/bling/resolve-products' && request.method === 'POST') {
+      try {
+        const resolved = await resolveBlingProducts(body.token || await getBlingToken(), body.items);
+        return json({ success: true, ...resolved });
+      } catch (error) {
+        if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, details: error.details }, error.status);
+        throw error;
+      }
+    }
     if (path === '/bling/create-order' && request.method === 'POST') {
-      const quote = body.quote;
+      let quote = body.quote;
       const token = body.token || await getBlingToken();
       if (!quote?.client) return json({ success: false, error: 'Dados do orçamento ou cliente não fornecidos.' }, 400);
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       if (quote.bling?.orderId) return json({ success: false, error: 'Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.', blingOrderId: quote.bling.orderId }, 409);
+      const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false });
+      if (nonFiscalIssues.length) return json({ success: false, error: nonFiscalIssues.join(' '), issues: nonFiscalIssues }, 400);
+      try {
+        const resolved = await resolveBlingProducts(token, quote.items);
+        quote = { ...quote, items: resolved.items };
+      } catch (error) {
+        if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, blingDetails: error.details }, error.status);
+        throw error;
+      }
       const readiness = blingReadinessIssues(quote);
       if (readiness.length) return json({ success: false, error: readiness.join(' '), issues: readiness }, 400);
-      const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
+      const missing = (quote.items || []).filter((item: JsonObject) => String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
       if (missing.length) return json({ success: false, error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${missing.map((item: JsonObject) => item.description).join(', ')}.` }, 400);
       let salePayment;
       try { salePayment = await buildSalePayment(token, quote); }
@@ -985,7 +1007,7 @@ async function route(request: Request): Promise<Response> {
       const orderId = data?.data?.id || data?.id;
       if (!orderId) return json({ success: false, error: 'O Bling respondeu sem ID do pedido. Confira a venda no Bling antes de repetir.' }, 502);
       const orderNumber = data?.data?.numero || data?.numero || payload.numeroLoja;
-      return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
+      return json({ success: true, items: quote.items, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
     }
     if (path.startsWith('/bling/nfe/') && request.method === 'POST') {
       const token = body.token || await getBlingToken();

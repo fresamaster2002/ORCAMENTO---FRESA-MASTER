@@ -28,6 +28,7 @@ import { ToolDescriptionInput } from './ToolDescriptionInput';
 import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
+import { resolveSelectedProductNcm } from '../blingProductSelection';
 
 const calculateDiscountAmount = (subtotal: number, discountPercentage: number, fixedDiscount: number) => {
   const amount = discountPercentage > 0 ? (subtotal * discountPercentage) / 100 : fixedDiscount;
@@ -54,6 +55,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   const [liveBlingCatalog, setLiveBlingCatalog] = useState<BlingCatalogProduct[] | null>(null);
   const [isLoadingBlingCatalog, setIsLoadingBlingCatalog] = useState(false);
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
+  const [isSelectingProduct, setIsSelectingProduct] = useState(false);
   const [pendingQuoteItemId, setPendingQuoteItemId] = useState<string | null>(null);
   const [showNewProductForm, setShowNewProductForm] = useState(false);
   const [isCreatingBlingProduct, setIsCreatingBlingProduct] = useState(false);
@@ -61,7 +63,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   const [newProductName, setNewProductName] = useState('');
   const [newProductSku, setNewProductSku] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
-  const [newProductNcm, setNewProductNcm] = useState('8207.70.00');
+  const [newProductNcm, setNewProductNcm] = useState('');
 
   useEffect(() => {
     if (!isBlingCatalogModalOpen) return;
@@ -92,33 +94,52 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     return () => { cancelled = true; };
   }, [isBlingCatalogModalOpen]);
 
-  const addBlingProduct = (product: BlingCatalogProduct, replaceItemId?: string | null) => {
-    const updatedItems = replaceItemId
-      ? quote.items.map((item) => item.id === replaceItemId ? {
-          ...item,
-          description: product.description,
-          sku: product.sku,
-          ncm: product.ncm || item.ncm,
-          category: product.category,
-          unit: product.unit || item.unit,
-          unitPrice: product.unitPrice > 0 ? product.unitPrice : item.unitPrice,
-          totalPrice: item.quantity * (product.unitPrice > 0 ? product.unitPrice : item.unitPrice),
-          notes: `Produto cadastrado no Bling ERP (${product.sku})`,
-        } : item)
-      : [...quote.items, {
-          id: `bling-${Date.now()}`,
-          description: product.description,
-          sku: product.sku,
-          ncm: product.ncm,
-          category: product.category,
-          quantity: 1,
-          unit: product.unit,
-          unitPrice: product.unitPrice,
-          totalPrice: product.unitPrice,
-          notes: `Produto cadastrado no Bling ERP (${product.sku})`,
-        }];
-    recalculateFinancials(updatedItems, quote.shipping.selectedOption);
-    closeBlingCatalog();
+  const addBlingProduct = async (selected: BlingCatalogProduct, replaceItemId?: string | null) => {
+    if (isSelectingProduct) return;
+    setIsSelectingProduct(true);
+    setCatalogLoadError(null);
+    try {
+      let product = selected;
+      if (/^\d+$/.test(selected.id)) {
+        const token = localStorage.getItem('fresa_master_bling_token') || '';
+        const response = await apiFetch(`/api/bling/products/${selected.id}`, { headers: token ? { 'X-Bling-Token': token } : {} });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Não foi possível consultar os dados fiscais do produto.');
+        const detailed = normalizeBlingCatalogProducts([data.product])[0];
+        if (!detailed) throw new Error('O cadastro do produto não contém descrição válida.');
+        product = detailed;
+      }
+      const updatedItems = replaceItemId
+        ? quote.items.map((item) => item.id === replaceItemId ? {
+            ...item,
+            description: product.description,
+            sku: product.sku,
+            ncm: resolveSelectedProductNcm(item, product),
+            category: product.category,
+            unit: product.unit || item.unit,
+            unitPrice: item.unitPrice > 0 ? item.unitPrice : product.unitPrice,
+            totalPrice: item.quantity * (item.unitPrice > 0 ? item.unitPrice : product.unitPrice),
+            notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+          } : item)
+        : [...quote.items, {
+            id: `bling-${Date.now()}`,
+            description: product.description,
+            sku: product.sku,
+            ncm: product.ncm,
+            category: product.category,
+            quantity: 1,
+            unit: product.unit,
+            unitPrice: product.unitPrice,
+            totalPrice: product.unitPrice,
+            notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+          }];
+      recalculateFinancials(updatedItems, quote.shipping.selectedOption);
+      closeBlingCatalog();
+    } catch (error) {
+      setCatalogLoadError(error instanceof Error ? error.message : 'Falha ao consultar o produto no Bling.');
+    } finally {
+      setIsSelectingProduct(false);
+    }
   };
 
   const openCatalogForItem = (item: QuoteItem) => {
@@ -127,7 +148,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     setNewProductName(item.description);
     setNewProductSku(item.sku || `FM-${Date.now().toString().slice(-6)}`);
     setNewProductPrice(item.unitPrice > 0 ? String(item.unitPrice) : '');
-    setNewProductNcm(item.ncm || '8207.70.00');
+    setNewProductNcm(item.ncm === '8207.70.00' ? '' : item.ncm || '');
     setShowNewProductForm(false);
     setNewProductError(null);
     setIsBlingCatalogModalOpen(true);
@@ -180,7 +201,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
         const products = current ?? [];
         return [...products.filter((item) => item.sku !== created.sku), created];
       });
-      addBlingProduct(created, pendingQuoteItemId);
+      await addBlingProduct(created, pendingQuoteItemId);
     } catch (error: any) {
       setNewProductError(error.message || 'Falha ao cadastrar produto no Bling.');
     } finally {
@@ -638,7 +659,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-slate-500" />
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Fresas & Ferramentas Router CNC (NCM 8207.70.00)
+                Fresas & Ferramentas Router CNC (NCM confirmado por item)
               </h3>
             </div>
 
@@ -968,6 +989,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                       ? `${liveBlingCatalog.length} produtos carregados da sua conta Bling`
                       : catalogLoadError || 'Conecte o Bling para carregar seus produtos cadastrados.'}
                 </p>
+                {catalogLoadError && liveBlingCatalog !== null && <p role="alert" className="mt-2 text-sm text-red-600">{catalogLoadError}</p>}
               </div>
             </div>
 
@@ -975,17 +997,18 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               {isLoadingBlingCatalog && (
                 <div className="py-8 text-center text-xs text-slate-500">Carregando catálogo...</div>
               )}
+              {isSelectingProduct && <p role="status" className="text-sm font-semibold">Consultando o cadastro fiscal da ferramenta...</p>}
               {!isLoadingBlingCatalog && filteredBlingCatalog.map((prod) => (
                 <div
                   key={prod.id}
-                  onClick={() => addBlingProduct(prod, pendingQuoteItemId)}
+                  onClick={() => { if (!isSelectingProduct) void addBlingProduct(prod, pendingQuoteItemId); }}
                   className="pt-2 first:pt-0 flex items-center justify-between gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl cursor-pointer transition"
                 >
                   <div>
                     <div className="font-bold text-xs text-slate-900 dark:text-slate-100">{prod.description}</div>
                     <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5 font-mono">
                       <span>SKU: {prod.sku}</span>
-                      <span>• NCM: {prod.ncm}</span>
+                      <span>• NCM: {prod.ncm || 'consultado ao selecionar'}</span>
                       <span>• Categoria: {prod.category}</span>
                     </div>
                   </div>

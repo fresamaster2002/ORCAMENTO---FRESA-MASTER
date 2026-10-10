@@ -224,7 +224,7 @@ export function normalizeBlingCatalogProducts(records: unknown[]): BlingCatalogP
       category,
       unitPrice: price,
       unit: product.unidade || 'un',
-      ncm: product.tributacao?.ncm || product.ncm || '8207.70.00',
+      ncm: product.tributacao?.ncm || product.ncm || '',
       weightGrams: weight * 1000,
       tags: [sku, category, product.descricaoCurta || '', description]
         .join(' ')

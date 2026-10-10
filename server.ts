@@ -19,6 +19,7 @@ import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
 import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
+import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1817,6 +1818,13 @@ app.post("/api/bling/create-order", async (req, res) => {
     const itemsMissingBlingData = (quote.items || []).filter((item: any) =>
       !String(item.sku || "").trim() || String(item.ncm || "").replace(/\D/g, "").length !== 8 || Number(item.unitPrice) <= 0,
     );
+    if (quote.bling?.orderId) {
+      return res.status(409).json({ success: false, error: "Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.", blingOrderId: quote.bling.orderId });
+    }
+    const readiness = blingReadinessIssues(quote);
+    if (readiness.length) {
+      return res.status(400).json({ success: false, error: readiness.join(" "), issues: readiness });
+    }
     if (itemsMissingBlingData.length) {
       return res.status(400).json({
         success: false,
@@ -1889,6 +1897,7 @@ app.post("/api/bling/create-order", async (req, res) => {
 
     if (response.ok || response.status === 201) {
       const orderId = responseData?.data?.id || responseData?.id;
+      if (!orderId) return res.status(502).json({ success: false, error: "O Bling respondeu sem ID do pedido. Confira a venda no Bling antes de repetir.", blingDetails: responseData });
       const orderNumber = responseData?.data?.numero || responseData?.numero || pedidoPayload.numeroLoja;
       const orderUrl = orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined;
 
@@ -1924,6 +1933,24 @@ app.post("/api/bling/nfe/:action", async (req, res) => {
 });
 
 // Endpoint: Fetch live catalog / products from Bling API v3
+app.get("/api/bling/products/:id", async (req, res) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ success: false, error: "Informe um ID válido do produto." });
+    const token = (req.get("x-bling-token") || "").replace(/^Bearer\s+/i, "") || persistedBlingToken || process.env.BLING_API_TOKEN;
+    if (!token) return res.status(401).json({ success: false, error: "Conecte o Bling para consultar os dados fiscais do produto." });
+    const response = await fetch(`https://api.bling.com.br/Api/v3/produtos/${req.params.id}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000),
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(response.status).json({ success: false, error: formatBlingError(data, "Não foi possível consultar o cadastro fiscal do produto.") });
+    if (!data.data?.id) return res.status(502).json({ success: false, error: "O Bling não retornou o cadastro do produto." });
+    return res.json({ success: true, product: data.data });
+  } catch (error) {
+    console.error("Falha ao consultar dados fiscais do produto:", error);
+    return res.status(502).json({ success: false, error: "Falha de comunicação ao consultar o cadastro fiscal do produto." });
+  }
+});
+
 app.get("/api/bling/products", async (req, res) => {
   try {
     const authorization = req.get("x-bling-token") || "";
@@ -2003,6 +2030,7 @@ app.post("/api/bling/products", async (req, res) => {
     if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) {
       return res.status(400).json({ success: false, error: "Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos." });
     }
+    if (["00000000", "82077000"].includes(ncm)) return res.status(400).json({ success: false, error: "NCM zerado ou 8207.70.00 não é aceito. Confirme a classificação fiscal do produto antes de cadastrá-lo." });
 
     const response = await fetch("https://api.bling.com.br/Api/v3/produtos", {
       method: "POST",

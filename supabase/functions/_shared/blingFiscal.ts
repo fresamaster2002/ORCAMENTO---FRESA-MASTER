@@ -104,7 +104,7 @@ async function readNfe(token: string, id: string): Promise<Data> {
   return nfe;
 }
 
-async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string): Promise<string[]> {
+async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, quote?: Data): Promise<string[]> {
   const issues: string[] = [];
   if (Number(nfe.serie) !== 2) issues.push('A NF-e precisa estar na série 2. Ajuste a série e a numeração no Bling antes de transmitir.');
   const items = records(nfe.itens);
@@ -123,7 +123,32 @@ async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string):
     const expectedId = await resolvePayment(token, expectedPayment);
     if (installments.some((p) => Number(object(p.formaPagamento).id) !== expectedId)) issues.push(`O pagamento da NF-e não corresponde a "${expectedPayment}" do orçamento.`);
   }
+  if (quote) {
+    const expectedItems = records(quote.items);
+    if (items.length !== expectedItems.length || items.some((item, index) => {
+      const expected = expectedItems[index];
+      return !expected || normalize(item.descricao) !== normalize(expected.description)
+        || Number(item.quantidade) !== Number(expected.quantity) || Number(item.valor) !== Number(expected.unitPrice)
+        || String(item.classificacaoFiscal || '').replace(/\D/g, '') !== String(expected.ncm || '').replace(/\D/g, '');
+    })) issues.push('Os itens/NCM da NF-e divergem do orçamento atual. Confira o pedido e a nota existentes no Bling.');
+    const financials = object(quote.financials);
+    const subtotal = expectedItems.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
+    const expectedTotal = subtotal + Number(financials.shippingAmount || 0) - Number(financials.discountAmount || 0);
+    if (!Number.isFinite(expectedTotal) || Math.round(expectedTotal * 100) !== Math.round(total * 100)) issues.push('O total da NF-e diverge do orçamento atual.');
+  }
   return issues;
+}
+
+function validateOrderMatchesQuote(order: Data, quote: Data): void {
+  const saleItems = records(order.itens);
+  const quoteItems = records(quote.items);
+  if (saleItems.length !== quoteItems.length || saleItems.some((sale, index) => {
+    const supplied = quoteItems[index];
+    const sku = String(supplied?.sku || '');
+    return !supplied || normalize(supplied.description) !== normalize(sale.descricao)
+      || Number(supplied.quantity) !== Number(sale.quantidade) || Number(supplied.unitPrice) !== Number(sale.valor)
+      || (sku !== String(sale.codigo || '') && sku !== String(object(sale.produto).id || ''));
+  })) throw new BlingFiscalError('O orçamento não corresponde aos itens do pedido salvo. Confira antes de gerar a nota.', 409);
 }
 
 async function prepareDraft(token: string, nfeId: string, order: Data, input: Data): Promise<Data> {
@@ -142,8 +167,6 @@ async function prepareDraft(token: string, nfeId: string, order: Data, input: Da
     if (normalize(sale.descricao) !== normalize(draftItem.descricao) || Number(sale.quantidade) !== Number(draftItem.quantidade) || Number(sale.valor) !== Number(draftItem.valor)) throw new BlingFiscalError('Os itens da nota não correspondem ao pedido. Não foi aplicado ajuste automático.', 409);
     let ncm: string;
     if (supplied) {
-      const sku = String(supplied.sku || '');
-      if (normalize(supplied.description) !== normalize(sale.descricao) || Number(supplied.quantity) !== Number(sale.quantidade) || Number(supplied.unitPrice) !== Number(sale.valor) || (sku !== String(sale.codigo || '') && sku !== String(object(sale.produto).id || ''))) throw new BlingFiscalError('O orçamento não corresponde aos itens do pedido salvo. Confira antes de gerar a nota.', 409);
       ncm = String(supplied.ncm || '');
     } else {
       const productId = object(sale.produto).id;
@@ -185,7 +208,8 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       if (!validId(order.id)) throw new BlingFiscalError('O Bling não retornou o pedido de venda.', 502);
       const linkedId = object(order.notaFiscal).id;
       if (validId(linkedId)) nfeId = String(linkedId);
-      else {
+      if (input.quote) validateOrderMatchesQuote(order, object(input.quote));
+      if (!validId(linkedId)) {
         const response = await requestBling(token, `/pedidos/vendas/${orderId}/gerar-nfe`, 'POST');
         const data = object(response.data);
         const generatedId = response.idNotaFiscal ?? data.idNotaFiscal ?? data.id;
@@ -198,7 +222,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       nfe = await readNfe(token, nfeId);
       if (input.fix) throw new BlingFiscalError('Para ajustar o rascunho, use a geração com o pedido e orçamento correspondentes.');
       if (action === 'send') {
-        const issues = await fiscalIssues(token, nfe, String(input.paymentMethod || ''));
+        const issues = await fiscalIssues(token, nfe, String(input.paymentMethod || ''), input.quote ? object(input.quote) : undefined);
         if (![1, 4].includes(Number(nfe.situacao))) issues.push('A situação da NF-e não permite nova transmissão.');
         if (issues.length) throw new BlingFiscalError(issues.join(' '), 409);
         await requestBling(token, `/nfe/${nfeId}/enviar`, 'POST');
@@ -206,7 +230,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       } else if (action !== 'status') throw new BlingFiscalError('Ação de NF-e não encontrada.', 404);
     }
     const method = String(input.paymentMethod || object(object(input.quote).financials).paymentMethod || '');
-    const issues = await fiscalIssues(token, nfe, method);
+    const issues = await fiscalIssues(token, nfe, method, input.quote ? object(input.quote) : undefined);
     return { status: 200, body: { success: true, nfeId: Number(nfeId), nfe: summarize(nfe), fiscalIssues: issues, readyToSend: !issues.length && [1, 4].includes(Number(nfe.situacao)), ...(input.debug ? { raw: nfe } : {}) } };
   } catch (error) {
     if (error instanceof BlingFiscalError) return { status: error.status, body: { success: false, error: error.message, details: error.details, ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };

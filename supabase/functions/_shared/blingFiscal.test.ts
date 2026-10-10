@@ -119,6 +119,14 @@ test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e con
     assert.equal(calls.some((c) => c.method === 'PUT'), false);
     assert.equal(result.body.nfeId, 99);
   });
+  await t.test('orçamento divergente não gera nem ajusta nota nova', async () => {
+    linked = false;
+    calls.length = 0;
+    const result = await handleBlingNfe('generate', { orderId: 1, quote: { ...quote, items: [{ ...item, unitPrice: 90 }] } }, 'test-token');
+    assert.equal(result.status, 409);
+    assert.equal(calls.some((call) => call.method !== 'GET'), false);
+    linked = true;
+  });
   await t.test('rejeição do ajuste preserva ID, detalhes e bloqueio de envio', async () => {
     putStatus = 400;
     const result = await handleBlingNfe('generate', { orderId: 1, quote }, 'test-token');
@@ -154,6 +162,14 @@ test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e con
     assert.equal(result.body.success, true);
     assert.equal(result.body.readyToSend, false);
     assert.equal((result.body.nfe as { situacao: number }).situacao, 5);
+  });
+  await t.test('orçamento alterado bloqueia transmissão de nota com itens ou total diferentes', async () => {
+    draft.situacao = 1;
+    calls.length = 0;
+    const result = await handleBlingNfe('send', { nfeId: 99, paymentMethod: 'Pix', quote: { ...quote, items: [{ ...item, quantity: 3 }] } }, 'test-token');
+    assert.equal(result.status, 409);
+    assert.match(String(result.body.error), /diverge/);
+    assert.equal(calls.some((call) => call.path.endsWith('/enviar')), false);
   });
   await t.test('série 1 bloqueia transmissão mesmo com NCM e Pix corretos', async () => {
     calls.length = 0;

@@ -34,6 +34,20 @@ Confira os dados retornados antes de emitir a NF-e. A consulta pode não localiz
 
 O app exibe a mensagem geral e os detalhes de validação retornados pelo Bling. O bloqueio de venda duplicada (código 3, namespace `VENDAS`) significa que o Bling encontrou informações idênticas à última venda salva. Confira **Vendas > Pedidos de Venda** e continue o faturamento no pedido existente; não altere os dados apenas para contornar o bloqueio. O app não repete o envio automaticamente nem trata a rejeição como pedido criado.
 
+### Conferência antes de criar a venda
+
+O modal apresenta de uma vez as pendências de cadastro fiscal, documento (incluindo dígitos verificadores), endereço, IE de pessoa jurídica, SKU, NCM, quantidade, preço, frete/desconto e pagamento. A mesma conferência é aplicada no backend antes de criar contato ou venda, sem completar endereço com dados fictícios. IE ausente não é convertida automaticamente em isenção.
+
+A listagem resumida de produtos da API do Bling não garante NCM. Ao selecionar uma ferramenta, o app consulta `/bling/products/:id` para ler o cadastro completo. NCM ausente não recebe `8207.70.00` como substituto; um NCM já confirmado no orçamento é preservado ao selecionar o mesmo produto. O preço já negociado também é preservado. Produtos com código zerado/genérico não podem ser cadastrados pelo app; os demais precisam de classificação fiscal conferida.
+
+Pedido e NF-e são salvos imediatamente em `quote.bling`, acompanhando o orçamento na nuvem. O modal aguarda esse salvamento antes de liberar o fechamento; falha na persistência informa que o registro já existe no Bling e não deve ser recriado. Fechar/reabrir o modal ou recarregar não libera a criação de outra venda/nota para o mesmo orçamento vinculado. O envio precisa de uma nova consulta de status; alterações do orçamento após criar a venda bloqueiam a transmissão e exigem restaurar os dados do orçamento ou concluir a revisão/emissão do pedido existente no Bling. A leitura da nota também compara itens/NCM e total com o orçamento atual; a geração verifica correspondência com a venda antes de criar rascunho.
+
+XML/JSON de exportação são consultados somente ao abrir essas abas, não em cada alteração ou abertura do modal. Isso elimina chamadas desnecessárias de pagamento que contribuíam para o limite de requisições. Falhas na consulta de contatos são exibidas e não iniciam cadastro de outro contato.
+
+No Sandbox, **Testar conexão Sandbox** verifica o token protegido ou o token separado do servidor, sem criar carrinho. O modal sinaliza divergência entre CEP de origem cotado e remetente; aprove o orçamento e recalcule a rota antes de enviar. A chave salva da NF-e série 2 é sugerida no modal, mas ainda deve corresponder a uma nota autorizada. Testes de interface com APIs simuladas não comprovam autorização fiscal nem criação real no Sandbox.
+
+Validação desta revisão: 60 testes automatizados aprovados e checagem TypeScript sem erros. No app, a consulta real do produto `FM-TCT-6X22` retornou NCM vazio; a seleção preservou o código confirmado `8207.70.10` e o preço R$ 170,00 no orçamento FM-008. O botão de conexão Sandbox foi testado dentro do modal e retornou falta de token, com carrinho bloqueado e divergência de origem sinalizada. Ainda não há comprovação de um carrinho real criado pelo app nem de série 2 automática; nenhuma NF-e de produção foi transmitida nesta revisão.
+
 ### Validação de NF-e e pendências
 
 Em 07/10/2026, um teste pela API do app gerou e transmitiu a NF-e nº 000036, série 1, em homologação. O XML confirmou `tpAmb=2` e `cStat=100` (autorizada, sem valor fiscal). A configuração do Bling foi restaurada para produção e conferida após recarregar.

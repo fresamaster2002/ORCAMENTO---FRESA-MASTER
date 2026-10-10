@@ -4,6 +4,7 @@ import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
 import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
+import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -900,6 +901,17 @@ async function route(request: Request): Promise<Response> {
     }
     if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(await getBlingToken()), hasToken: Boolean(await getBlingToken()), authorizeUrl: `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${env('BLING_CLIENT_ID')}&state=fresa_master` });
     if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || await getBlingToken()));
+    if (/^\/bling\/products\/\d+$/.test(path) && request.method === 'GET') {
+      const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || await getBlingToken();
+      if (!token) return json({ success: false, error: 'Conecte o Bling para consultar os dados fiscais do produto.' }, 401);
+      const response = await fetch(`https://api.bling.com.br/Api/v3/produtos/${path.split('/').pop()}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000),
+      });
+      const data = await response.json();
+      if (!response.ok) return json({ success: false, error: formatBlingError(data, 'Não foi possível consultar o cadastro fiscal do produto.') }, response.status);
+      if (!data.data?.id) return json({ success: false, error: 'O Bling não retornou o cadastro do produto.' }, 502);
+      return json({ success: true, product: data.data });
+    }
     if (path === '/bling/products' && request.method === 'GET') {
       const token = await getBlingToken() || request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || '';
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
@@ -924,6 +936,7 @@ async function route(request: Request): Promise<Response> {
       const ncm = String(product.ncm || '').replace(/\D/g, '');
       if (!token) return json({ success: false, error: 'Conecte o Bling antes de cadastrar o produto.' }, 401);
       if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) return json({ success: false, error: 'Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos.' }, 400);
+      if (['00000000', '82077000'].includes(ncm)) return json({ success: false, error: 'NCM zerado ou 8207.70.00 não é aceito. Confirme a classificação fiscal do produto antes de cadastrá-lo.' }, 400);
       const response = await fetch('https://api.bling.com.br/Api/v3/produtos', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: name, codigo: sku, preco: price, tipo: 'P', situacao: 'A', formato: 'S', unidade: 'UN', pesoLiquido: 0, pesoBruto: 0, tributacao: { ncm } }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return json({ success: false, error: data.error?.description || data.message || 'O Bling recusou o cadastro do produto.', details: data }, response.status);
@@ -934,6 +947,9 @@ async function route(request: Request): Promise<Response> {
       const token = body.token || await getBlingToken();
       if (!quote?.client) return json({ success: false, error: 'Dados do orçamento ou cliente não fornecidos.' }, 400);
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
+      if (quote.bling?.orderId) return json({ success: false, error: 'Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.', blingOrderId: quote.bling.orderId }, 409);
+      const readiness = blingReadinessIssues(quote);
+      if (readiness.length) return json({ success: false, error: readiness.join(' '), issues: readiness }, 400);
       const missing = (quote.items || []).filter((item: JsonObject) => !String(item.sku || '').trim() || String(item.ncm || '').replace(/\D/g, '').length !== 8 || Number(item.unitPrice) <= 0);
       if (missing.length) return json({ success: false, error: `Cadastre ou selecione no catálogo do Bling antes de emitir: ${missing.map((item: JsonObject) => item.description).join(', ')}.` }, 400);
       let salePayment;
@@ -950,7 +966,9 @@ async function route(request: Request): Promise<Response> {
       Object.assign(payload, salePayment);
       let contactId: number | undefined;
       if (doc) {
-        const found = await fetch('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh }).then((r) => r.json()).catch(() => ({}));
+        const foundResponse = await fetch('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh });
+        const found = await foundResponse.json();
+        if (!foundResponse.ok) return json({ success: false, error: formatBlingError(found, 'Não foi possível consultar o cliente no Bling. Nenhum cliente ou pedido foi criado.'), blingDetails: found }, foundResponse.status);
         contactId = found?.data?.[0]?.id;
       }
       if (!contactId) {
@@ -965,6 +983,7 @@ async function route(request: Request): Promise<Response> {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return json({ success: false, error: formatBlingError(data), blingDetails: data }, response.status);
       const orderId = data?.data?.id || data?.id;
+      if (!orderId) return json({ success: false, error: 'O Bling respondeu sem ID do pedido. Confira a venda no Bling antes de repetir.' }, 502);
       const orderNumber = data?.data?.numero || data?.numero || payload.numeroLoja;
       return json({ success: true, blingOrderId: orderId, blingOrderNumber: orderNumber, blingOrderUrl: orderId ? `https://www.bling.com.br/b/vendas.php#edit/${orderId}` : undefined, message: `Pedido #${orderNumber} criado diretamente no Bling com sucesso!`, data });
     }

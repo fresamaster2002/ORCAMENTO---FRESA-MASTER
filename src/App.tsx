@@ -198,7 +198,7 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
       id: String(item.id || `saved-item-${index}`),
       description: String(item.description || ''),
       sku: String(item.sku || ''),
-      ncm: String(item.ncm || '8207.70.00'),
+      ncm: String(item.ncm || ''),
       category: String(item.category || 'Fresas Router CNC'),
       quantity,
       unit: String(item.unit || 'un'),
@@ -602,6 +602,28 @@ export default function App() {
     }
   };
 
+  const handleUpdateBling = async (quoteId: string, bling: NonNullable<QuoteData['bling']>) => {
+    const original = quote.id === quoteId ? quote : recentQuotes.find((saved) => saved.id === quoteId);
+    if (!original) throw new Error('Não foi possível localizar o orçamento para salvar o vínculo do Bling.');
+    const updated = { ...original, bling };
+    setQuote((current) => current.id === quoteId ? { ...current, bling } : current);
+    setRecentQuotes((current) => [updated, ...current.filter((saved) => saved.id !== quoteId)].slice(0, 500));
+    if (!supabase || !supabaseUser) throw new Error('O vínculo do Bling está na memória, mas é necessário entrar para salvá-lo na nuvem. Não repita a criação da venda.');
+    setCloudSaveState('saving');
+    const { error } = await supabase.from('quotes').upsert({
+      id: quoteId,
+      owner_id: supabaseUser.id,
+      quote: JSON.parse(JSON.stringify(updated)),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'owner_id,id' });
+    if (error) {
+      setCloudSaveState('error');
+      setAuthError(`Pedido/nota já criado no Bling, mas falhou o salvamento do vínculo: ${error.message}. Não repita a criação.`);
+      throw error;
+    }
+    setCloudSaveState('saved');
+  };
+
   const handleDeleteQuote = async (target: QuoteData) => {
     if (!supabase || !supabaseUser) return;
     const { error } = await supabase.from('quotes').delete().eq('id', target.id).eq('owner_id', supabaseUser.id);
@@ -936,6 +958,7 @@ export default function App() {
         onClose={() => setIsBlingOpen(false)}
         quote={quote}
         onUpdateClient={handleUpdateClientFromBling}
+        onUpdateBling={handleUpdateBling}
       />
 
       <SavedQuotesModal

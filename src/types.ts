@@ -93,7 +93,7 @@ export interface QuoteItem {
   description: string;
   category?: string;
   sku?: string;
-  ncm?: string; // NCM para NF-e (ex: 8207.70.00 para fresas de usinagem)
+  ncm?: string; // Classificação fiscal confirmada por produto
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -125,11 +125,28 @@ export interface QuoteData {
   observations: string[];
   notesForClient: string;
   createdAt: string;
+  bling?: {
+    orderId?: string | number;
+    orderNumber?: string | number;
+    orderUrl?: string;
+    orderSnapshot?: string;
+    nfe?: BlingNfe;
+  };
   sandboxShipment?: {
     id: string | null;
     protocol: string | null;
     createdAt: string;
   };
+}
+
+export interface BlingNfe {
+  id: string | number;
+  numero?: string;
+  serie?: number;
+  situacao?: number;
+  chaveAcesso?: string;
+  linkDanfe?: string;
+  linkXml?: string;
 }
 
 export interface ExtractQuoteRequest {

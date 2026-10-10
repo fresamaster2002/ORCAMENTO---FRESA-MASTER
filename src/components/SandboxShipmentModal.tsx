@@ -68,10 +68,33 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
 
 export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(loadSender);
-  const [invoiceKey, setInvoiceKey] = useState('');
+  const [invoiceKey, setInvoiceKey] = useState(() => quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : '');
   const [sandboxToken, setSandboxToken] = useState('');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const routeMismatch = sender.cep.replace(/\D/g, '') !== quote.shipping.originCep.replace(/\D/g, '');
+  const allMissing = [...missing, ...(routeMismatch ? ['O CEP do remetente difere da origem cotada. Corrija a origem e recalcule o frete antes de criar o envio.'] : [])];
+
+  const testConnection = async () => {
+    setIsTestingConnection(true);
+    setConnectionMessage(null);
+    setError(null);
+    try {
+      const response = await apiFetch('/api/shipping/test-melhor-envio', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isSandbox: true, token: sandboxToken.trim() || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.connected) throw new Error(result.message || result.error || 'Não foi possível conectar ao Sandbox.');
+      setConnectionMessage('Conta Sandbox conectada. Nenhum envio ou etiqueta foi criado neste teste de conexão.');
+    } catch (connectionError) {
+      setError(connectionError instanceof Error ? connectionError.message : 'Falha ao testar a conexão Sandbox.');
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
 
   const updateSender = (key: keyof SenderData, value: string) => {
     setSender((current) => {
@@ -135,11 +158,11 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
             <p>Este passo exige a chave de uma NF-e série 2 já emitida no Bling. Confira o remetente e o mesmo CEP de origem cotado ({quote.shipping.originCep}). Ele apenas cria o envio no carrinho sandbox; não compra nem paga a etiqueta e não vale para postagem real.</p>
           </div>
 
-          {missing.length > 0 && (
+          {allMissing.length > 0 && (
             <div className="border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
               <p className="mb-1 font-bold">Antes de enviar, falta:</p>
               <ul className="list-disc space-y-0.5 pl-5">
-                {missing.map((item) => (
+                {allMissing.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
@@ -170,6 +193,10 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
             <input className={inputClass} type="password" autoComplete="off" value={sandboxToken} onChange={(event) => setSandboxToken(event.target.value)} placeholder="Use somente um token da conta Sandbox" />
             <span className="block font-normal">Não é salvo no navegador. Nunca use o token da conta de produção.</span>
           </label>
+          <button type="button" onClick={testConnection} disabled={isTestingConnection || isSubmitting} className="rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
+            {isTestingConnection ? 'Testando Sandbox...' : 'Testar conexão Sandbox'}
+          </button>
+          {connectionMessage && <p role="status" className="text-sm text-emerald-800">{connectionMessage}</p>}
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Chave de acesso da NF-e (44 dígitos) *</span>
             <input
@@ -188,12 +215,12 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
           <div className="border-t border-slate-200 pt-4">
             <div className="mb-4 flex items-start gap-2 text-xs text-slate-600">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" />
-              <span>Orçamento {quote.id} • {quote.shipping.selectedOption?.name || 'Frete não selecionado'} • Destino {quote.client.cep || 'CEP ausente'}</span>
+              <span>Orçamento {quote.id} • {quote.shipping.selectedOption?.name || 'Frete não selecionado'} • Destino {quote.shipping.destinationCep || 'CEP ausente'} • Pacote {quote.shipping.packageDimensions?.height} × {quote.shipping.packageDimensions?.width} × {quote.shipping.packageDimensions?.length} cm</span>
             </div>
             {error && <p role="alert" className="mb-3 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
             <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50">Cancelar</button>
-              <button type="submit" disabled={isSubmitting || invoiceKey.length !== 44 || missing.length > 0} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting || isTestingConnection || invoiceKey.length !== 44 || allMissing.length > 0} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
                 {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Adicionar ao carrinho sandbox
               </button>

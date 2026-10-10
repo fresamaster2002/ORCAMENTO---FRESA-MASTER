@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
+import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
+import { blingOrderSnapshot } from '../blingOrderSnapshot';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -29,13 +31,14 @@ import {
   AlertTriangle,
   Layers
 } from 'lucide-react';
-import { QuoteData, ClientInfo } from '../types';
+import { QuoteData, ClientInfo, BlingNfe } from '../types';
 
 interface BlingIntegrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   quote: QuoteData;
   onUpdateClient: (client: ClientInfo) => void;
+  onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>) => Promise<void>;
 }
 
 export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
@@ -43,6 +46,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   onClose,
   quote,
   onUpdateClient,
+  onUpdateBling,
 }) => {
   // Bling API Token State
   const DEFAULT_BLING_TOKEN = '';
@@ -63,7 +67,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [duplicateOrder, setDuplicateOrder] = useState(false);
 
   // NF-e State
-  const [nfe, setNfe] = useState<any | null>(null);
+  const [nfe, setNfe] = useState<BlingNfe | null>(null);
   const [nfeBusy, setNfeBusy] = useState<'generate' | 'send' | 'status' | null>(null);
   const [nfeError, setNfeError] = useState<string | null>(null);
   const [nfeReadyToSend, setNfeReadyToSend] = useState(false);
@@ -91,6 +95,19 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [activeTab, setActiveTab] = useState<'direct' | 'app_register' | 'cadastral' | 'products' | 'xml' | 'json' | 'manual'>('direct');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
+  const readinessIssues = blingReadinessIssues({ ...quote, client: clientData });
+  const orderChanged = Boolean(quote.bling?.orderSnapshot && quote.bling.orderSnapshot !== blingOrderSnapshot({ ...quote, client: clientData }));
+
+  useEffect(() => {
+    const saved = quote.bling;
+    setOrderResult(saved?.orderId ? { orderId: saved.orderId, orderNumber: saved.orderNumber || saved.orderId, orderUrl: saved.orderUrl } : null);
+    setNfe(saved?.nfe || null);
+    setNfeReadyToSend(false);
+    setNfeFiscalIssues([]);
+    setNfeError(null);
+    setOrderError(null);
+    setDuplicateOrder(false);
+  }, [quote.id, isOpen]);
 
   // OAuth 2.0 App credentials
   const [authMethod, setAuthMethod] = useState<'token' | 'oauth'>('token');
@@ -120,11 +137,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [clientId, clientSecret]);
 
-  // Load Bling payload on open or client change
+  useEffect(() => { setClientData(quote.client); }, [quote.id, quote.client]);
+
   useEffect(() => {
     if (!isOpen) return;
-    setClientData(quote.client);
-    fetchBlingPayload(quote.client);
 
     // Fetch token from server if not set
     const initTokenAndConnection = async () => {
@@ -135,7 +151,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
           const statusRes = await apiFetch('/api/bling/status');
           const statusData = await statusRes.json();
           serverHasToken = Boolean(statusData.hasToken);
-        } catch (e) {}
+        } catch (error) {
+          setConnectionStatus('disconnected');
+          setConnectionMessage(error instanceof Error ? error.message : 'Não foi possível consultar a conexão do Bling.');
+        }
       }
 
       if (((tokenToUse && tokenToUse.trim()) || serverHasToken) && connectionStatus !== 'connected') {
@@ -144,34 +163,33 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     };
 
     initTokenAndConnection();
-  }, [isOpen, quote]);
+  }, [isOpen, quote.id]);
 
-  const fetchBlingPayload = async (clientToUse: ClientInfo) => {
-    setPayloadError(null);
-    setBlingJson(null);
+  useEffect(() => {
+    if (!isOpen || !['xml', 'json'].includes(activeTab)) return;
+    let cancelled = false;
+    const controller = new AbortController();
     setBlingXml('');
-    try {
-      const res = await apiFetch('/api/bling/generate-payload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: blingToken.trim() || undefined,
-          quote: {
-            ...quote,
-            client: clientToUse,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setBlingXml(data.blingXml);
-        setBlingJson(data.blingJson);
-      } else setPayloadError(data.error || 'Não foi possível gerar os arquivos do Bling.');
-    } catch (err) {
-      console.error('Erro ao gerar payload Bling:', err);
-      setPayloadError('Falha de comunicação ao gerar os arquivos do Bling.');
+    setBlingJson(null);
+    const issues = blingReadinessIssues(quote);
+    if (issues.length) {
+      setPayloadError(issues.join(' '));
+      return;
     }
-  };
+    setPayloadError(null);
+    apiFetch('/api/bling/generate-payload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: blingToken.trim() || undefined, quote }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Não foi possível gerar os arquivos do Bling.');
+      if (!cancelled) { setBlingXml(data.blingXml); setBlingJson(data.blingJson); }
+    }).catch((error: unknown) => {
+      if (!cancelled) setPayloadError(error instanceof Error ? error.message : 'Falha ao gerar os arquivos do Bling.');
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [isOpen, activeTab, quote, blingToken]);
 
   const handleSaveToken = async (newToken: string) => {
     const trimmed = newToken.trim();
@@ -286,6 +304,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   };
 
   const callNfe = async (action: 'generate' | 'send' | 'status', payload: Record<string, unknown>) => {
+    if (action !== 'status' && orderChanged) {
+      setNfeError('O orçamento mudou depois de salvar o pedido. Revise os valores e itens no pedido existente no Bling antes de continuar; uma venda nova não será criada automaticamente.');
+      return;
+    }
     setNfeBusy(action);
     setNfeError(null);
     setNfeReadyToSend(false);
@@ -293,11 +315,13 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       const res = await apiFetch(`/api/bling/nfe/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, paymentMethod: quote.financials.paymentMethod, token: blingToken.trim() || undefined }),
+        body: JSON.stringify({ quote: { items: quote.items, financials: quote.financials }, ...payload, paymentMethod: quote.financials.paymentMethod, token: blingToken.trim() || undefined }),
       });
       const data = await res.json();
       if (data.nfeId || data.nfe?.id) {
-        setNfe((prev: any) => ({ ...(prev || {}), ...(data.nfe || {}), id: data.nfeId ?? data.nfe?.id ?? prev?.id }));
+        const nextNfe: BlingNfe = { ...(nfe || {}), ...(data.nfe || {}), id: data.nfeId ?? data.nfe?.id };
+        setNfe(nextNfe);
+        await onUpdateBling(quote.id, { ...quote.bling, ...(orderResult || {}), nfe: nextNfe });
       }
       setNfeReadyToSend(data.success === true && data.readyToSend === true);
       setNfeFiscalIssues(Array.isArray(data.fiscalIssues) ? data.fiscalIssues : []);
@@ -309,7 +333,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     }
   };
 
-  const handleCreateDirectOrder = async () => {    setIsSubmittingOrder(true);
+  const handleCreateDirectOrder = async () => {
+    if (orderResult || isSubmittingOrder) return;
+    if (readinessIssues.length) { setOrderError(readinessIssues.join(' ')); return; }
+    setIsSubmittingOrder(true);
     setOrderError(null);
     setDuplicateOrder(false);
     setOrderResult(null);
@@ -334,11 +361,13 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       const data = await res.json();
 
       if (data.success) {
+        if (!data.blingOrderId) throw new Error('O Bling respondeu sem ID do pedido. Confira a venda no Bling antes de repetir.');
         setOrderResult({
           orderId: data.blingOrderId,
           orderNumber: data.blingOrderNumber,
           orderUrl: data.blingOrderUrl,
         });
+        await onUpdateBling(quote.id, { orderId: data.blingOrderId, orderNumber: data.blingOrderNumber, orderUrl: data.blingOrderUrl, orderSnapshot: blingOrderSnapshot({ ...quote, client: clientData }) });
         setStatusMessage(`Pedido #${data.blingOrderNumber} criado com sucesso diretamente no Bling ERP!`);
       } else {
         setDuplicateOrder(isDuplicateBlingSale(data.blingDetails));
@@ -434,7 +463,6 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       if (data.success && data.client) {
         setClientData(data.client);
         onUpdateClient(data.client);
-        await fetchBlingPayload(data.client);
         setStatusMessage(
           attachedDoc
             ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso para o Bling!'
@@ -465,7 +493,6 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       : lookupClient;
     setClientData(nextClient);
     onUpdateClient(nextClient);
-    await fetchBlingPayload(nextClient);
     setStatusMessage('Cadastro localizado. Confira os dados e a Inscrição Estadual antes de emitir a NF-e.');
   };
 
@@ -522,6 +549,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmittingOrder || nfeBusy !== null}
             className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
             title="Fechar Janela"
           >
@@ -794,6 +822,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 </div>
 
                 {/* Error Banner */}
+                {readinessIssues.length > 0 && (
+                  <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-200">
+                    <strong>Corrija estas pendências antes de criar a venda:</strong>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+                    <p className="mt-2">Feche este modal para editar os itens; use o catálogo para selecionar o SKU. Dados fiscais não são substituídos automaticamente.</p>
+                  </div>
+                )}
                 {orderError && (
                   <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl text-red-800 dark:text-red-300 text-xs flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -842,7 +877,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       )}
                     </div>
                     <p className="text-[11px] text-emerald-800 dark:text-emerald-300 border-t border-emerald-200 dark:border-emerald-800/60 pt-2">
-                      ✅ O pedido já está pronto no seu Bling em <em>Vendas &gt; Pedidos de Venda</em> para faturar e emitir a NF-e imediatamente!
+                      O pedido foi salvo no Bling. A NF-e ainda exige conferência fiscal, série 2 e confirmação do ambiente antes da transmissão.
                     </p>
                   </div>
                 )}
@@ -850,11 +885,12 @@ Telefone/WhatsApp: (41) 98888-5544`;
                 {orderResult && (
                   <div className="p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
                     <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
+                    {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.</p>}
                     {!nfe?.id ? (
                       <button
                         type="button"
                         onClick={() => callNfe('generate', { orderId: orderResult.orderId, quote: { items: quote.items, financials: quote.financials } })}
-                        disabled={nfeBusy !== null}
+                        disabled={nfeBusy !== null || readinessIssues.length > 0 || orderChanged}
                         className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                       >
                         {nfeBusy === 'generate' ? 'Gerando NF-e...' : 'Gerar NF-e a partir do pedido'}
@@ -869,7 +905,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
-                          <button type="button" onClick={() => { if (window.confirm('Enviar esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                          <button type="button" onClick={() => { if (window.confirm('Confirme o ambiente da nota no Bling e a série 2 antes de enviar. Transmitir esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend || orderChanged} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
                             {nfeBusy === 'send' ? 'Enviando...' : 'Enviar à SEFAZ'}
                           </button>
                           <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
@@ -892,7 +928,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   <button
                     type="button"
                     onClick={handleCreateDirectOrder}
-                    disabled={isSubmittingOrder || quote.items.length === 0}
+                    disabled={isSubmittingOrder || readinessIssues.length > 0 || Boolean(orderResult)}
                     className="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg hover:shadow-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isSubmittingOrder ? (
@@ -903,7 +939,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     ) : (
                       <>
                         <Zap className="w-5 h-5 text-amber-300" />
-                        <span>🚀 Criar Pedido de Venda no Bling Agora</span>
+                        <span>{orderResult ? 'Pedido já vinculado — continue na NF-e acima' : '🚀 Criar Pedido de Venda no Bling Agora'}</span>
                       </>
                     )}
                   </button>
@@ -1480,6 +1516,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
             <button
               type="button"
               onClick={onClose}
+              disabled={isSubmittingOrder || nfeBusy !== null}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
             >
               Fechar

@@ -22,6 +22,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     if (url.includes('/contatos?')) return Response.json({ data: [{ id: 11 }] });
     if (url.endsWith('/pedidos/vendas') && init?.method === 'POST') return Response.json({ data: { id: 22, numero: 5 } }, { status: 201 });
     if (url.endsWith('/nfe/33')) return Response.json({ data: { id: 33, situacao: 1, itens: [{ descricao: 'Fresa', classificacaoFiscal: '0000.00.00' }], parcelas: [{ formaPagamento: { id: 17 } }] } });
+    if (url.endsWith('/produtos/123')) return Response.json({ data: { id: 123, nome: 'Fresa de topo', codigo: 'FM-TCT-6X22', tributacao: { ncm: '8207.70.10' } } });
     throw new Error(`Requisição inesperada: ${url}`);
   });
   await import('./index.ts');
@@ -31,12 +32,26 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     body: JSON.stringify(body),
   }));
   const quote = {
-    id: 'TESTE', project: { date: '2026-10-07' }, client: { name: 'Empresa Teste', document: '00000000000191' },
+    id: 'TESTE', project: { date: '2026-10-07' }, client: { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Presidente Geisel', number: '62', neighborhood: 'Jardim Santo Antonio', city: 'Salto', state: 'SP', cep: '13321472' },
     items: [{ sku: '123', description: 'Fresa', unit: 'UN', ncm: '8207.70.10', quantity: 1, unitPrice: 170 }],
     financials: { shippingAmount: 27.07, paymentMethod: 'Pix' }, shipping: {},
   };
   await t.test('exige autenticação nas rotas fiscais', async () => {
     assert.equal((await post('nfe/send', { nfeId: 33 }, false)).status, 401);
+  });
+  await t.test('consulta o NCM no detalhe do produto sem depender da listagem resumida', async () => {
+    const response = await handler(new Request('https://supabase.test/functions/v1/api/bling/products/123', { headers: { Authorization: 'Bearer test-session' } }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).product.tributacao.ncm, '8207.70.10');
+  });
+  await t.test('não cadastra produto com NCM genérico', async () => {
+    calls.length = 0;
+    const response = await handler(new Request('https://supabase.test/functions/v1/api/bling/products', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-session' },
+      body: JSON.stringify({ product: { name: 'Fresa', sku: 'TESTE', price: 170, ncm: '8207.70.00' } }),
+    }));
+    assert.equal(response.status, 400);
+    assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
   });
   await t.test('NCM genérico não cria contato nem venda', async () => {
     calls.length = 0;
@@ -56,6 +71,16 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     assert.deepEqual(exported.blingJson.parcelas, payload.parcelas);
     assert.equal('pagamento' in exported.blingJson, false);
     assert.match(exported.blingXml, /8207.70.10/);
+  });
+  await t.test('pendências são retornadas juntas e pedido vinculado não é duplicado', async () => {
+    calls.length = 0;
+    const invalid = await post('create-order', { quote: { ...quote, client: {}, items: [{ description: 'Fresa', ncm: '8207.70.00' }] } });
+    assert.equal(invalid.status, 400);
+    const data = await invalid.json();
+    assert.ok(data.issues.length > 3);
+    const existing = await post('create-order', { quote: { ...quote, bling: { orderId: 22 } } });
+    assert.equal(existing.status, 409);
+    assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
   });
   await t.test('envio direto também bloqueia NCM zerado', async () => {
     calls.length = 0;

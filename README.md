@@ -56,7 +56,11 @@ XML/JSON de exportação são consultados somente ao abrir essas abas, não em c
 
 Todas as chamadas REST ao Bling (conexão, catálogo, contatos, pedidos e NF-e) compartilham espaçamento de 700 ms por instância do backend. Respostas 429 estabelecem espera por credencial conforme `Retry-After`; somente leituras têm até duas repetições limitadas. POST/PUT não são repetidos automaticamente, evitando duplicação de operações fiscais. O modal consulta a configuração local ao abrir, sem disparar o teste de conexão; esse teste permanece disponível manualmente. O controle por instância não coordena múltiplas instâncias ou outros aplicativos na mesma conta e não elimina limites diários do ERP.
 
-Validação do controle de requisições: 72 testes aprovados, TypeScript e builds de interface/Express/Edge Function concluídos. A transmissão real do fluxo corrigido em homologação ainda precisa ser confirmada; nenhum teste automatizado substitui a conferência de `tpAmb=2`, série 2 e autorização no XML.
+Validação do controle de requisições: 72 testes aprovados, TypeScript e builds de interface/Express/Edge Function concluídos.
+
+Teste real pelo site oficial em tela de 390 px em 10/10/2026: o orçamento separado FM-011 criou o pedido `27098308403` e a NF-e `27098309297`, sem erro de limite nas operações de consulta de produto, criação, geração, transmissão e status. A ferramenta sem SKU foi vinculada ao cadastro e manteve NCM e preço. A geração saiu na série 1 e o app bloqueou o envio; após ajuste manual no Bling, a NF-e nº `000001`, série 2, foi autorizada. O XML confirmou `tpAmb=2`, `cStat=100`, NCM `82077010`, Pix `tPag=20` e total `220.00`. Nenhuma nota de produção foi transmitida. O ambiente original **1 - Produção** foi restaurado, salvo e conferido após recarregar. O teste não garante ausência de limites diários nem coordenação entre instâncias.
+
+A recarga preservou os IDs do pedido e da nota. A comparação de venda ignora reordenação das chaves, campos cadastrais opcionais vazios e a lista de alternativas de frete acrescentada pelo carregamento; o frete escolhido e alterações reais de cadastro, itens, pagamento e valores continuam bloqueando emissão.
 
 No Sandbox, **Testar conexão Sandbox** verifica o token protegido ou o token separado do servidor, sem criar carrinho. O modal sinaliza divergência entre CEP de origem cotado e remetente; aprove o orçamento e recalcule a rota antes de enviar. A chave salva da NF-e série 2 é sugerida no modal, mas ainda deve corresponder a uma nota autorizada. Testes de interface com APIs simuladas não comprovam autorização fiscal nem criação real no Sandbox.
 
@@ -78,7 +82,7 @@ A geração reconhece `idNotaFiscal` com ou sem envelope `data`, reutiliza a not
 
 NCM ausente, zerado ou `8207.70.00` bloqueia venda/exportação/emissão; não há substituição fiscal automática. A [tabela oficial do Siscomex](https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json) lista `8207.70.10` (de topo), `8207.70.20` (para cortar engrenagens) e `8207.70.90` (outras). Confirme com o contador o código de **cada produto**, inclusive pinças e acessórios, e edite o NCM no orçamento. Os padrões antigos do catálogo/orçamentos não foram reclassificados automaticamente.
 
-A transmissão faz uma nova conferência no backend e fica bloqueada na interface enquanto houver pendências ou situação incompatível. Essas verificações não substituem a revisão de tributos e demais dados fiscais pelo responsável contábil. Ainda é necessário um novo teste controlado em homologação com NCM confirmado para validar o XML do fluxo corrigido.
+A transmissão faz uma nova conferência no backend e fica bloqueada na interface enquanto houver pendências ou situação incompatível. Essas verificações não substituem a revisão de tributos e demais dados fiscais pelo responsável contábil. O teste controlado de 10/10/2026 acima validou o XML do fluxo corrigido para uma ferramenta com NCM cadastrado.
 
 ### Série 2 e carrinho Sandbox
 

@@ -3,7 +3,7 @@ import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
-import { blingOrderSnapshot } from '../blingOrderSnapshot';
+import { blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -100,7 +100,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
   const readinessIssues = blingReadinessIssues({ ...quote, client: clientData });
-  const orderChanged = Boolean(quote.bling?.orderSnapshot && quote.bling.orderSnapshot !== blingOrderSnapshot({ ...quote, client: clientData }));
+  const orderChanged = blingOrderChanged({ ...quote, client: clientData });
 
   useEffect(() => {
     const saved = quote.bling;

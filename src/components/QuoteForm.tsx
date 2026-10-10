@@ -706,11 +706,21 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
-            <table className="block w-full text-sm text-left md:table md:text-xs">
-              <thead className="hidden md:table-header-group bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
+          <p className="mb-2 text-xs text-slate-500 md:hidden">Deslize a tabela para os lados para ver todos os campos.</p>
+          <div role="region" aria-label="Tabela de fresas e ferramentas" tabIndex={0} className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+            <table className="w-full min-w-[1120px] table-fixed text-xs text-left">
+              <colgroup>
+                <col className="w-[520px]" />
+                <col className="w-[160px]" />
+                <col className="w-[120px]" />
+                <col className="w-[80px]" />
+                <col className="w-[100px]" />
+                <col className="w-[100px]" />
+                <col className="w-[40px]" />
+              </colgroup>
+              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="p-3 min-w-64">Descrição da Ferramenta CNC</th>
+                  <th className="px-3 py-2">Descrição da Ferramenta CNC</th>
                   <th className="p-3 w-28">SKU</th>
                   <th className="p-3 w-24">NCM</th>
                   <th className="p-3 w-20 text-center">Qtd</th>
@@ -719,11 +729,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   <th className="p-3 w-10 text-center"></th>
                 </tr>
               </thead>
-              <tbody className="block md:table-row-group divide-y divide-slate-200 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {quote.items.map((item) => (
-                  <tr key={item.id} className="grid grid-cols-2 md:table-row hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
-                    <td className="block min-w-0 col-span-2 p-3 md:table-cell md:min-w-64">
-                      <span className="mb-1 block text-xs font-bold text-slate-500 md:hidden">Descrição da ferramenta</span>
+                  <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+                    <td className="px-3 py-2 align-middle">
                       <ToolDescriptionInput
                         value={item.description}
                         onChange={(value) => updateItem(item.id, 'description', value)}
@@ -738,8 +747,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         </button>
                       )}
                     </td>
-                    <td className="block min-w-0 p-3 font-mono text-xs md:table-cell md:text-[11px]">
-                      <span className="mb-1 block font-sans font-bold text-slate-500 md:hidden">SKU</span>
+                    <td className="px-3 py-2 font-mono text-[11px]">
                       <input
                         type="text"
                         value={item.sku || ''}
@@ -748,8 +756,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         className="w-full text-slate-600 dark:text-slate-400 bg-transparent outline-none"
                       />
                     </td>
-                    <td className="block min-w-0 p-3 font-mono text-xs md:table-cell md:text-[11px]">
-                      <span className="mb-1 block font-sans font-bold text-slate-500 md:hidden">NCM</span>
+                    <td className="px-3 py-2 font-mono text-[11px]">
                       <input
                         type="text"
                         value={item.ncm || ''}
@@ -758,8 +765,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         className="w-full text-slate-600 dark:text-slate-400 bg-transparent outline-none"
                       />
                     </td>
-                    <td className="block p-3 md:table-cell md:text-center">
-                      <span className="mb-1 block text-xs font-bold text-slate-500 md:hidden">Quantidade</span>
+                    <td className="px-3 py-2 text-center">
                       <input
                         type="number"
                         min="1"
@@ -768,8 +774,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         className="w-14 text-center font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 py-1 rounded-lg border border-slate-200 dark:border-slate-700 outline-none"
                       />
                     </td>
-                    <td className="block p-3 font-mono md:table-cell md:text-right">
-                      <span className="mb-1 block text-xs font-sans font-bold text-slate-500 md:hidden">Valor unitário</span>
+                    <td className="px-3 py-2 font-mono text-right">
                       <input
                         type="number"
                         step="0.01"
@@ -778,14 +783,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                         className="w-20 text-right font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 outline-none"
                       />
                     </td>
-                    <td className="block p-3 font-bold text-slate-900 dark:text-slate-100 font-mono md:table-cell md:text-right">
-                      <span className="mb-1 block text-xs font-sans text-slate-500 md:hidden">Total</span>
+                    <td className="px-3 py-2 font-bold text-slate-900 dark:text-slate-100 font-mono text-right whitespace-nowrap">
                       {item.totalPrice.toLocaleString('pt-BR', {
                         style: 'currency',
                         currency: 'BRL',
                       })}
                     </td>
-                    <td className="block p-3 text-right md:table-cell md:text-center">
+                    <td className="px-2 py-2 text-center">
                       <button
                         type="button"
                         onClick={() => removeItem(item.id)}

@@ -31,10 +31,10 @@ export function ToolDescriptionInput({ value, onChange }: ToolDescriptionInputPr
     <textarea
       ref={ref}
       aria-label="Descrição completa da ferramenta"
-      rows={2}
+      rows={1}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="block w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-md bg-transparent p-1 text-base font-semibold leading-relaxed text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 dark:text-slate-100 md:text-sm"
+      className="block w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-md bg-transparent p-1 text-base font-semibold leading-tight text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 dark:text-slate-100 md:text-sm"
     />
   );
 }

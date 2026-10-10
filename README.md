@@ -12,7 +12,9 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 
 Novos orçamentos usam **7 cm de altura × 12 cm de largura × 17 cm de comprimento**. Em **Cálculo de Frete & Logística > Configurações**, altere as três medidas e clique em **Aplicar medidas** para recalcular, ou use **Padrão 7 × 12 × 17 cm** para restaurar. Medidas explícitas de orçamentos já salvos são preservadas; confira-as antes de cotar um envio novo.
 
-No celular, os itens aparecem em cartões com a descrição completa em várias linhas e os campos de quantidade, preço, SKU e NCM identificados. A descrição continua editável e cresce conforme o texto; em telas maiores, a tabela permanece disponível.
+Os itens aparecem em tabela compacta em todas as telas, com coluna de descrição de 520 px e rolagem horizontal no celular. Quantidade, preço, SKU e NCM permanecem na mesma linha, sem cartões altos por ferramenta. A descrição continua editável, começa com uma linha e cresce somente se o texto precisar de mais espaço; no celular, a fonte da descrição permanece em 16 px.
+
+Na revisão compacta, um teste visual isolado com 10 fresas de descrição longa confirmou todas as descrições visíveis: linhas de até 65 px em 390 px de largura e 43 px no computador, com rolagem horizontal funcional e sem transbordamento da página. Nenhum orçamento real foi alterado nesse teste. TypeScript e build passaram.
 
 Validação em 09/10/2026: type-check e build concluídos; 52 testes automatizados passaram. No navegador em 390 px, uma descrição longa ficou integralmente visível (altura do campo igual à altura do conteúdo), com fonte de 16 px. A cotação real preservou tanto o padrão 7 × 12 × 17 quanto a edição manual 8 × 16 × 24. O backend publicado confirmou o novo padrão mesmo sem medidas no pedido.
 

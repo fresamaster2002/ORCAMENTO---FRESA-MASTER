@@ -12,11 +12,13 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 
 Novos orçamentos usam **7 cm de altura × 12 cm de largura × 17 cm de comprimento**. Em **Cálculo de Frete & Logística > Configurações**, altere as três medidas e clique em **Aplicar medidas** para recalcular, ou use **Padrão 7 × 12 × 17 cm** para restaurar. Medidas explícitas de orçamentos já salvos são preservadas; confira-as antes de cotar um envio novo.
 
-Os itens aparecem em tabela compacta em todas as telas, com coluna de descrição de 520 px e rolagem horizontal no celular. Quantidade, preço, SKU e NCM permanecem na mesma linha, sem cartões altos por ferramenta. A descrição continua editável, começa com uma linha e cresce somente se o texto precisar de mais espaço; no celular, a fonte da descrição permanece em 16 px.
+Os itens aparecem em tabela compacta em todas as telas, com descrição em fonte de 14 px e peso normal. As colunas seguem a ordem **Descrição > Qtd > Valor Unit. > Total > SKU > NCM**, priorizando a venda antes da conferência fiscal. A descrição tem 520 px no computador e 260 px no celular, com rolagem limitada à tabela, sem alargar a página.
 
-Na revisão compacta, um teste visual isolado com 10 fresas de descrição longa confirmou todas as descrições visíveis: linhas de até 65 px em 390 px de largura e 43 px no computador, com rolagem horizontal funcional e sem transbordamento da página. Nenhum orçamento real foi alterado nesse teste. TypeScript e build passaram.
+No celular, o nome ocupa até duas linhas. Toque nele para abrir a descrição completa em um diálogo com **Salvar descrição** e **Cancelar**; Esc também fecha sem salvar. O editor usa fonte de 16 px para evitar zoom automático no iPhone, sem aumentar a fonte da lista. No computador, a descrição continua editável diretamente na tabela e cresce conforme o texto.
 
-Validação em 09/10/2026: type-check e build concluídos; 52 testes automatizados passaram. No navegador em 390 px, uma descrição longa ficou integralmente visível (altura do campo igual à altura do conteúdo), com fonte de 16 px. A cotação real preservou tanto o padrão 7 × 12 × 17 quanto a edição manual 8 × 16 × 24. O backend publicado confirmou o novo padrão mesmo sem medidas no pedido.
+Na revisão móvel, um teste visual isolado com 10 fresas confirmou fonte de 14 px/peso normal, linhas de até 65 px em 390 px de largura e ausência de transbordamento da página. A descrição integral foi conferida no diálogo; salvar, cancelar, Esc e edição direta no computador funcionaram. Quantidade e total também foram conferidos após edição. Nenhum orçamento real foi alterado nesse teste. TypeScript e build passaram.
+
+Validação anterior do pacote em 09/10/2026: type-check e build concluídos; 52 testes automatizados passaram. A cotação real preservou tanto o padrão 7 × 12 × 17 quanto a edição manual 8 × 16 × 24. O backend publicado confirmou o novo padrão mesmo sem medidas no pedido.
 
 ## Endereço de entrega por mensagem
 

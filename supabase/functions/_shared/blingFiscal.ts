@@ -1,5 +1,6 @@
 import { formatBlingError } from './blingErrors.ts';
 import { resolveBlingProducts } from './blingProducts.ts';
+import { blingFetch } from './blingTransport.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
@@ -39,32 +40,11 @@ export function validateFiscalItems(items: FiscalItem[]): void {
   }
 }
 
-let nextReadAt = 0;
-
 export async function requestBling(token: string, path: string, method = 'GET', body?: unknown): Promise<Data> {
-  for (let attempt = 0; ; attempt++) {
-    if (method === 'GET') {
-      const slot = Math.max(Date.now(), nextReadAt);
-      nextReadAt = slot + 400;
-      const wait = slot - Date.now();
-      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    }
-    const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data: unknown = await response.json();
-    if (method === 'GET' && response.status === 429 && attempt < 2) {
-      const retryAfter = Number(response.headers.get('Retry-After'));
-      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 1000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      continue;
-    }
-    if (!response.ok) throw new BlingFiscalError(formatBlingError(data, `Falha ao consultar o Bling (HTTP ${response.status}).`), response.status, data);
-    return object(data);
-  }
+  const response = await blingFetch(token, path, method, body);
+  const data: unknown = await response.json();
+  if (!response.ok) throw new BlingFiscalError(formatBlingError(data, `Falha ao consultar o Bling (HTTP ${response.status}).`), response.status, data);
+  return object(data);
 }
 
 export async function resolvePayment(token: string, method: string): Promise<number> {

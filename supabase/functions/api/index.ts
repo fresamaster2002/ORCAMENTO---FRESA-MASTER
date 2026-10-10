@@ -3,6 +3,7 @@ import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
 import { resolveBlingProducts } from '../_shared/blingProducts.ts';
+import { fetchBlingApi } from '../_shared/blingTransport.ts';
 import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
@@ -829,8 +830,8 @@ async function testBling(token: string): Promise<JsonObject> {
   if (!token.trim()) return { success: false, connected: false, message: 'Nenhum token de API do Bling fornecido.' };
   const headers = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' };
   const [contacts, products] = await Promise.all([
-    fetch('https://api.bling.com.br/Api/v3/contatos?limite=1', { headers }),
-    fetch('https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1', { headers }),
+    fetchBlingApi('https://api.bling.com.br/Api/v3/contatos?limite=1', { headers }),
+    fetchBlingApi('https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1', { headers }),
   ]);
   if (contacts.status === 401 || products.status === 401) return { success: false, connected: false, message: 'Token do Bling não autorizado ou expirado.' };
   if (!contacts.ok) return { success: false, connected: false, message: `Não foi possível validar a conta Bling (HTTP ${contacts.status}).` };
@@ -908,7 +909,7 @@ async function route(request: Request): Promise<Response> {
     if (/^\/bling\/products\/\d+$/.test(path) && request.method === 'GET') {
       const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || await getBlingToken();
       if (!token) return json({ success: false, error: 'Conecte o Bling para consultar os dados fiscais do produto.' }, 401);
-      const response = await fetch(`https://api.bling.com.br/Api/v3/produtos/${path.split('/').pop()}`, {
+      const response = await fetchBlingApi(`https://api.bling.com.br/Api/v3/produtos/${path.split('/').pop()}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000),
       });
       const data = await response.json();
@@ -921,7 +922,7 @@ async function route(request: Request): Promise<Response> {
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       const products: JsonObject[] = [];
       for (let page = 1; page <= 20; page += 1) {
-        const response = await fetch(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100`, { headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' } });
+        const response = await fetchBlingApi(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100`, { headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/json' } });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) return json({ success: false, error: `Falha ao consultar produtos no Bling: ${data.error?.description || data.message || `HTTP ${response.status}`}. Verifique produtos:read.` }, response.status);
         const pageProducts = Array.isArray(data.data) ? data.data : [];
@@ -941,7 +942,7 @@ async function route(request: Request): Promise<Response> {
       if (!token) return json({ success: false, error: 'Conecte o Bling antes de cadastrar o produto.' }, 401);
       if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) return json({ success: false, error: 'Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos.' }, 400);
       if (['00000000', '82077000'].includes(ncm)) return json({ success: false, error: 'NCM zerado ou 8207.70.00 não é aceito. Confirme a classificação fiscal do produto antes de cadastrá-lo.' }, 400);
-      const response = await fetch('https://api.bling.com.br/Api/v3/produtos', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: name, codigo: sku, preco: price, tipo: 'P', situacao: 'A', formato: 'S', unidade: 'UN', pesoLiquido: 0, pesoBruto: 0, tributacao: { ncm } }) });
+      const response = await fetchBlingApi('https://api.bling.com.br/Api/v3/produtos', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: name, codigo: sku, preco: price, tipo: 'P', situacao: 'A', formato: 'S', unidade: 'UN', pesoLiquido: 0, pesoBruto: 0, tributacao: { ncm } }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return json({ success: false, error: data.error?.description || data.message || 'O Bling recusou o cadastro do produto.', details: data }, response.status);
       return json({ success: true, product: data.data }, 201);
@@ -988,20 +989,20 @@ async function route(request: Request): Promise<Response> {
       Object.assign(payload, salePayment);
       let contactId: number | undefined;
       if (doc) {
-        const foundResponse = await fetch('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh });
+        const foundResponse = await fetchBlingApi('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh });
         const found = await foundResponse.json();
         if (!foundResponse.ok) return json({ success: false, error: formatBlingError(found, 'Não foi possível consultar o cliente no Bling. Nenhum cliente ou pedido foi criado.'), blingDetails: found }, foundResponse.status);
         contactId = found?.data?.[0]?.id;
       }
       if (!contactId) {
         const isExempt = String(payload.contato.ie || '').trim().toUpperCase() === 'ISENTO';
-        const created = await fetch('https://api.bling.com.br/Api/v3/contatos', { method: 'POST', headers: bh, body: JSON.stringify({ nome: payload.contato.nome, tipo: payload.contato.tipoPessoa, numeroDocumento: payload.contato.numeroDocumento, situacao: 'A', indicadorIe: isExempt ? 2 : payload.contato.ie ? 1 : 9, ie: payload.contato.ie || undefined, email: payload.contato.email, ...(/^\d{10,11}$/.test(String(payload.contato.telefone || '')) ? { telefone: payload.contato.telefone } : {}), endereco: { geral: { endereco: payload.contato.endereco.endereco, numero: payload.contato.endereco.numero, complemento: payload.contato.endereco.complemento, bairro: payload.contato.endereco.bairro, cep: payload.contato.endereco.cep, municipio: payload.contato.endereco.municipio, uf: payload.contato.endereco.uf } } }) });
+        const created = await fetchBlingApi('https://api.bling.com.br/Api/v3/contatos', { method: 'POST', headers: bh, body: JSON.stringify({ nome: payload.contato.nome, tipo: payload.contato.tipoPessoa, numeroDocumento: payload.contato.numeroDocumento, situacao: 'A', indicadorIe: isExempt ? 2 : payload.contato.ie ? 1 : 9, ie: payload.contato.ie || undefined, email: payload.contato.email, ...(/^\d{10,11}$/.test(String(payload.contato.telefone || '')) ? { telefone: payload.contato.telefone } : {}), endereco: { geral: { endereco: payload.contato.endereco.endereco, numero: payload.contato.endereco.numero, complemento: payload.contato.endereco.complemento, bairro: payload.contato.endereco.bairro, cep: payload.contato.endereco.cep, municipio: payload.contato.endereco.municipio, uf: payload.contato.endereco.uf } } }) });
         const cdata = await created.json().catch(() => ({}));
         contactId = cdata?.data?.id;
         if (!contactId) return json({ success: false, error: cdata?.error?.description || cdata?.error?.message || 'N?o foi poss?vel cadastrar o cliente no Bling.', blingDetails: cdata }, created.status || 400);
       }
       (payload as JsonObject).contato = { id: contactId };
-      const response = await fetch('https://api.bling.com.br/Api/v3/pedidos/vendas', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+      const response = await fetchBlingApi('https://api.bling.com.br/Api/v3/pedidos/vendas', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return json({ success: false, error: formatBlingError(data), blingDetails: data }, response.status);
       const orderId = data?.data?.id || data?.id;
@@ -1072,6 +1073,7 @@ async function route(request: Request): Promise<Response> {
     }
     return json({ success: false, error: 'Rota não encontrada.' }, 404);
   } catch (error) {
+    if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, blingDetails: error.details }, error.status);
     return json({ success: false, error: error instanceof Error ? error.message : 'Erro interno da função.' }, 500);
   }
 }

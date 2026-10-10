@@ -18,6 +18,7 @@ import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLo
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
+import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
@@ -1752,8 +1753,8 @@ app.post("/api/bling/test-connection", async (req, res) => {
     let productsResponse: Response;
     try {
       [contactsResponse, productsResponse] = await Promise.all([
-        fetch("https://api.bling.com.br/Api/v3/contatos?limite=1", { headers, signal: controller.signal }),
-        fetch("https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1", { headers, signal: controller.signal }),
+        fetchBlingApi("https://api.bling.com.br/Api/v3/contatos?limite=1", { headers, signal: controller.signal }),
+        fetchBlingApi("https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1", { headers, signal: controller.signal }),
       ]);
     } finally {
       clearTimeout(timeout);
@@ -1882,7 +1883,7 @@ app.post("/api/bling/create-order", async (req, res) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const response = await fetch("https://api.bling.com.br/Api/v3/pedidos/vendas", {
+    const response = await fetchBlingApi("https://api.bling.com.br/Api/v3/pedidos/vendas", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${effectiveToken.trim()}`,
@@ -1940,7 +1941,7 @@ app.get("/api/bling/products/:id", async (req, res) => {
     if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ success: false, error: "Informe um ID válido do produto." });
     const token = (req.get("x-bling-token") || "").replace(/^Bearer\s+/i, "") || persistedBlingToken || process.env.BLING_API_TOKEN;
     if (!token) return res.status(401).json({ success: false, error: "Conecte o Bling para consultar os dados fiscais do produto." });
-    const response = await fetch(`https://api.bling.com.br/Api/v3/produtos/${req.params.id}`, {
+    const response = await fetchBlingApi(`https://api.bling.com.br/Api/v3/produtos/${req.params.id}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000),
     });
     const data = await response.json();
@@ -1974,7 +1975,7 @@ app.get("/api/bling/products", async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 8000);
       let response: Response;
       try {
-        response = await fetch(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=${pageLimit}`, {
+        response = await fetchBlingApi(`https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=${pageLimit}`, {
           headers: {
             "Authorization": `Bearer ${token.trim()}`,
             "Accept": "application/json",
@@ -2045,7 +2046,7 @@ app.post("/api/bling/products", async (req, res) => {
     }
     if (["00000000", "82077000"].includes(ncm)) return res.status(400).json({ success: false, error: "NCM zerado ou 8207.70.00 não é aceito. Confirme a classificação fiscal do produto antes de cadastrá-lo." });
 
-    const response = await fetch("https://api.bling.com.br/Api/v3/produtos", {
+    const response = await fetchBlingApi("https://api.bling.com.br/Api/v3/produtos", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${String(token).trim()}`,

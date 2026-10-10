@@ -163,7 +163,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       }
 
       if (((tokenToUse && tokenToUse.trim()) || serverHasToken) && connectionStatus !== 'connected') {
-        testBlingConnection(tokenToUse);
+        setConnectionStatus('idle');
+        setConnectionMessage('Credencial do Bling configurada. As operações conferem a conexão; use “Testar Conexão” somente se necessário.');
       }
     };
 

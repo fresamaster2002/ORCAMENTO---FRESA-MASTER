@@ -28,6 +28,8 @@ const parseClient = (value: unknown): ClientInfo | null => {
     neighborhood: String(data.neighborhood || ''),
     city: String(data.city || ''),
     state: String(data.state || ''),
+    fiscalCondition: data.fiscalCondition === 'contributor' ? 'contributor' : 'unknown',
+    registrationLookup: (value as ClientInfo).registrationLookup,
   };
 };
 
@@ -115,7 +117,7 @@ export const CnpjLookup: React.FC<CnpjLookupProps> = ({ initialCnpj = '', onFoun
           {warning}
         </p>
       ))}
-      {fiscalDescription && <p role="status" className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-200">{fiscalDescription} A natureza da operação não é escolhida automaticamente pela consulta.</p>}
+      {fiscalDescription && <p role="status" className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-200">{fiscalDescription} Confira abaixo a condição fiscal e a natureza sugerida para esta venda.</p>}
       <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
         Consulta dados cadastrais públicos. A Inscrição Estadual pode não constar ou estar desatualizada; confirme-a antes de faturar. Ausência de resultado não significa “ISENTO”.
       </p>

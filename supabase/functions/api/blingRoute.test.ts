@@ -20,7 +20,9 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     calls.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : {} });
     if (url.endsWith('/auth/v1/user')) return Response.json({ email: 'fresamaster0@gmail.com', email_confirmed_at: '2026-01-01' });
     if (url.includes('/formas-pagamentos?')) return Response.json({ data: [{ id: 17, descricao: 'Pix', situacao: 1, finalidade: 2, tipoPagamento: 17 }] });
+    if (url.includes('/naturezas-operacoes?')) return Response.json({ data: [{ id: 7, descricao: 'Venda de mercadoria', situacao: 1 }] });
     if (url.includes('/contatos?')) return Response.json({ data: [{ id: 11 }] });
+    if (url.endsWith('/contatos/11')) return Response.json({ data: { id: 11, numeroDocumento: '59085330000170', indicadorIe: 1 } });
     if (url.endsWith('/pedidos/vendas') && init?.method === 'POST') return Response.json({ data: { id: 22, numero: 5 } }, { status: 201 });
     if (url.endsWith('/nfe/33')) return Response.json({ data: { id: 33, situacao: 1, itens: [{ descricao: 'Fresa', classificacaoFiscal: '0000.00.00' }], parcelas: [{ formaPagamento: { id: 17 } }] } });
     if (url.endsWith('/produtos/123')) return Response.json({ data: { id: 123, nome: 'Fresa de topo', codigo: 'FM-TCT-6X22', tributacao: { ncm: '8207.70.10' } } });
@@ -35,7 +37,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     body: JSON.stringify(body),
   }));
   const quote = {
-    id: 'TESTE', project: { date: '2026-10-07' }, client: { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Presidente Geisel', number: '62', neighborhood: 'Jardim Santo Antonio', city: 'Salto', state: 'SP', cep: '13321472' },
+    id: 'TESTE', project: { date: '2026-10-07' }, client: { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Presidente Geisel', number: '62', neighborhood: 'Jardim Santo Antonio', city: 'Salto', state: 'SP', cep: '13321472', fiscalCondition: 'contributor', operationNature: { id: '7', description: 'Venda de mercadoria' } },
     items: [{ sku: '123', description: 'Fresa', unit: 'UN', ncm: '8207.70.10', quantity: 1, unitPrice: 170 }],
     financials: { shippingAmount: 27.07, paymentMethod: 'Pix' }, shipping: {},
   };
@@ -96,6 +98,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     assert.equal((await r.json()).blingOrderId, 22);
     const payload = calls.find((call) => call.url.endsWith('/pedidos/vendas'))!.body;
     assert.equal('pagamento' in payload, false);
+    assert.deepEqual((payload.itens as Record<string, unknown>[])[0].naturezaOperacao, { id: 7 });
     assert.deepEqual(payload.parcelas, [{ dataVencimento: '2026-10-07', valor: 197.07, formaPagamento: { id: 17 } }]);
     const exported = await (await post('generate-payload', { quote })).json();
     assert.deepEqual(exported.blingJson.parcelas, payload.parcelas);

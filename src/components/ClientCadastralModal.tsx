@@ -206,6 +206,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           phone: client.phone || base.phone || '',
           ie: client.ie || (/^\s*isent[oa]\s*$/i.test(base.ie || '') ? '' : base.ie || ''),
           fiscalReviewKey: undefined,
+          operationNature: undefined,
         }
       : client;
     setAttachedDoc(null);
@@ -219,7 +220,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
   const updateField = (key: keyof ClientInfo, value: string) => {
     setExtractedPreview((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, [key]: value, ...(['document', 'ie', 'state'].includes(key) ? { fiscalReviewKey: undefined } : {}) };
+      const next = { ...prev, [key]: value, ...(['document', 'ie', 'state'].includes(key) ? { fiscalReviewKey: undefined, operationNature: undefined, fiscalCondition: 'unknown' as const, registrationLookup: undefined } : {}) };
       setInputText(clientToText(next));
       return next;
     });

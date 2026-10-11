@@ -4,7 +4,7 @@ import { buildNfeReview, nfeRevision } from './blingNfeReview.ts';
 import { blingFreight, buildSalePayment, handleBlingNfe } from './blingFiscal.ts';
 import { clientFiscalKey } from './clientFiscalReview.ts';
 
-const clientData = { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Teste', number: '62', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472' };
+const clientData = { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Teste', number: '62', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472', fiscalCondition: 'contributor', operationNature: { id: '7', description: 'Venda de mercadoria' } };
 const client = { ...clientData, fiscalReviewKey: clientFiscalKey(clientData) };
 const quote = { client, items: [{ description: 'Fresa', quantity: 2, unitPrice: 220, sku: '', blingProductId: '123', ncm: '8207.70.10' }], financials: { paymentMethod: 'Pix', shippingAmount: 14.79, insuranceAmount: 3.96, discountAmount: 0 } };
 const draft = {

@@ -1,12 +1,13 @@
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from '../_shared/deliveryExtraction.ts';
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
-import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
+import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from '../_shared/blingFiscal.ts';
 import { resolveBlingProducts } from '../_shared/blingProducts.ts';
 import { fetchBlingApi } from '../_shared/blingTransport.ts';
 import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
+import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -871,7 +872,8 @@ async function route(request: Request): Promise<Response> {
         const payment = await buildSalePayment(token, quote);
         const generated = generateBlingPayload(quote);
         delete generated.blingJson.pagamento;
-        generated.blingJson.itens = buildSaleItems(quote.items);
+        const nature = quote.client.operationNature ? await selectedBlingNature(token, quote.client) : undefined;
+        generated.blingJson.itens = buildSaleItems(quote.items).map((item) => ({ ...item, ...(nature ? { naturezaOperacao: { id: Number(nature.id) } } : {}) }));
         Object.assign(generated.blingJson, payment);
         return json({ success: true, ...generated });
       } catch (error) {
@@ -906,6 +908,10 @@ async function route(request: Request): Promise<Response> {
     }
     if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(await getBlingToken()), hasToken: Boolean(await getBlingToken()), authorizeUrl: `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${env('BLING_CLIENT_ID')}&state=fresa_master` });
     if (path === '/bling/test-connection' && request.method === 'POST') return json(await testBling(body.token || await getBlingToken()));
+    if (path === '/bling/natures' && request.method === 'GET') {
+      try { return json({ success: true, natures: await listBlingNatures(await getBlingToken()) }); }
+      catch (error) { console.error('Consulta de naturezas:', error); return json({ success: false, error: error instanceof Error ? error.message : 'Falha na consulta das naturezas.' }, 502); }
+    }
     if (/^\/bling\/products\/\d+$/.test(path) && request.method === 'GET') {
       const token = request.headers.get('x-bling-token')?.replace(/^Bearer\s+/i, '') || await getBlingToken();
       if (!token) return json({ success: false, error: 'Conecte o Bling para consultar os dados fiscais do produto.' }, 401);
@@ -964,6 +970,9 @@ async function route(request: Request): Promise<Response> {
       if (quote.bling?.orderId) return json({ success: false, error: 'Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.', blingOrderId: quote.bling.orderId }, 409);
       const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false, checkFiscalReview: true });
       if (nonFiscalIssues.length) return json({ success: false, error: nonFiscalIssues.join(' '), issues: nonFiscalIssues }, 400);
+      let nature;
+      try { nature = await selectedBlingNature(token, quote.client); }
+      catch (error) { return json({ success: false, error: error instanceof Error ? error.message : 'Confira a natureza da operação.' }, 400); }
       try {
         const resolved = await resolveBlingProducts(token, quote.items);
         quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
@@ -983,24 +992,10 @@ async function route(request: Request): Promise<Response> {
       }
       const doc = String(quote.client.document || '').replace(/\D/g, '');
       const payload = { numeroLoja: quote.id, data: quote.project?.date || new Date().toISOString().slice(0, 10), dataSaida: quote.project?.date || new Date().toISOString().slice(0, 10), contato: { nome: quote.client.name || 'Cliente Fresa Master', tipoPessoa: doc.length === 14 ? 'J' : 'F', numeroDocumento: doc || undefined, ie: quote.client.ie || '', email: quote.client.email || undefined, telefone: String(quote.client.phone || '').replace(/\D/g, '') || undefined, endereco: { endereco: quote.client.address || 'Rua de Entrega', numero: quote.client.number || 'S/N', complemento: quote.client.complement || undefined, bairro: quote.client.neighborhood || 'Centro', cep: String(quote.client.cep || '').replace(/\D/g, '') || undefined, municipio: quote.client.city || 'Curitiba', uf: quote.client.state || 'PR' } }, itens: quote.items.map((item: JsonObject, index: number) => ({ ...(/^\d+$/.test(String(item.sku || '')) ? { produto: { id: Number(item.sku) } } : {}), codigo: item.sku || `FM-${index + 1}`, descricao: item.description, unidade: item.unit || 'UN', quantidade: Number(item.quantity) || 1, valor: Number(item.unitPrice) || 0, ncm: item.ncm || '8207.70.00' })), transporte: { fretePorConta: 0, transportador: { nome: quote.shipping?.selectedOption?.carrier || 'Melhor Envio / Correios' }, frete: Number(quote.financials?.shippingAmount) || 0, etiqueta: buildShipTo(quote), volumes: [{ servico: quote.shipping?.selectedOption?.name || 'Sedex', pesoBruto: quote.shipping?.weightKg || 0.5 }] }, pagamento: { formaPagamento: { descricao: quote.financials?.paymentMethod || 'Pix' } }, observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}.` };
-      const bh = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' };
       delete (payload as JsonObject).pagamento;
-      payload.itens = buildSaleItems(quote.items);
+      payload.itens = buildSaleItems(quote.items).map((item) => ({ ...item, naturezaOperacao: { id: Number(nature.id) } }));
       Object.assign(payload, salePayment);
-      let contactId: number | undefined;
-      if (doc) {
-        const foundResponse = await fetchBlingApi('https://api.bling.com.br/Api/v3/contatos?numeroDocumento=' + doc, { headers: bh });
-        const found = await foundResponse.json();
-        if (!foundResponse.ok) return json({ success: false, error: formatBlingError(found, 'Não foi possível consultar o cliente no Bling. Nenhum cliente ou pedido foi criado.'), blingDetails: found }, foundResponse.status);
-        contactId = found?.data?.[0]?.id;
-      }
-      if (!contactId) {
-        const isExempt = String(payload.contato.ie || '').trim().toUpperCase() === 'ISENTO';
-        const created = await fetchBlingApi('https://api.bling.com.br/Api/v3/contatos', { method: 'POST', headers: bh, body: JSON.stringify({ nome: payload.contato.nome, tipo: payload.contato.tipoPessoa, numeroDocumento: payload.contato.numeroDocumento, situacao: 'A', indicadorIe: isExempt ? 2 : payload.contato.ie ? 1 : 9, ie: payload.contato.ie || undefined, email: payload.contato.email, ...(/^\d{10,11}$/.test(String(payload.contato.telefone || '')) ? { telefone: payload.contato.telefone } : {}), endereco: { geral: { endereco: payload.contato.endereco.endereco, numero: payload.contato.endereco.numero, complemento: payload.contato.endereco.complemento, bairro: payload.contato.endereco.bairro, cep: payload.contato.endereco.cep, municipio: payload.contato.endereco.municipio, uf: payload.contato.endereco.uf } } }) });
-        const cdata = await created.json().catch(() => ({}));
-        contactId = cdata?.data?.id;
-        if (!contactId) return json({ success: false, error: cdata?.error?.description || cdata?.error?.message || 'N?o foi poss?vel cadastrar o cliente no Bling.', blingDetails: cdata }, created.status || 400);
-      }
+      const contactId = await resolveSaleContact(token, quote.client);
       (payload as JsonObject).contato = { id: contactId };
       const response = await fetchBlingApi('https://api.bling.com.br/Api/v3/pedidos/vendas', { method: 'POST', headers: { Authorization: `Bearer ${String(token).trim()}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));

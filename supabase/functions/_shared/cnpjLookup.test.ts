@@ -59,6 +59,8 @@ test('retorna cadastro e IE ativa correspondente à UF', async () => {
   assert.equal(result.client.name, 'Empresa Teste SA');
   assert.equal(result.client.document, '00.000.000/0001-91');
   assert.equal(result.client.ie, '123.456.789.112');
+  assert.equal(result.client.fiscalCondition, 'contributor');
+  assert.equal(result.client.registrationLookup.ieStatus, 'active');
   assert.equal(result.client.cep, '01001-000');
   assert.equal(result.client.address, 'Avenida Alternativa');
   assert.equal(result.client.city, 'São Paulo');
@@ -73,6 +75,7 @@ test('não presume isenção quando a IE não consta na consulta', async () => {
 
   const result = await lookupCnpj(testCnpj, fetcher);
   assert.equal(result.client.ie, '');
+  assert.equal(result.client.fiscalCondition, 'unknown');
   assert.match(result.warnings.join(' '), /não confirma isenção/i);
 });
 
@@ -107,4 +110,26 @@ test('sinaliza CNPJ não encontrado quando ambos os provedores retornam 404', as
     lookupCnpj(testCnpj, async () => new Response(null, { status: 404 })),
     (error: unknown) => error instanceof CnpjLookupError && error.status === 404,
   );
+});
+
+test('CNPJ ativo sem IE não é não contribuinte; baixado com IE não recebe sugestão', async () => {
+  for (const status of ['2', '8']) {
+    const result = await lookupCnpj(testCnpj, async (input) => String(input).includes('brasilapi')
+      ? Response.json({ cnpj: testCnpj, razao_social: 'Empresa', uf: 'SP', situacao_cadastral: Number(status) })
+      : Response.json({ estabelecimento: { cnpj: testCnpj, inscricoes_estaduais: status === '8' ? [{ inscricao_estadual: '123', ativo: true, estado: { sigla: 'SP' } }] : [] } }));
+    assert.equal(result.client.fiscalCondition, 'unknown');
+    assert.equal(result.client.registrationLookup.cnpjStatusCode, status);
+    assert.equal(result.client.registrationLookup.cnpjStatus, status === '2' ? 'Ativa' : 'Baixada');
+  }
+});
+
+test('múltiplas IEs ativas na mesma UF ou UF ausente não selecionam IE arbitrária', async () => {
+  for (const state of ['SP', '']) {
+    const result = await lookupCnpj(testCnpj, async (input) => String(input).includes('brasilapi')
+      ? Response.json({ cnpj: testCnpj, razao_social: 'Empresa', uf: state })
+      : Response.json({ estabelecimento: { cnpj: testCnpj, inscricoes_estaduais: ['123', '456'].map((ie) => ({ inscricao_estadual: ie, ativo: true, estado: { sigla: 'SP' } })) } }));
+    assert.equal(result.client.ie, '');
+    assert.equal(result.client.fiscalCondition, 'unknown');
+    assert.ok(result.warnings.length);
+  }
 });

@@ -527,6 +527,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
           phone: lookupClient.phone || clientData.phone || '',
           ie: lookupClient.ie || (/^\s*isent[oa]\s*$/i.test(clientData.ie || '') ? '' : clientData.ie || ''),
           fiscalReviewKey: undefined,
+          operationNature: undefined,
         }
       : lookupClient;
     setClientData(nextClient);

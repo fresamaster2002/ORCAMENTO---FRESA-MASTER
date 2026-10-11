@@ -3,6 +3,7 @@ import { resolveBlingProducts } from './blingProducts.ts';
 import { blingFetch } from './blingTransport.ts';
 import { buildNfeReview, invoiceWritePayload, nfeRevision } from './blingNfeReview.ts';
 import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
+import { selectedBlingNature } from './blingNature.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
@@ -56,6 +57,30 @@ export async function requestBling(token: string, path: string, method = 'GET', 
   return object(data);
 }
 
+export async function resolveSaleContact(token: string, client: Data): Promise<number> {
+  const document = String(client.document || '').replace(/\D/g, '');
+  const indicator = client.fiscalCondition === 'contributor' ? 1 : client.fiscalCondition === 'exempt' ? 2 : 9;
+  const found = records((await requestBling(token, `/contatos?numeroDocumento=${document}`)).data);
+  if (found.length > 1) throw new BlingFiscalError('Mais de um contato corresponde ao documento no Bling. Confira o cadastro antes de criar a venda.', 409);
+  if (found.length) {
+    if (!validId(found[0].id)) throw new BlingFiscalError('O Bling não retornou ID válido do contato.', 502);
+    const contact = object((await requestBling(token, `/contatos/${found[0].id}`)).data);
+    if (String(contact.numeroDocumento || '').replace(/\D/g, '') !== document || Number(contact.indicadorIe) !== indicator) throw new BlingFiscalError('A condição de ICMS do contato no Bling difere da confirmada no app. Confira o cadastro no ERP; ele não foi alterado.', 409);
+    return Number(found[0].id);
+  }
+  const phone = String(client.phone || '').replace(/\D/g, '');
+  const response = await requestBling(token, '/contatos', 'POST', {
+    nome: client.name, tipo: document.length === 14 ? 'J' : 'F', numeroDocumento: document, situacao: 'A',
+    indicadorIe: indicator, ie: indicator === 1 ? client.ie : undefined, email: client.email || undefined,
+    ...(/^\d{10,11}$/.test(phone) ? { telefone: phone } : {}),
+    endereco: { geral: { endereco: client.address, numero: client.number, complemento: client.complement,
+      bairro: client.neighborhood, cep: String(client.cep || '').replace(/\D/g, ''), municipio: client.city, uf: client.state } },
+  });
+  const id = object(response.data).id;
+  if (!validId(id)) throw new BlingFiscalError('O Bling respondeu sem o ID do contato criado. Confira o cadastro antes de repetir.', 502);
+  return Number(id);
+}
+
 export async function resolvePayment(token: string, method: string): Promise<number> {
   const name = normalize(method);
   if (!name) throw new BlingFiscalError('Informe a forma de pagamento do orçamento.');
@@ -100,7 +125,7 @@ export function buildSaleItems(items: Array<FiscalItem & { unit?: string }>) {
 }
 
 function summarize(n: Data) {
-  return { id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, chaveAcesso: n.chaveAcesso, linkDanfe: n.linkDanfe || n.linkPDF, xml: n.xml, linkXml: n.xml, tipo: n.tipo };
+  return { id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, chaveAcesso: n.chaveAcesso, linkDanfe: n.linkDanfe || n.linkPDF, xml: n.xml, linkXml: n.xml, tipo: n.tipo, naturezaOperacao: n.naturezaOperacao };
 }
 
 async function readNfe(token: string, id: string): Promise<Data> {
@@ -146,6 +171,13 @@ async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, 
       const clientReviewIssue = clientFiscalReviewIssue(client);
       if (clientReviewIssue && Number(nfe.situacao) !== 5) issues.push(clientReviewIssue);
       const recipient = object(nfe.contato);
+      const nature = object(client.operationNature);
+      if (validId(nature.id) && String(object(nfe.naturezaOperacao).id) !== String(nature.id)) issues.push('A natureza da NF-e difere da selecionada no cadastro do cliente. Confira o rascunho no Bling e suas regras tributárias antes de transmitir; o app não troca somente o título sem recalcular impostos.');
+      if (nature.id && Number(nfe.situacao) !== 5 && validId(recipient.id)) {
+        const contact = object((await requestBling(token, `/contatos/${recipient.id}`)).data);
+        const expected = client.fiscalCondition === 'contributor' ? 1 : client.fiscalCondition === 'exempt' ? 2 : 9;
+        if (Number(contact.indicadorIe) !== expected) issues.push('A condição de ICMS do contato no Bling difere da confirmada no app. Confira o cadastro fiscal no ERP antes de transmitir.');
+      }
       const address = object(recipient.endereco);
       const digits = (value: unknown) => String(value || '').replace(/\D/g, '');
       if (digits(client.document) !== digits(recipient.numeroDocumento)
@@ -177,6 +209,8 @@ function validateOrderMatchesQuote(order: Data, quote: Data): void {
 async function prepareDraft(token: string, nfeId: string, order: Data, input: Data): Promise<Data> {
   const draft = await readNfe(token, nfeId);
   if (Number(draft.situacao) !== 1) throw new BlingFiscalError('A NF-e vinculada não está pendente. Confira a nota existente no Bling; ela não será alterada.', 409);
+  const selectedNature = object(object(object(input.quote).client).operationNature);
+  if (selectedNature.id && String(object(draft.naturezaOperacao).id) !== String(selectedNature.id)) throw new BlingFiscalError('O Bling gerou a NF-e com natureza diferente da selecionada nos itens do pedido. Confira o rascunho e suas regras no Bling; não será aplicado apenas um título diferente sem recalcular impostos.', 409);
   const saleItems = records(order.itens);
   const draftItems = records(draft.itens);
   const quote = object(input.quote);
@@ -246,6 +280,9 @@ async function reviewInvoice(action: string, input: Data, token: string, nfeId: 
         ie: String(recipient.ie || ''), email: String(recipient.email || ''), phone: String(recipient.telefone || ''),
         address: String(address.endereco || ''), number: String(address.numero || ''), complement: String(address.complemento || ''),
         neighborhood: String(address.bairro || ''), city: String(address.municipio || ''), state: String(address.uf || ''), cep: String(address.cep || ''),
+        ...(normalize(current.ie) === normalize(recipient.ie) && normalize(current.state) === normalize(address.uf)
+          ? { fiscalCondition: current.fiscalCondition, operationNature: current.operationNature ? object(current.operationNature) : undefined, registrationLookup: current.registrationLookup ? object(current.registrationLookup) : undefined }
+          : {}),
       };
       if (!client.name || !client.address || !client.number || !client.neighborhood || !client.city
         || !/^[A-Z]{2}$/.test(client.state) || digits(client.cep).length !== 8) throw new BlingFiscalError('O cadastro fiscal da nota está incompleto. Confira o destinatário no Bling.', 409);
@@ -317,6 +354,13 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       const linkedId = object(order.notaFiscal).id;
       if (validId(linkedId)) nfeId = String(linkedId);
       if (input.quote) validateOrderMatchesQuote(order, object(input.quote));
+      const fiscalClient = object(object(input.quote).client);
+      if (fiscalClient.operationNature) {
+        let nature;
+        try { nature = await selectedBlingNature(token, fiscalClient); }
+        catch (error) { throw new BlingFiscalError(error instanceof Error ? error.message : 'Confira a natureza da operação.', 409); }
+        if (records(order.itens).some((item) => String(object(item.naturezaOperacao).id) !== nature.id)) throw new BlingFiscalError('A natureza dos itens do pedido difere da selecionada. Confira o pedido existente no Bling; nenhum novo documento foi gerado.', 409);
+      }
       if (input.quote) {
         const quote = object(input.quote);
         const supplied = records(quote.items).map((item, index) => ({

@@ -1,6 +1,6 @@
 type Item = { description?: string; sku?: string; ncm?: string; quantity?: number; unitPrice?: number };
-import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
-type Client = { name?: string; document?: string; ie?: string; fiscalReviewKey?: string; address?: string; number?: string; neighborhood?: string; city?: string; state?: string; cep?: string };
+import { clientFiscalReviewIssue, clientFiscalReviewed, type FiscalClient } from './clientFiscalReview.ts';
+type Client = FiscalClient & { name?: string; document?: string; ie?: string; address?: string; number?: string; neighborhood?: string; city?: string; state?: string; cep?: string };
 
 export function blingReadinessIssues(quote: {
   items?: Item[];
@@ -11,11 +11,12 @@ export function blingReadinessIssues(quote: {
   const client = quote.client || {};
   const fiscalReviewIssue = options.checkFiscalReview ? clientFiscalReviewIssue(client) : null;
   if (fiscalReviewIssue) issues.push(fiscalReviewIssue);
+  if (options.checkFiscalReview && (!client.operationNature || !clientFiscalReviewed(client))) issues.push('Selecione e confirme a condição de ICMS e a natureza de operação da venda.');
   if (!client.name?.trim()) issues.push('Informe a razão social ou nome do cliente.');
   const document = String(client.document || '').replace(/\D/g, '');
   let validDocument = false;
   if (document.length === 14) {
-    try { normalizeAndValidateCnpj(document); validDocument = true; } catch { validDocument = false; }
+    validDocument = Boolean(normalizeAndValidateCnpj(document));
   } else if (document.length === 11 && !/^(\d)\1+$/.test(document)) {
     const digit = (length: number) => {
       const sum = [...document.slice(0, length)].reduce((total, value, index) => total + Number(value) * (length + 1 - index), 0);
@@ -25,7 +26,7 @@ export function blingReadinessIssues(quote: {
     validDocument = Number(document[9]) === digit(9) && Number(document[10]) === digit(10);
   }
   if (!validDocument) issues.push('Confira o CPF/CNPJ do cliente, incluindo os dígitos verificadores.');
-  if (document.length === 14 && !client.ie?.trim()) issues.push('Informe a IE ou a condição ISENTO confirmada do cliente.');
+  if (document.length === 14 && !client.ie?.trim() && !['non-contributor', 'exempt'].includes(String(client.fiscalCondition))) issues.push('Informe a IE ou confirme a condição de ICMS do cliente.');
   for (const [field, label] of [['address', 'logradouro'], ['number', 'número'], ['neighborhood', 'bairro'], ['city', 'cidade']] as const) {
     if (!client[field]?.trim()) issues.push(`Informe ${label} do endereço fiscal.`);
   }

@@ -16,7 +16,8 @@ import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceF
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
-import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
+import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from "./supabase/functions/_shared/blingFiscal";
+import { listBlingNatures, selectedBlingNature } from "./supabase/functions/_shared/blingNature";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
@@ -1600,6 +1601,7 @@ app.post("/api/bling/generate-payload", async (req, res) => {
     const resolved = await resolveBlingProducts(token, quote.items);
     quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
     const payment = await buildSalePayment(token, quote);
+    const nature = quote.client.operationNature ? await selectedBlingNature(token, quote.client) : undefined;
     // 1. Bling API v3 JSON Structure (/pedidos/vendas)
     const blingJson = {
       numero: quote.id.replace(/\D/g, "") || String(Date.now()).slice(-6),
@@ -1623,7 +1625,7 @@ app.post("/api/bling/generate-payload", async (req, res) => {
           uf: quote.client.state || "SP",
         },
       },
-      itens: buildSaleItems(quote.items),
+      itens: buildSaleItems(quote.items).map((item) => ({ ...item, ...(nature ? { naturezaOperacao: { id: Number(nature.id) } } : {}) })),
       transporte: {
         fretePorConta: 0, // 0 = Contratação do Frete por conta do Remetente (CIF), 1 = Destinatário (FOB)
         transportador: {
@@ -1827,6 +1829,7 @@ app.post("/api/bling/create-order", async (req, res) => {
     }
     const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false, checkFiscalReview: true });
     if (nonFiscalIssues.length) return res.status(400).json({ success: false, error: nonFiscalIssues.join(" "), issues: nonFiscalIssues });
+    const nature = await selectedBlingNature(effectiveToken, quote.client);
     const resolved = await resolveBlingProducts(effectiveToken, quote.items);
     quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
     const readiness = blingReadinessIssues(quote);
@@ -1861,7 +1864,7 @@ app.post("/api/bling/create-order", async (req, res) => {
           uf: quote.client.state || "PR",
         },
       },
-      itens: buildSaleItems(quote.items),
+      itens: buildSaleItems(quote.items).map((item) => ({ ...item, naturezaOperacao: { id: Number(nature.id) } })),
       transporte: {
         fretePorConta: 0,
         transportador: {
@@ -1880,6 +1883,7 @@ app.post("/api/bling/create-order", async (req, res) => {
       observacoes: `Pedido gerado pelo aplicativo Fresa Master • Orçamento ${quote.id}. Frete: ${quote.shipping?.selectedOption?.name || 'Sedex'} (R$ ${Number(quote.financials?.shippingAmount || 0).toFixed(2)}).`,
     };
 
+    pedidoPayload.contato = { id: await resolveSaleContact(effectiveToken, quote.client) };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -1933,6 +1937,16 @@ app.post("/api/bling/nfe/:action", async (req, res) => {
   const token = req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "";
   const result = await handleBlingNfe(req.params.action, req.body, token);
   return res.status(result.status).json(result.body);
+});
+
+app.get("/api/bling/natures", async (req, res) => {
+  try {
+    const token = req.get("x-bling-token") || persistedBlingToken || process.env.BLING_API_TOKEN || "";
+    return res.json({ success: true, natures: await listBlingNatures(token) });
+  } catch (error) {
+    console.error("Consulta de naturezas:", error);
+    return res.status(502).json({ success: false, error: error instanceof Error ? error.message : "Falha na consulta das naturezas." });
+  }
 });
 
 // Endpoint: Fetch live catalog / products from Bling API v3

@@ -160,7 +160,8 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
             <div className="p-3 bg-indigo-50 rounded-lg space-y-1">
               <p><strong>NF-e {review.numero || 'sem número'} • Série {review.serie ?? 'não informada'}</strong></p>
               <p>Situação: {review.situacao === 5 ? 'Autorizada — somente consulta' : review.situacao === 1 ? 'Pendente — ainda não transmitida' : `Código ${review.situacao ?? 'não informado'}`}</p>
-              <p>Natureza de operação: ID {review.naturezaOperacao || 'não informado'}</p>
+              <p>Natureza de operação da NF-e: {review.naturezaOperacao === quote.client.operationNature?.id ? quote.client.operationNature.description : 'Descrição não confirmada'} (ID {review.naturezaOperacao || 'não informado'})</p>
+              {quote.client.operationNature && <p>Selecionada para a venda: {quote.client.operationNature.description} (ID {quote.client.operationNature.id})</p>}
               {review.situacao !== 5 && <p className="text-amber-900">A transmissão é feita aqui no app. O ambiente produção/homologação segue a configuração de emissão do Bling, que a API não informa. Se você já confirmou essa configuração, não precisa abrir o Bling novamente para cada nota.</p>}
             </div>
             {issues.map((issue, index) => <p key={index} role="alert" className="p-2 bg-red-50 text-red-800 rounded">{issue}</p>)}

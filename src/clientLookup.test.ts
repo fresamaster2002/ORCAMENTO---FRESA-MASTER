@@ -16,9 +16,11 @@ test('PDF sem IE consulta CNPJ e completa apenas IE, mantendo endereço, contato
   assert.match(result.warnings.join(' '), /localizada automaticamente/);
 });
 
-test('IE já expressa não consulta e CPF não dispara consulta de CNPJ', async () => {
+test('IE já expressa é preservada mesmo na falha da consulta; CPF não consulta CNPJ', async () => {
   const noFetch: typeof fetch = async () => { throw new Error('Não deveria consultar'); };
-  assert.equal((await completeMissingIe({ ...client, ie: '123' }, noFetch)).client.ie, '123');
+  const existing = await completeMissingIe({ ...client, ie: '123' }, noFetch);
+  assert.equal(existing.client.ie, '123');
+  assert.ok(existing.warnings.length);
   assert.equal((await completeMissingIe({ ...client, document: '12345678901' }, noFetch)).warnings.length, 0);
 });
 

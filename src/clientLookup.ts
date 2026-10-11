@@ -20,18 +20,20 @@ export async function fetchClientLookup(cnpj: string, fetcher: typeof fetch): Pr
 }
 
 export async function completeMissingIe(client: ClientInfo, fetcher: typeof fetch): Promise<{ client: ClientInfo; warnings: string[] }> {
-  const nextClient = { ...client, fiscalReviewKey: undefined };
-  if (!normalizeAndValidateCnpj(client.document) || (client.ie?.trim() && !/^isent[oa]$/i.test(client.ie.trim()))) {
+  const nextClient: ClientInfo = { ...client, fiscalReviewKey: undefined, registrationLookup: undefined, fiscalCondition: 'unknown', operationNature: undefined };
+  if (!normalizeAndValidateCnpj(client.document)) {
     return { client: nextClient, warnings: [] };
   }
   try {
     const result = await fetchClientLookup(client.document!, fetcher);
     const sameState = Boolean(client.state && result.client.state && client.state.trim().toUpperCase() === result.client.state.trim().toUpperCase());
     if (result.client.ie && !sameState) return { client: nextClient, warnings: ['A UF do documento difere da consulta ou está ausente. A IE consultada não foi aplicada; confira o cadastro.'] };
+    const hasIe = Boolean(client.ie?.trim() && !/^isent[oa]$/i.test(client.ie.trim()));
+    const differentIe = hasIe && result.client.ie && client.ie!.replace(/\D/g, '') !== result.client.ie.replace(/\D/g, '');
     return {
-      client: { ...nextClient, ie: result.client.ie || client.ie || '' },
+      client: { ...nextClient, ie: hasIe ? client.ie : result.client.ie || client.ie || '', registrationLookup: result.client.registrationLookup, fiscalCondition: sameState && !differentIe ? result.client.fiscalCondition || 'unknown' : 'unknown' },
       warnings: [
-        ...(result.client.ie ? [`IE ${result.client.ie} localizada automaticamente na consulta por CNPJ. Confira antes de faturar.`] : []),
+        ...(differentIe ? ['A IE do documento difere da consulta; o valor do documento foi preservado. Confira a condição fiscal.'] : result.client.ie ? [`IE ${result.client.ie} localizada automaticamente na consulta por CNPJ. Confira antes de faturar.`] : []),
         ...result.warnings,
       ],
     };

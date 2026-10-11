@@ -7,6 +7,18 @@ export interface ClientInfo {
   document?: string; // CPF ou CNPJ
   ie?: string; // Inscrição Estadual ou "ISENTO" confirmado
   fiscalReviewKey?: string;
+  fiscalCondition?: 'contributor' | 'non-contributor' | 'exempt' | 'unknown';
+  operationNature?: { id: string; description: string };
+  registrationLookup?: {
+    document: string;
+    state: string;
+    ie: string;
+    cnpjStatus: string;
+    cnpjStatusCode: string;
+    ieStatus: 'active' | 'inactive' | 'unknown';
+    consultedAt: string;
+    source: string;
+  };
   cep?: string;
   address?: string; // Logradouro (Rua/Av)
   number?: string;

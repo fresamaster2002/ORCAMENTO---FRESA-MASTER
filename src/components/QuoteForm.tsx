@@ -217,6 +217,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       client: {
         ...quote.client,
         [field]: val,
+        ...(['document', 'ie', 'state'].includes(field) ? { fiscalReviewKey: undefined, operationNature: undefined, fiscalCondition: 'unknown' as const, registrationLookup: undefined } : {}),
       },
     });
   };
@@ -533,6 +534,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               </span>
             </div>
           </div>
+
+          {quote.client.document && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+              <p><strong>Natureza de operação:</strong> {quote.client.operationNature?.description || 'Não confirmada — conferir cadastro fiscal'}</p>
+              <p><strong>Condição de ICMS:</strong> {quote.client.fiscalCondition === 'contributor' ? 'Contribuinte com IE' : quote.client.fiscalCondition === 'non-contributor' ? 'Não contribuinte (condição confirmada)' : quote.client.fiscalCondition === 'exempt' ? 'Contribuinte isento de IE (condição confirmada)' : 'Não confirmada'}</p>
+              {quote.client.registrationLookup && <p><strong>Situação cadastral do CNPJ:</strong> {quote.client.registrationLookup.cnpjStatus || 'Não informada pela fonte'}</p>}
+            </div>
+          )}
 
           {/* Expandable Manual Form */}
           {isEditingClient && (

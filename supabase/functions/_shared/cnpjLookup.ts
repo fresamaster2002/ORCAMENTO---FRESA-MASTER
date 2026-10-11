@@ -12,6 +12,11 @@ export type CnpjLookupClient = {
   neighborhood: string;
   city: string;
   state: string;
+  fiscalCondition: 'contributor' | 'unknown';
+  registrationLookup: {
+    document: string; state: string; ie: string; cnpjStatus: string; cnpjStatusCode: string;
+    ieStatus: 'active' | 'inactive' | 'unknown'; consultedAt: string; source: string;
+  };
 };
 
 export type CnpjLookupResult = {
@@ -166,18 +171,23 @@ export async function lookupCnpj(valueToLookup: unknown, fetcher: typeof fetch =
     ? establishment.inscricoes_estaduais.filter((entry): entry is JsonObject => Boolean(entry && typeof entry === 'object'))
     : [];
   const activeRegistrations = registrations.filter((entry) => entry.ativo === true);
-  const matchingRegistration = activeRegistrations.find((entry) => {
+  const compatible = activeRegistrations.filter((entry) => {
     const registrationState = entry.estado && typeof entry.estado === 'object'
       ? value(entry.estado as JsonObject, 'sigla').toUpperCase()
       : '';
     return state && registrationState === state;
   });
-  const selectedRegistration = matchingRegistration || (!state && activeRegistrations.length === 1 ? activeRegistrations[0] : undefined);
+  const selectedRegistration = compatible.length === 1 ? compatible[0] : undefined;
   const ie = value(selectedRegistration, 'inscricao_estadual');
   const cepDigits = value(base, 'cep').replace(/\D/g, '');
   const streetType = value(base, 'descricao_tipo_de_logradouro');
   const street = value(base, 'logradouro');
   const warnings: string[] = [];
+  const rawStatus = value(brasilApi || undefined, 'situacao_cadastral') || value(establishment, 'situacao_cadastral');
+  const statusCodes: Record<string, string> = { ativa: '2', suspensa: '3', inapta: '4', baixada: '8', nula: '1' };
+  const statusCode = /^\d+$/.test(rawStatus) ? String(Number(rawStatus)) : statusCodes[rawStatus.toLocaleLowerCase('pt-BR')] || '';
+  const descriptions: Record<string, string> = { '1': 'Nula', '2': 'Ativa', '3': 'Suspensa', '4': 'Inapta', '8': 'Baixada' };
+  if (statusCode && statusCode !== '2') warnings.push('O CNPJ não consta como ativo na consulta. Confira a situação cadastral antes de faturar; isso não define a condição de ICMS.');
 
   if (!selectedRegistration) {
     if (activeRegistrations.length > 0) {
@@ -203,6 +213,14 @@ export async function lookupCnpj(valueToLookup: unknown, fetcher: typeof fetch =
     neighborhood: value(base, 'bairro'),
     city: value(base, 'municipio'),
     state,
+    fiscalCondition: ie && state && (!statusCode || statusCode === '2') ? 'contributor' : 'unknown',
+    registrationLookup: {
+      document: digits, state, ie,
+      cnpjStatus: value(brasilApi || undefined, 'descricao_situacao_cadastral') || descriptions[statusCode] || rawStatus,
+      cnpjStatusCode: statusCode,
+      ieStatus: ie ? 'active' : registrations.some((entry) => entry.ativo === false && entry.estado && typeof entry.estado === 'object' && value(entry.estado as JsonObject, 'sigla').toUpperCase() === state) ? 'inactive' : 'unknown',
+      consultedAt: new Date().toISOString(), source: cnpjWs ? 'CNPJ.ws (IE); BrasilAPI/CNPJ.ws (cadastro)' : 'BrasilAPI (cadastro); IE indisponível',
+    },
   };
 
   return { client, warnings, source: brasilApi ? 'BrasilAPI' : 'CNPJ.ws' };

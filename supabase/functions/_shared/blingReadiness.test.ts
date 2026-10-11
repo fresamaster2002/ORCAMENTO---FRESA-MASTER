@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { blingReadinessIssues } from './blingReadiness.ts';
+import { clientFiscalKey } from './clientFiscalReview.ts';
 
 test('mostra todas as pendências antes de criar contato ou pedido', () => {
   const issues = blingReadinessIssues({ client: {}, items: [{ description: 'Fresa', ncm: '8207.70.00', quantity: 0, unitPrice: 0 }], financials: {} });
@@ -19,12 +20,14 @@ test('aceita cadastro completo e classificação confirmada sem inferir dados', 
   }), []);
 });
 
-test('pessoa física com CPF válido não exige IE nem conferência exclusiva de CNPJ', () => {
+test('pessoa física não exige IE, mas confirma condição e natureza da venda', () => {
   const quote = {
-    client: { name: 'Pessoa Física Teste', document: '52998224725', ie: '', address: 'Rua Teste', number: '10', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472' },
+    client: { name: 'Pessoa Física Teste', document: '52998224725', ie: '', address: 'Rua Teste', number: '10', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472', fiscalCondition: 'non-contributor', operationNature: { id: '8', description: 'Venda de mercadoria a não contribuinte' }, fiscalReviewKey: '' },
     items: [{ description: 'Fresa', ncm: '82077010', quantity: 1, unitPrice: 220 }],
     financials: { paymentMethod: 'Pix', shippingAmount: 0 },
   };
+  assert.ok(blingReadinessIssues(quote, { checkFiscalReview: true }).length);
+  quote.client.fiscalReviewKey = clientFiscalKey(quote.client);
   assert.deepEqual(blingReadinessIssues(quote, { checkFiscalReview: true }), []);
   assert.ok(blingReadinessIssues({ ...quote, client: { ...quote.client, document: '52998224724' } }).some((issue) => issue.includes('verificadores')));
 });

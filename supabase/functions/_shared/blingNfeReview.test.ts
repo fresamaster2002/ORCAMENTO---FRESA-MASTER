@@ -64,6 +64,23 @@ test('edição fiscal relê dados, limita campos e exige revisão atual antes de
     assert.equal(result.body.readyToSend, true);
     assert.equal(calls.some((call) => call.method !== 'GET'), false);
   });
+  await t.test('adoção relê a mesma nota e permite apenas destinatário correspondente, nunca grava no ERP', async () => {
+    calls.length = 0;
+    const changed = { ...quote, client: { ...client, name: 'Nome de teste', address: 'Outro endereço' } };
+    const result = await handleBlingNfe('adopt-recipient', { ...input, quote: changed, revision: await nfeRevision(stored) }, 'review-test');
+    assert.equal(result.status, 200);
+    assert.equal((result.body.client as { name: string }).name, client.name);
+    for (const invalid of [
+      { ...changed, client: { ...changed.client, document: '11111111111' } },
+      { ...changed, financials: { ...quote.financials, shippingAmount: 100 } },
+      { ...changed, items: [{ ...quote.items[0], unitPrice: 999 }] },
+    ]) assert.equal((await handleBlingNfe('adopt-recipient', { ...input, quote: invalid, revision: await nfeRevision(stored) }, 'review-test')).status, 409);
+    assert.equal((await handleBlingNfe('adopt-recipient', { ...input, revision: 'old' }, 'review-test')).status, 409);
+    stored.situacao = 5;
+    assert.equal((await handleBlingNfe('adopt-recipient', { ...input, revision: await nfeRevision(stored) }, 'review-test')).status, 409);
+    stored.situacao = 1;
+    assert.equal(calls.some((call) => call.method !== 'GET'), false);
+  });
   await t.test('salva somente NCM, CFOP e observações sem mudar imposto ou valor', async () => {
     const result = await handleBlingNfe('update-draft', { ...input, revision: await nfeRevision(stored), edit }, 'review-test');
     assert.equal(result.status, 200);

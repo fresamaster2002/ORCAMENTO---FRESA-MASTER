@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blingOrderChanged, blingOrderSnapshot } from './blingOrderSnapshot.ts';
+import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from './blingOrderSnapshot.ts';
 import type { QuoteData } from './types';
 
 function savedQuote(): QuoteData {
@@ -43,4 +43,15 @@ test('alterações reais continuam bloqueadas e snapshot inválido não libera e
   const quote = savedQuote();
   quote.bling!.orderSnapshot = '{';
   assert.equal(blingOrderChanged(quote), true);
+});
+
+test('adoção explícita altera somente destinatário do mesmo documento, sem ocultar mudanças comerciais', () => {
+  const quote = savedQuote();
+  const client = { ...quote.client, name: 'Nome já cadastrado', address: 'Rua do ERP' };
+  const snapshot = JSON.parse(adoptBlingRecipient(quote, client));
+  const original = JSON.parse(quote.bling!.orderSnapshot!);
+  assert.deepEqual(snapshot, { ...original, client });
+  assert.throws(() => adoptBlingRecipient(quote, { ...client, document: '456' }), /CPF\/CNPJ/);
+  quote.items[0].unitPrice = 210;
+  assert.throws(() => adoptBlingRecipient(quote, client), /orçamento mudou/);
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { nfeTransmissionBlock } from '../nfeTransmissionState';
 import { clientFiscalReviewIssue } from '../../supabase/functions/_shared/clientFiscalReview';
-import type { BlingNfe, QuoteData } from '../types';
+import type { BlingNfe, ClientInfo, QuoteData } from '../types';
 import type { NfeReview } from '../../supabase/functions/_shared/blingNfeReview';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   token: string;
   orderChanged: boolean;
   onPersist: (nfe: BlingNfe) => Promise<void>;
+  onAdoptRecipient: (client: ClientInfo) => Promise<void>;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ interface ReviewResponse {
   fiscalIssues?: string[];
   warnings?: string[];
   readyToSend?: boolean;
+  client?: ClientInfo;
 }
 
 const money = (value: number | null) => value === null ? 'Não informado pela API' : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -36,7 +38,7 @@ function taxLines(value: Record<string, unknown>, prefix = ''): string[] {
   });
 }
 
-export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onPersist, onClose }: Props) {
+export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onPersist, onAdoptRecipient, onClose }: Props) {
   const [review, setReview] = useState<NfeReview | null>(null);
   const [edits, setEdits] = useState<Array<{ ncm: string; cfop: string }>>([]);
   const [observations, setObservations] = useState('');
@@ -44,7 +46,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
   const [warnings, setWarnings] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState<'review' | 'update-draft' | 'send-reviewed' | null>('review');
+  const [busy, setBusy] = useState<'review' | 'update-draft' | 'send-reviewed' | 'adopt-recipient' | null>('review');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [links, setLinks] = useState<BlingNfe | null>(null);
@@ -118,6 +120,29 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
     }
   };
 
+  const adoptRecipient = async () => {
+    if (busy || !review || dirty || orderChanged) return;
+    if (!window.confirm('Usar no orçamento o nome e endereço fiscal já existentes nesta NF-e para o mesmo CPF/CNPJ? Itens, valores, entrega e cadastro do Bling não serão alterados. A condição fiscal precisará ser conferida novamente.')) return;
+    setBusy('adopt-recipient');
+    setError(null);
+    setReady(false);
+    setConfirmed(false);
+    try {
+      const response = await apiFetch('/api/bling/nfe/adopt-recipient', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nfeId, orderId, quote, revision: review.revision, token: token.trim() || undefined }),
+      });
+      const data: ReviewResponse = await response.json();
+      if (!response.ok || !data.success || !data.client) throw new Error(data.error || 'Não foi possível conferir o destinatário da venda.');
+      await onAdoptRecipient(data.client);
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Falha ao salvar o destinatário conferido.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[80] bg-slate-950/75 p-0 sm:p-4 flex items-center justify-center">
       <section role="dialog" aria-modal="true" aria-labelledby="nfe-review-title" className="w-full max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[94dvh] flex flex-col bg-white text-slate-900 sm:rounded-xl overflow-hidden shadow-2xl">
@@ -126,7 +151,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
           <button type="button" onClick={onClose} disabled={busy !== null} className="border rounded-lg px-3 py-2 disabled:opacity-50">Voltar</button>
         </header>
         <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-4 text-sm">
-          {busy && <p role="status">{busy === 'review' ? 'Consultando a nota no Bling...' : busy === 'update-draft' ? 'Salvando e conferindo as correções...' : 'Transmitindo e consultando a SEFAZ...'}</p>}
+          {busy && <p role="status">{busy === 'review' ? 'Consultando a nota no Bling...' : busy === 'update-draft' ? 'Salvando e conferindo as correções...' : busy === 'adopt-recipient' ? 'Conferindo e salvando o destinatário no orçamento...' : 'Transmitindo e consultando a SEFAZ...'}</p>}
           {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error} Recarregue a nota para conferir o estado atual antes de continuar.</p>}
           {message && <p role="status" className="p-3 bg-emerald-50 text-emerald-800 rounded-lg">{message}</p>}
           {orderChanged && <p role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg">{review?.situacao === 5 ? 'O orçamento atual difere da venda desta nota já autorizada. Essa diferença não altera a NF-e emitida e não permite nova transmissão.' : 'O orçamento mudou depois de criar o pedido. A transmissão fica bloqueada até revisar os dados da venda vinculada. Não crie outro pedido para esta nota.'}</p>}
@@ -139,6 +164,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
               {review.situacao !== 5 && <p className="text-amber-900">A transmissão é feita aqui no app. O ambiente produção/homologação segue a configuração de emissão do Bling, que a API não informa. Se você já confirmou essa configuração, não precisa abrir o Bling novamente para cada nota.</p>}
             </div>
             {issues.map((issue, index) => <p key={index} role="alert" className="p-2 bg-red-50 text-red-800 rounded">{issue}</p>)}
+            {[1, 4].includes(review.situacao ?? 0) && issues.some((issue) => issue.includes('destinatário/endereço fiscal')) && <button type="button" disabled={busy !== null || dirty || orderChanged} onClick={adoptRecipient} className="border border-amber-500 rounded-lg px-3 py-2 disabled:opacity-50">Conferir e usar destinatário desta NF-e no orçamento</button>}
             {warnings.map((warning, index) => <p key={index} className="p-2 bg-amber-50 text-amber-900 rounded">{warning}</p>)}
             <section className="border rounded-lg p-3 space-y-1">
               <h3 className="font-bold">Destinatário / faturamento</h3>

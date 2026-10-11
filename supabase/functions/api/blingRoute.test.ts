@@ -43,7 +43,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
   Object.assign(quote.client, client);
   await t.test('exige autenticação nas rotas fiscais', async () => {
     assert.equal((await post('nfe/send', { nfeId: 33 }, false)).status, 401);
-    for (const action of ['review', 'update-draft', 'send-reviewed']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
+    for (const action of ['review', 'update-draft', 'send-reviewed', 'adopt-recipient']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
   });
   await t.test('consulta o NCM no detalhe do produto sem depender da listagem resumida', async () => {
     const response = await handler(new Request('https://supabase.test/functions/v1/api/bling/products/123', { headers: { Authorization: 'Bearer test-session' } }));

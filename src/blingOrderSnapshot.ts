@@ -1,5 +1,16 @@
 import type { QuoteData } from './types';
 
+export function adoptBlingRecipient(quote: QuoteData, client: QuoteData['client']): string {
+  if (blingOrderChanged(quote)) throw new Error('O orçamento mudou após salvar a venda. Não é possível adotar apenas o destinatário; confira todas as diferenças.');
+  const saved = quote.bling?.orderSnapshot;
+  if (!saved) throw new Error('A venda não possui uma referência salva para conferir o destinatário.');
+  const snapshot = JSON.parse(saved);
+  const digits = (value: unknown) => String(value || '').replace(/\D/g, '');
+  if (!digits(client.document) || digits(snapshot.client?.document) !== digits(client.document)
+    || digits(quote.client.document) !== digits(client.document)) throw new Error('O CPF/CNPJ do destinatário não corresponde à venda salva.');
+  return JSON.stringify({ ...snapshot, client });
+}
+
 export function blingOrderSnapshot(quote: QuoteData): string {
   return JSON.stringify({
     client: quote.client,

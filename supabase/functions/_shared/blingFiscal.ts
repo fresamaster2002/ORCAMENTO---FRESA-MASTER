@@ -234,7 +234,26 @@ async function reviewInvoice(action: string, input: Data, token: string, nfeId: 
   if (action !== 'review') {
     if (orderIssues.length) throw new BlingFiscalError(orderIssues.join(' '), 409);
     if (input.revision !== await nfeRevision(nfe)) throw new BlingFiscalError('A NF-e mudou no Bling depois da conferência. Recarregue a nota e confira novamente.', 409);
-    if (action === 'update-draft') {
+    if (action === 'adopt-recipient') {
+      if (![1, 4].includes(Number(nfe.situacao))) throw new BlingFiscalError('Só é possível conferir o destinatário de uma nota ainda não autorizada.', 409);
+      const recipient = object(nfe.contato);
+      const current = object(quote.client);
+      const digits = (value: unknown) => String(value || '').replace(/\D/g, '');
+      if (!digits(current.document) || digits(current.document) !== digits(recipient.numeroDocumento)) throw new BlingFiscalError('O CPF/CNPJ da nota não corresponde ao cliente do orçamento.', 409);
+      const address = object(recipient.endereco);
+      const client = {
+        name: String(recipient.nome || ''), document: String(recipient.numeroDocumento || ''),
+        ie: String(recipient.ie || ''), email: String(recipient.email || ''), phone: String(recipient.telefone || ''),
+        address: String(address.endereco || ''), number: String(address.numero || ''), complement: String(address.complemento || ''),
+        neighborhood: String(address.bairro || ''), city: String(address.municipio || ''), state: String(address.uf || ''), cep: String(address.cep || ''),
+      };
+      if (!client.name || !client.address || !client.number || !client.neighborhood || !client.city
+        || !/^[A-Z]{2}$/.test(client.state) || digits(client.cep).length !== 8) throw new BlingFiscalError('O cadastro fiscal da nota está incompleto. Confira o destinatário no Bling.', 409);
+      const issues = await fiscalIssues(token, nfe, method, { ...quote, client }, true);
+      const otherIssues = issues.filter((issue) => issue !== clientFiscalReviewIssue(client));
+      if (otherIssues.length) throw new BlingFiscalError(otherIssues.join(' '), 409);
+      return { success: true, client, nfe: summarize(nfe), review: await buildNfeReview(nfe) };
+    } else if (action === 'update-draft') {
       if (Number(nfe.situacao) !== 1) throw new BlingFiscalError('Somente uma NF-e pendente pode ser editada. Notas autorizadas não serão alteradas.', 409);
       const edit = object(input.edit);
       if (Object.keys(edit).some((key) => !['itens', 'observacoes'].includes(key)) || typeof edit.observacoes !== 'string' || edit.observacoes.length > 5000) throw new BlingFiscalError('Edite somente NCM, CFOP e observações (até 5000 caracteres).');
@@ -286,7 +305,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
   let nfeId = String(input.nfeId || '');
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
-    if (['review', 'update-draft', 'send-reviewed'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId) };
+    if (['review', 'update-draft', 'send-reviewed', 'adopt-recipient'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId) };
     let nfe: Data;
     if (action === 'generate') {
       const orderId = String(input.orderId || '');

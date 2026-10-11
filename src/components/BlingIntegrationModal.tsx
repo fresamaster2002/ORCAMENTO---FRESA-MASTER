@@ -6,7 +6,7 @@ import { completeMissingIe } from '../clientLookup';
 import { NfeReviewModal } from './NfeReviewModal';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
-import { blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
+import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -41,7 +41,7 @@ interface BlingIntegrationModalProps {
   onClose: () => void;
   quote: QuoteData;
   onUpdateClient: (client: ClientInfo) => void;
-  onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items']) => Promise<void>;
+  onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items'], client?: ClientInfo) => Promise<void>;
   onUpdateItems: (quoteId: string, items: QuoteData['items']) => Promise<void>;
 }
 
@@ -977,6 +977,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
                           orderId={orderResult.orderId}
                           token={blingToken}
                           orderChanged={orderChanged}
+                          onAdoptRecipient={async (client) => {
+                            const orderSnapshot = adoptBlingRecipient({ ...quote, client: clientData }, client);
+                            await onUpdateBling(quote.id, { ...quote.bling, ...orderResult, nfe, orderSnapshot }, undefined, client);
+                            setClientData(client);
+                            setNfeFiscalIssues([]);
+                            setStatusMessage('Destinatário da NF-e salvo no orçamento. Confira a condição fiscal e reabra a nota antes de transmitir.');
+                          }}
                           onClose={() => setShowNfeReview(false)}
                           onPersist={async (nextNfe) => {
                             setNfe(nextNfe);

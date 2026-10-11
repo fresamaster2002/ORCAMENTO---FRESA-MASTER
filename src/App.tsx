@@ -602,7 +602,7 @@ export default function App() {
     }
   };
 
-  const handlePersistBlingUpdate = async (quoteId: string, patch: Pick<Partial<QuoteData>, 'bling' | 'items'>) => {
+  const handlePersistBlingUpdate = async (quoteId: string, patch: Pick<Partial<QuoteData>, 'bling' | 'items' | 'client'>) => {
     const original = quote.id === quoteId ? quote : recentQuotes.find((saved) => saved.id === quoteId);
     if (!original) throw new Error('Não foi possível localizar o orçamento para salvar o vínculo do Bling.');
     const updated = { ...original, ...patch };
@@ -958,7 +958,7 @@ export default function App() {
         onClose={() => setIsBlingOpen(false)}
         quote={quote}
         onUpdateClient={handleUpdateClientFromBling}
-        onUpdateBling={(quoteId, bling, items) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}) })}
+        onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
       />
 

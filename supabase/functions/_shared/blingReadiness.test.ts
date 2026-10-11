@@ -18,3 +18,13 @@ test('aceita cadastro completo e classificação confirmada sem inferir dados', 
     financials: { paymentMethod: 'Pix', shippingAmount: 27.07 },
   }), []);
 });
+
+test('pessoa física com CPF válido não exige IE nem conferência exclusiva de CNPJ', () => {
+  const quote = {
+    client: { name: 'Pessoa Física Teste', document: '52998224725', ie: '', address: 'Rua Teste', number: '10', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472' },
+    items: [{ description: 'Fresa', ncm: '82077010', quantity: 1, unitPrice: 220 }],
+    financials: { paymentMethod: 'Pix', shippingAmount: 0 },
+  };
+  assert.deepEqual(blingReadinessIssues(quote, { checkFiscalReview: true }), []);
+  assert.ok(blingReadinessIssues({ ...quote, client: { ...quote.client, document: '52998224724' } }).some((issue) => issue.includes('verificadores')));
+});

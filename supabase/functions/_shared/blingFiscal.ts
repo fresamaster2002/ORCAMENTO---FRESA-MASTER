@@ -1,13 +1,14 @@
 import { formatBlingError } from './blingErrors.ts';
 import { resolveBlingProducts } from './blingProducts.ts';
 import { blingFetch } from './blingTransport.ts';
+import { buildNfeReview, invoiceWritePayload, nfeRevision } from './blingNfeReview.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
 export type PaymentQuote = {
   items: FiscalItem[];
   project?: { date?: string };
-  financials?: { shippingAmount?: number; discountAmount?: number; paymentMethod?: string };
+  financials?: { shippingAmount?: number; insuranceAmount?: number; discountAmount?: number; paymentMethod?: string };
 };
 
 function object(value: unknown): Data {
@@ -25,6 +26,13 @@ export class BlingFiscalError extends Error {
   constructor(message: string, public status = 400, public details?: unknown) {
     super(message);
   }
+}
+
+export function blingFreight(financials: PaymentQuote['financials']): number {
+  const base = Number(financials?.shippingAmount || 0);
+  const insurance = Number(financials?.insuranceAmount || 0);
+  if (!Number.isFinite(base) || base < 0 || !Number.isFinite(insurance) || insurance < 0) throw new BlingFiscalError('Confira o frete e o seguro antes de criar ou transmitir a nota.');
+  return Math.round((base + insurance) * 100) / 100;
 }
 
 export function validateFiscalItems(items: FiscalItem[]): void {
@@ -72,7 +80,7 @@ export async function buildSalePayment(token: string, quote: PaymentQuote) {
   if (!token) throw new BlingFiscalError('Conecte o Bling para resolver a forma de pagamento antes de exportar ou criar a venda.', 401);
   const paymentId = await resolvePayment(token, quote.financials?.paymentMethod || 'Pix');
   const subtotal = quote.items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
-  const shipping = Number(quote.financials?.shippingAmount || 0);
+  const shipping = blingFreight(quote.financials);
   const discount = Number(quote.financials?.discountAmount || 0);
   if (!Number.isFinite(shipping) || shipping < 0 || !Number.isFinite(discount) || discount < 0 || discount > subtotal) throw new BlingFiscalError('Confira os valores de frete e desconto antes de criar a venda.');
   const total = Math.round((subtotal + shipping - discount) * 100) / 100;
@@ -97,11 +105,11 @@ function summarize(n: Data) {
 async function readNfe(token: string, id: string): Promise<Data> {
   const response = await requestBling(token, `/nfe/${id}`);
   const nfe = object(response.data);
-  if (!validId(nfe.id)) throw new BlingFiscalError('O Bling não retornou os dados da NF-e.', 502);
+  if (!validId(nfe.id) || String(nfe.id) !== id) throw new BlingFiscalError('O Bling não retornou os dados da NF-e solicitada.', 502);
   return nfe;
 }
 
-async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, quote?: Data): Promise<string[]> {
+async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, quote?: Data, reviewedNcm = false): Promise<string[]> {
   const issues: string[] = [];
   if (Number(nfe.serie) !== 2) issues.push('A NF-e precisa estar na série 2. Ajuste a série e a numeração no Bling antes de transmitir.');
   const items = records(nfe.itens);
@@ -126,12 +134,23 @@ async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, 
       const expected = expectedItems[index];
       return !expected || normalize(item.descricao) !== normalize(expected.description)
         || Number(item.quantidade) !== Number(expected.quantity) || Number(item.valor) !== Number(expected.unitPrice)
-        || String(item.classificacaoFiscal || '').replace(/\D/g, '') !== String(expected.ncm || '').replace(/\D/g, '');
+        || (!reviewedNcm && String(item.classificacaoFiscal || '').replace(/\D/g, '') !== String(expected.ncm || '').replace(/\D/g, ''));
     })) issues.push('Os itens/NCM da NF-e divergem do orçamento atual. Confira o pedido e a nota existentes no Bling.');
     const financials = object(quote.financials);
     const subtotal = expectedItems.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
-    const expectedTotal = subtotal + Number(financials.shippingAmount || 0) - Number(financials.discountAmount || 0);
+    const expectedTotal = subtotal + blingFreight(financials) - Number(financials.discountAmount || 0);
     if (!Number.isFinite(expectedTotal) || Math.round(expectedTotal * 100) !== Math.round(total * 100)) issues.push('O total da NF-e diverge do orçamento atual.');
+    if (quote.client) {
+      const client = object(quote.client);
+      const recipient = object(nfe.contato);
+      const address = object(recipient.endereco);
+      const digits = (value: unknown) => String(value || '').replace(/\D/g, '');
+      if (digits(client.document) !== digits(recipient.numeroDocumento)
+        || normalize(client.name) !== normalize(recipient.nome)
+        || normalize(client.ie) !== normalize(recipient.ie)
+        || [['address', 'endereco'], ['number', 'numero'], ['complement', 'complemento'], ['neighborhood', 'bairro'], ['city', 'municipio'], ['state', 'uf']].some(([a, b]) => normalize(client[a]) !== normalize(address[b]))
+        || digits(client.cep) !== digits(address.cep)) issues.push('O destinatário/endereço fiscal da NF-e diverge do orçamento. Revise o pedido vinculado no Bling.');
+    }
   }
   return issues;
 }
@@ -178,7 +197,7 @@ async function prepareDraft(token: string, nfeId: string, order: Data, input: Da
     validateFiscalItems([{ sku: String(sale.codigo || object(sale.produto).id || ''), description: String(sale.descricao), quantity: Number(sale.quantidade), unitPrice: Number(sale.valor), ncm }]);
     const uf = String(object(object(draft.contato).endereco).uf || '').toUpperCase();
     if (!/^[A-Z]{2}$/.test(uf) || uf === 'EX') throw new BlingFiscalError('Confira a UF do destinatário antes de ajustar o CFOP.');
-    items.push({ ...draftItem, codigo: draftItem.codigo || sale.codigo || supplied?.sku || String(object(sale.produto).id), classificacaoFiscal: ncm.replace(/\D/g, '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3'), cfop: uf === 'SP' ? '5102' : '6102' });
+    items.push({ ...draftItem, codigo: draftItem.codigo || sale.codigo || supplied?.sku || String(object(sale.produto).id), classificacaoFiscal: ncm.replace(/\D/g, '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3') });
   }
   const parcelas = records(order.parcelas).map((p) => ({ data: p.dataVencimento, valor: p.valor, observacoes: p.observacoes, caut: p.caut, formaPagamento: p.formaPagamento }));
   if (!parcelas.length || parcelas.some((p) => !validId(object(p.formaPagamento).id))) throw new BlingFiscalError('O pedido não possui pagamento válido. Confira a forma de pagamento no Bling.');
@@ -196,10 +215,75 @@ async function prepareDraft(token: string, nfeId: string, order: Data, input: Da
   return updated;
 }
 
+async function reviewInvoice(action: string, input: Data, token: string, nfeId: string): Promise<Data> {
+  if (!validId(nfeId) || !validId(input.orderId) || !input.quote) throw new BlingFiscalError('Informe a nota, o pedido vinculado e o orçamento para conferir a NF-e.');
+  const order = object((await requestBling(token, `/pedidos/vendas/${input.orderId}`)).data);
+  if (String(object(order.notaFiscal).id) !== nfeId) throw new BlingFiscalError('A NF-e não corresponde ao pedido vinculado. Confira os vínculos no Bling.', 409);
+  let nfe = await readNfe(token, nfeId);
+  const quote = object(input.quote);
+  const method = String(object(quote.financials).paymentMethod || '');
+  const orderIssues: string[] = [];
+  try { validateOrderMatchesQuote(order, quote); }
+  catch (error) {
+    if (!(error instanceof BlingFiscalError)) throw error;
+    orderIssues.push(error.message);
+  }
+  if (action !== 'review') {
+    if (orderIssues.length) throw new BlingFiscalError(orderIssues.join(' '), 409);
+    if (input.revision !== await nfeRevision(nfe)) throw new BlingFiscalError('A NF-e mudou no Bling depois da conferência. Recarregue a nota e confira novamente.', 409);
+    if (action === 'update-draft') {
+      if (Number(nfe.situacao) !== 1) throw new BlingFiscalError('Somente uma NF-e pendente pode ser editada. Notas autorizadas não serão alteradas.', 409);
+      const edit = object(input.edit);
+      if (Object.keys(edit).some((key) => !['itens', 'observacoes'].includes(key)) || typeof edit.observacoes !== 'string' || edit.observacoes.length > 5000) throw new BlingFiscalError('Edite somente NCM, CFOP e observações (até 5000 caracteres).');
+      const sourceItems = records(nfe.itens);
+      const editItems = records(edit.itens);
+      if (!sourceItems.length || sourceItems.length !== editItems.length) throw new BlingFiscalError('A edição deve manter os mesmos itens da nota.');
+      const updatedItems = sourceItems.map((item, index) => {
+        const patch = editItems[index];
+        if (Object.keys(patch).some((key) => !['ncm', 'cfop'].includes(key)) || typeof patch.ncm !== 'string' || typeof patch.cfop !== 'string') throw new BlingFiscalError('Quantidades, valores, cliente e impostos não podem ser editados nesta tela.');
+        const ncm = patch.ncm.replace(/[.\s]/g, '');
+        const cfop = patch.cfop.trim();
+        validateFiscalItems([{ description: String(item.descricao), quantity: Number(item.quantidade), unitPrice: Number(item.valor), ncm }]);
+        if (!/^[1-7]\d{3}$/.test(cfop)) throw new BlingFiscalError(`Confira o CFOP de ${item.descricao}; informe quatro dígitos válidos.`);
+        return { ...item, classificacaoFiscal: ncm.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3'), cfop };
+      });
+      const expected = { ...nfe, itens: updatedItems, observacoes: edit.observacoes };
+      await requestBling(token, `/nfe/${nfeId}`, 'PUT', invoiceWritePayload(expected));
+      const updated = await readNfe(token, nfeId);
+      const updatedItemsSaved = records(updated.itens);
+      if (updatedItemsSaved.length !== updatedItems.length || updatedItemsSaved.some((item, index) => String(item.classificacaoFiscal).replace(/\D/g, '') !== String(updatedItems[index].classificacaoFiscal).replace(/\D/g, '') || item.cfop !== updatedItems[index].cfop)
+        || String(updated.observacoes || '') !== edit.observacoes) throw new BlingFiscalError('O Bling não persistiu todas as correções. Recarregue e revise a nota; não transmita.', 409);
+      const unchanged = (value: Data) => {
+        const { frete: _frete, ...transport } = object(value.transporte);
+        return {
+          ...value, observacoes: '', transporte: transport,
+          itens: records(value.itens).map(({ classificacaoFiscal: _ncm, cfop: _cfop, ...item }) => item),
+        };
+      };
+      if (await nfeRevision(unchanged(nfe)) !== await nfeRevision(unchanged(updated))) throw new BlingFiscalError('O Bling alterou outros dados fiscais durante o salvamento. Recarregue e confira a nota antes de emitir.', 409);
+      nfe = updated;
+    } else if (action === 'send-reviewed') {
+      const issues = await fiscalIssues(token, nfe, method, quote, true);
+      if (![1, 4].includes(Number(nfe.situacao))) issues.push('A situação da NF-e não permite nova transmissão.');
+      if (issues.length) throw new BlingFiscalError(issues.join(' '), 409);
+      await requestBling(token, `/nfe/${nfeId}/enviar`, 'POST');
+      nfe = await readNfe(token, nfeId);
+    }
+  }
+  const issues = [...orderIssues, ...await fiscalIssues(token, nfe, method, quote, true)];
+  const ncmCorrections = records(nfe.itens).some((item, index) => String(item.classificacaoFiscal || '').replace(/\D/g, '') !== String(records(quote.items)[index]?.ncm || '').replace(/\D/g, ''));
+  return {
+    success: true, nfeId: Number(nfeId), nfe: summarize(nfe), review: await buildNfeReview(nfe),
+    fiscalIssues: issues, readyToSend: issues.length === 0 && [1, 4].includes(Number(nfe.situacao)),
+    warnings: ncmCorrections ? ['O NCM desta nota difere do orçamento/catálogo. Confira a classificação corrigida com o contador; o cadastro do produto e o orçamento não foram alterados.'] : [],
+  };
+}
+
 export async function handleBlingNfe(action: string, input: Data, token: string): Promise<{ status: number; body: Data }> {
   let nfeId = String(input.nfeId || '');
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
+    if (['review', 'update-draft', 'send-reviewed'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId) };
     let nfe: Data;
     if (action === 'generate') {
       const orderId = String(input.orderId || '');

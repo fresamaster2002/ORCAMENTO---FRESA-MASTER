@@ -1,7 +1,7 @@
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from '../_shared/deliveryExtraction.ts';
 import { CnpjLookupError, lookupCnpj } from '../_shared/cnpjLookup.ts';
 import { formatBlingError } from '../_shared/blingErrors.ts';
-import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
+import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe } from '../_shared/blingFiscal.ts';
 import { resolveBlingProducts } from '../_shared/blingProducts.ts';
 import { fetchBlingApi } from '../_shared/blingTransport.ts';
 import { createSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
@@ -867,7 +867,7 @@ async function route(request: Request): Promise<Response> {
       try {
         const token = body.token || await getBlingToken();
         const resolved = await resolveBlingProducts(token, body.quote.items);
-        const quote = { ...body.quote, items: resolved.items };
+        const quote = { ...body.quote, items: resolved.items, financials: { ...body.quote.financials, shippingAmount: blingFreight(body.quote.financials), insuranceAmount: 0 } };
         const payment = await buildSalePayment(token, quote);
         const generated = generateBlingPayload(quote);
         delete generated.blingJson.pagamento;
@@ -966,7 +966,7 @@ async function route(request: Request): Promise<Response> {
       if (nonFiscalIssues.length) return json({ success: false, error: nonFiscalIssues.join(' '), issues: nonFiscalIssues }, 400);
       try {
         const resolved = await resolveBlingProducts(token, quote.items);
-        quote = { ...quote, items: resolved.items };
+        quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
       } catch (error) {
         if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, blingDetails: error.details }, error.status);
         throw error;

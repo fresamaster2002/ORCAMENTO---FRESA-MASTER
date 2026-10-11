@@ -40,6 +40,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
   };
   await t.test('exige autenticação nas rotas fiscais', async () => {
     assert.equal((await post('nfe/send', { nfeId: 33 }, false)).status, 401);
+    for (const action of ['review', 'update-draft', 'send-reviewed']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
   });
   await t.test('consulta o NCM no detalhe do produto sem depender da listagem resumida', async () => {
     const response = await handler(new Request('https://supabase.test/functions/v1/api/bling/products/123', { headers: { Authorization: 'Bearer test-session' } }));
@@ -100,6 +101,18 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     const existing = await post('create-order', { quote: { ...quote, bling: { orderId: 22 } } });
     assert.equal(existing.status, 409);
     assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
+  });
+  await t.test('seguro é incluído uma vez no frete, parcela e XML exportados', async () => {
+    calls.length = 0;
+    const insured = { ...quote, financials: { ...quote.financials, insuranceAmount: 3.96 } };
+    assert.equal((await post('create-order', { quote: insured })).status, 200);
+    const sale = calls.find((call) => call.url.endsWith('/pedidos/vendas'))!.body;
+    assert.equal((sale.transporte as { frete: number }).frete, 31.03);
+    assert.equal((sale.parcelas as { valor: number }[])[0].valor, 201.03);
+    const exported = await (await post('generate-payload', { quote: insured })).json();
+    assert.equal(exported.blingJson.transporte.frete, 31.03);
+    assert.equal(exported.blingJson.parcelas[0].valor, 201.03);
+    assert.match(exported.blingXml, /<vlr_frete>31.03<\/vlr_frete>/);
   });
   await t.test('envio direto também bloqueia NCM zerado', async () => {
     calls.length = 0;

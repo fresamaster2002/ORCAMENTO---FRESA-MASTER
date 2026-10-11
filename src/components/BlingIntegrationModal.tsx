@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
+import { NfeReviewModal } from './NfeReviewModal';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
@@ -74,6 +75,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [nfeError, setNfeError] = useState<string | null>(null);
   const [nfeReadyToSend, setNfeReadyToSend] = useState(false);
   const [nfeFiscalIssues, setNfeFiscalIssues] = useState<string[]>([]);
+  const [showNfeReview, setShowNfeReview] = useState(false);
   const [isResolvingProducts, setIsResolvingProducts] = useState(false);
   const [productWarnings, setProductWarnings] = useState<string[]>([]);
 
@@ -103,6 +105,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const orderChanged = blingOrderChanged({ ...quote, client: clientData });
 
   useEffect(() => {
+    if (isOpen) setActiveTab('direct');
+    setShowNfeReview(false);
     const saved = quote.bling;
     setOrderResult(saved?.orderId ? { orderId: saved.orderId, orderNumber: saved.orderNumber || saved.orderId, orderUrl: saved.orderUrl } : null);
     setNfe(saved?.nfe || null);
@@ -679,7 +683,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
         </div>
 
         {/* Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs">
           {statusMessage && (
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -949,19 +953,30 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         {Number(nfe.situacao) === 5 ? (
                           <p className="font-semibold text-emerald-700 dark:text-emerald-300">Esta NF-e já foi autorizada. Não é necessário emitir novamente. Abra o DANFE para visualizar.</p>
                         ) : !nfeReadyToSend && nfeBusy === null && !nfeError && nfeFiscalIssues.length === 0 ? (
-                          <p>Para liberar o envio, clique em <strong>Conferir NF-e e liberar envio</strong>. O app verificará série, NCM, valores e pagamento.</p>
+                          <p>Abra <strong>Conferir e editar NF-e no app</strong> para ver a nota real, salvar correções de NCM/CFOP e confirmar a transmissão.</p>
                         ) : null}
                         {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
-                          {Number(nfe.situacao) !== 5 && <button type="button" onClick={() => { if (window.confirm('Confirme o ambiente da nota no Bling e a série 2 antes de enviar. Transmitir esta NF-e para a SEFAZ? Depois de autorizada, só pode ser cancelada dentro do prazo legal.')) callNfe('send', { nfeId: nfe.id }); }} disabled={nfeBusy !== null || !nfeReadyToSend || orderChanged || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer">
-                            {nfeBusy === 'send' ? 'Enviando...' : 'Enviar à SEFAZ'}
-                          </button>}
+                          <button type="button" onClick={() => setShowNfeReview(true)} disabled={nfeBusy !== null || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-50 cursor-pointer">{Number(nfe.situacao) === 5 ? 'Conferir NF-e emitida no app' : 'Conferir e editar NF-e no app'}</button>
                           <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
                             {nfeBusy === 'status' ? 'Consultando...' : Number(nfe.situacao) === 5 ? 'Atualizar status' : 'Conferir NF-e e liberar envio'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
                         </div>
+                        {showNfeReview && nfe?.id && orderResult && <NfeReviewModal
+                          key={`${quote.id}:${nfe.id}`}
+                          quote={{ ...quote, client: clientData }}
+                          nfeId={nfe.id}
+                          orderId={orderResult.orderId}
+                          token={blingToken}
+                          orderChanged={orderChanged}
+                          onClose={() => setShowNfeReview(false)}
+                          onPersist={async (nextNfe) => {
+                            setNfe(nextNfe);
+                            await onUpdateBling(quote.id, { ...quote.bling, ...orderResult, nfe: nextNfe });
+                          }}
+                        />}
                       </div>
                     )}</>}
                     {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}

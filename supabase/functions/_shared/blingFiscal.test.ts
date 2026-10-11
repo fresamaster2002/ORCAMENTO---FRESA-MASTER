@@ -142,7 +142,7 @@ test('NF-e usa idNotaFiscal, grava classificacaoFiscal, conserva pagamento e con
     assert.equal(result.body.readyToSend, true);
     const put = calls.find((call) => call.method === 'PUT')!.body!;
     assert.equal(draft.itens[0].classificacaoFiscal, '8207.70.10');
-    assert.equal(draft.itens[0].cfop, '5102');
+    assert.equal(draft.itens[0].cfop, '6102');
     assert.equal(draft.parcelas[0].formaPagamento.id, 17);
     assert.equal('situacao' in put, false);
     assert.equal('chaveAcesso' in put, false);

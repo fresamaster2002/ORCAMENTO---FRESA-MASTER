@@ -16,7 +16,7 @@ import { extractCepFromText, extractDiscountAmountFromText, extractMotoboyPriceF
 import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractionSchema, normalizeExtractedDelivery } from "./supabase/functions/_shared/deliveryExtraction";
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
-import { BlingFiscalError, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
+import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe } from "./supabase/functions/_shared/blingFiscal";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { createSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
@@ -1598,7 +1598,7 @@ app.post("/api/bling/generate-payload", async (req, res) => {
 
     const token = req.body.token || persistedBlingToken || process.env.BLING_API_TOKEN || "";
     const resolved = await resolveBlingProducts(token, quote.items);
-    quote = { ...quote, items: resolved.items };
+    quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
     const payment = await buildSalePayment(token, quote);
     // 1. Bling API v3 JSON Structure (/pedidos/vendas)
     const blingJson = {
@@ -1828,7 +1828,7 @@ app.post("/api/bling/create-order", async (req, res) => {
     const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false });
     if (nonFiscalIssues.length) return res.status(400).json({ success: false, error: nonFiscalIssues.join(" "), issues: nonFiscalIssues });
     const resolved = await resolveBlingProducts(effectiveToken, quote.items);
-    quote = { ...quote, items: resolved.items };
+    quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };
     const readiness = blingReadinessIssues(quote);
     if (readiness.length) {
       return res.status(400).json({ success: false, error: readiness.join(" "), issues: readiness });

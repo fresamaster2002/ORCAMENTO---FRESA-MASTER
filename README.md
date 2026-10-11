@@ -86,7 +86,21 @@ A transmissão faz uma nova conferência no backend e fica bloqueada na interfac
 
 ### Série 2 e carrinho Sandbox
 
-Na tela do orçamento, **Emitir NF-e** abre a aba de emissão do Bling. A seção **Nota Fiscal (NF-e)** aparece primeiro, antes das configurações de conexão, inclusive no celular. Sem venda vinculada, mostra **1. Criar pedido para emitir NF-e** e as pendências cadastrais/fiscais; após criar a venda, libera **Gerar NF-e a partir do pedido**. Ao reabrir uma nota pendente, use **Conferir NF-e e liberar envio** antes de **Enviar à SEFAZ**. Não há transmissão automática. Notas autorizadas mostram **Autorizada** e acesso ao DANFE, sem oferecer uma nova transmissão. O indicador do orçamento considera a situação da NF-e, não a modalidade de frete.
+Na tela do orçamento, **Emitir NF-e** abre sempre a aba de emissão do Bling. A seção **Nota Fiscal (NF-e)** aparece primeiro, antes das configurações de conexão, inclusive no celular. Sem venda vinculada, mostra **1. Criar pedido para emitir NF-e** e as pendências cadastrais/fiscais; após criar a venda, libera **Gerar NF-e a partir do pedido**. Depois, abra **Conferir e editar NF-e no app**. Não há transmissão automática. Notas autorizadas mostram **Autorizada** e acesso ao DANFE, sem oferecer uma nova transmissão. O indicador do orçamento considera a situação da NF-e, não a modalidade de frete.
+
+### Conferência e edição da NF-e no app
+
+A tela consulta os dados reais da nota e confirma seu vínculo com o pedido de venda. Exibe destinatário/endereço fiscal, itens, quantidades, valores, NCM, CFOP, impostos retornados pela API, frete, total, parcelas, transporte e observações. Campos ausentes na resposta ficam identificados como **não informados pela API**, não como zero. O orçamento continua separado da nota: corrigir o NCM da NF-e não altera o produto no ERP nem o orçamento.
+
+Somente notas **pendentes** podem receber correções de **NCM, CFOP e observações**. Cliente, quantidades, preços, impostos, frete e pagamento são somente consulta; alterações comerciais exigem revisar o pedido vinculado no Bling. O app preserva o CFOP definido pelo Bling/natureza, sem substituí-lo automaticamente por 5102/6102. Confirme a classificação e o CFOP com o contador.
+
+**Salvar correções no Bling** executa uma atualização sem repetir gravações e relê a nota, verificando persistência dos campos editados e preservação dos demais dados fiscais. A API pode restringir notas vinculadas ou recalcular impostos; nesses casos a tela bloqueia a emissão e pede nova conferência. Uma revisão SHA-256 dos dados fiscais impede salvar/transmitir uma versão que mudou desde a leitura. As rotas `POST /api/bling/nfe/review`, `/update-draft` e `/send-reviewed` exigem a mesma autenticação das demais rotas fiscais, além de pedido, nota e orçamento correspondentes.
+
+Para transmitir, salve qualquer edição, confira a nota, marque **Conferi os dados fiscais e o ambiente de emissão** e clique em **Conferi — emitir NF-e**. Há confirmação final; o backend relê a nota e verifica revisão, vínculo, itens/valores, destinatário, NCM, CFOP, série 2 e pagamento antes do POST à SEFAZ. Diferenças comerciais bloqueiam envio. NCM corrigido explicitamente na nota aparece como aviso, sem ser sobrescrito pelo catálogo durante a transmissão. Notas autorizadas são somente consulta e disponibilizam DANFE/XML quando retornados pelo Bling.
+
+O contrato GET do Bling não informa o ambiente produção/homologação. A tela sinaliza essa limitação e exige conferência da configuração no ERP; não inventa um indicador de ambiente. Série e numeração também não são editáveis por esta tela. Essas verificações não substituem a revisão contábil dos impostos.
+
+O seguro cobrado no orçamento é somado ao **frete fiscal** na criação da venda e nas exportações XML/JSON, uma única vez, para que frete, parcelas e total da NF-e correspondam ao total comercial. Pedidos antigos já criados com outro valor precisam ser revisados, não são alterados retroativamente.
 
 A conferência da NF-e exige **série 2**, inclusive imediatamente antes da transmissão. A API documentada de geração por pedido não recebe série: ela é definida na **natureza de operação** do Bling. Conforme a [orientação oficial do Bling](https://ajuda.bling.com.br/hc/pt-br/articles/360036464953), acesse **Todas as configurações > Notas Fiscais > Naturezas de operação**, abra a natureza usada na venda e configure **Série = 2**. Não altere tributos nem reinicie a numeração para resolver a série.
 

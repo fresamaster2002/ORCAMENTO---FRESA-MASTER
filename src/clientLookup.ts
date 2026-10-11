@@ -31,7 +31,7 @@ export async function completeMissingIe(client: ClientInfo, fetcher: typeof fetc
     return {
       client: { ...nextClient, ie: result.client.ie || client.ie || '' },
       warnings: [
-        ...(result.client.ie ? [`IE ${result.client.ie} localizada automaticamente em ${result.source}. Confira antes de faturar.`] : []),
+        ...(result.client.ie ? [`IE ${result.client.ie} localizada automaticamente na consulta por CNPJ. Confira antes de faturar.`] : []),
         ...result.warnings,
       ],
     };

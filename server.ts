@@ -1825,7 +1825,7 @@ app.post("/api/bling/create-order", async (req, res) => {
     if (quote.bling?.orderId) {
       return res.status(409).json({ success: false, error: "Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.", blingOrderId: quote.bling.orderId });
     }
-    const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false });
+    const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false, checkFiscalReview: true });
     if (nonFiscalIssues.length) return res.status(400).json({ success: false, error: nonFiscalIssues.join(" "), issues: nonFiscalIssues });
     const resolved = await resolveBlingProducts(effectiveToken, quote.items);
     quote = { ...quote, items: resolved.items, financials: { ...quote.financials, shippingAmount: blingFreight(quote.financials), insuranceAmount: 0 } };

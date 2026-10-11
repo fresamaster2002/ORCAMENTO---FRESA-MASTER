@@ -6,6 +6,7 @@ export interface ClientInfo {
   phone?: string;
   document?: string; // CPF ou CNPJ
   ie?: string; // Inscrição Estadual ou "ISENTO" confirmado
+  fiscalReviewKey?: string;
   cep?: string;
   address?: string; // Logradouro (Rua/Av)
   number?: string;

@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
+import { ClientFiscalReview } from './ClientFiscalReview';
+import { completeMissingIe } from '../clientLookup';
 import { 
   Sparkles, 
   X, 
@@ -159,13 +161,15 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
       const data = await res.json();
       if (data.success && data.client) {
-        setExtractedPreview(data.client);
-        setInputText(clientToText(data.client));
+        setStatusMessage('Dados lidos. Consultando a IE pelo CNPJ quando ausente...');
+        const completed = await completeMissingIe(data.client, apiFetch);
+        setExtractedPreview(completed.client);
+        setInputText(clientToText(completed.client));
         setTextFromAi(true);
         setStatusMessage(
-          attachedDoc
+          (attachedDoc
             ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso pela IA!'
-            : data.summary || 'Dados cadastrais identificados pela IA!'
+            : data.summary || 'Dados cadastrais identificados pela IA!') + ' ' + completed.warnings.join(' ')
         );
       } else {
         setErrorMessage(data.error || 'Não foi possível extrair os dados cadastrais.');
@@ -201,6 +205,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           email: client.email || base.email || '',
           phone: client.phone || base.phone || '',
           ie: client.ie || (/^\s*isent[oa]\s*$/i.test(base.ie || '') ? '' : base.ie || ''),
+          fiscalReviewKey: undefined,
         }
       : client;
     setAttachedDoc(null);
@@ -214,7 +219,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
   const updateField = (key: keyof ClientInfo, value: string) => {
     setExtractedPreview((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, [key]: value };
+      const next = { ...prev, [key]: value, ...(['document', 'ie', 'state'].includes(key) ? { fiscalReviewKey: undefined } : {}) };
       setInputText(clientToText(next));
       return next;
     });
@@ -269,7 +274,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
         {/* Content Area */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs">
-          <CnpjLookup initialCnpj={currentClient.document} onFound={handleCnpjFound} />
+          <CnpjLookup initialCnpj={extractedPreview?.document || currentClient.document} onFound={handleCnpjFound} />
 
           {/* Top Options / File Upload */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -505,7 +510,9 @@ E-mail fiscal: fiscal@cliente.com.br"
                     />
                   </label>
                 ))}
-              </div>            </div>
+              </div>
+              <ClientFiscalReview client={extractedPreview} onChange={setExtractedPreview} />
+            </div>
           )}
         </div>
 

@@ -22,6 +22,7 @@ function savedQuote(): QuoteData {
 test('recarregar campos vazios, ordem das chaves e alternativas de frete não altera a venda', () => {
   const quote = savedQuote();
   quote.client = { company: '', ...quote.client, phone: '' };
+  quote.client.fiscalReviewKey = 'conferência sem alteração comercial';
   quote.shipping.options.push({ ...quote.shipping.selectedOption! });
   assert.equal(blingOrderChanged(quote), false);
 });

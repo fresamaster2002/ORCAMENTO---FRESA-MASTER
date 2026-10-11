@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Info, Loader2, Search } from 'lucide-react';
+import { fetchClientLookup } from '../clientLookup';
 import { apiFetch } from '../api';
+import { clientFiscalDescription } from '../../supabase/functions/_shared/clientFiscalReview';
 import { ClientInfo } from '../types';
 
 interface CnpjLookupProps {
@@ -35,6 +37,7 @@ export const CnpjLookup: React.FC<CnpjLookupProps> = ({ initialCnpj = '', onFoun
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [fiscalDescription, setFiscalDescription] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialCnpj) setCnpj(initialCnpj);
@@ -46,24 +49,17 @@ export const CnpjLookup: React.FC<CnpjLookupProps> = ({ initialCnpj = '', onFoun
     setError(null);
     setNotice(null);
     setWarnings([]);
+    setFiscalDescription(null);
 
     try {
-      const response = await apiFetch('/api/bling/lookup-cnpj', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cnpj }),
-      });
-      const data: unknown = await response.json();
-      const result = data && typeof data === 'object' ? data as Record<string, unknown> : {};
-      if (!response.ok || result.success !== true) {
-        throw new Error(String(result.error || 'Não foi possível consultar este CNPJ.'));
-      }
+      const result = await fetchClientLookup(cnpj, apiFetch);
       const client = parseClient(result.client);
       if (!client) throw new Error('A consulta retornou dados cadastrais incompletos. Tente novamente.');
       const messages = Array.isArray(result.warnings)
         ? result.warnings.filter((item): item is string => typeof item === 'string')
         : [];
       await onFound(client, messages);
+      setFiscalDescription(clientFiscalDescription(client));
       setWarnings(messages);
       setNotice(`Cadastro localizado em ${String(result.source || 'serviço público')}. Confira os dados antes de emitir a NF-e.`);
     } catch (lookupError) {
@@ -119,6 +115,7 @@ export const CnpjLookup: React.FC<CnpjLookupProps> = ({ initialCnpj = '', onFoun
           {warning}
         </p>
       ))}
+      {fiscalDescription && <p role="status" className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-200">{fiscalDescription} A natureza da operação não é escolhida automaticamente pela consulta.</p>}
       <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
         Consulta dados cadastrais públicos. A Inscrição Estadual pode não constar ou estar desatualizada; confirme-a antes de faturar. Ausência de resultado não significa “ISENTO”.
       </p>

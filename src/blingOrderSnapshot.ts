@@ -15,6 +15,7 @@ function canonicalSnapshot(value: unknown, path = ''): unknown {
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
     .filter(([key, entry]) => !(path === 'shipping' && key === 'options')
+      && !(path === 'client' && key === 'fiscalReviewKey')
       && !(path === 'client' && key !== 'name' && (entry === '' || entry == null)))
     .map(([key, entry]) => [key, canonicalSnapshot(entry, key)]));
 }

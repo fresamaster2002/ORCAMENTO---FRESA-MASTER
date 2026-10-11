@@ -1,13 +1,16 @@
 type Item = { description?: string; sku?: string; ncm?: string; quantity?: number; unitPrice?: number };
-type Client = { name?: string; document?: string; ie?: string; address?: string; number?: string; neighborhood?: string; city?: string; state?: string; cep?: string };
+import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
+type Client = { name?: string; document?: string; ie?: string; fiscalReviewKey?: string; address?: string; number?: string; neighborhood?: string; city?: string; state?: string; cep?: string };
 
 export function blingReadinessIssues(quote: {
   items?: Item[];
   client?: Client;
   financials?: { paymentMethod?: string; shippingAmount?: number; discountAmount?: number };
-}, options: { checkNcm?: boolean } = {}): string[] {
+}, options: { checkNcm?: boolean; checkFiscalReview?: boolean } = {}): string[] {
   const issues: string[] = [];
   const client = quote.client || {};
+  const fiscalReviewIssue = options.checkFiscalReview ? clientFiscalReviewIssue(client) : null;
+  if (fiscalReviewIssue) issues.push(fiscalReviewIssue);
   if (!client.name?.trim()) issues.push('Informe a razão social ou nome do cliente.');
   const document = String(client.document || '').replace(/\D/g, '');
   let validDocument = false;

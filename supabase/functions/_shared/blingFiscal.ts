@@ -2,6 +2,7 @@ import { formatBlingError } from './blingErrors.ts';
 import { resolveBlingProducts } from './blingProducts.ts';
 import { blingFetch } from './blingTransport.ts';
 import { buildNfeReview, invoiceWritePayload, nfeRevision } from './blingNfeReview.ts';
+import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
@@ -142,6 +143,8 @@ async function fiscalIssues(token: string, nfe: Data, expectedPayment?: string, 
     if (!Number.isFinite(expectedTotal) || Math.round(expectedTotal * 100) !== Math.round(total * 100)) issues.push('O total da NF-e diverge do orçamento atual.');
     if (quote.client) {
       const client = object(quote.client);
+      const clientReviewIssue = clientFiscalReviewIssue(client);
+      if (clientReviewIssue && Number(nfe.situacao) !== 5) issues.push(clientReviewIssue);
       const recipient = object(nfe.contato);
       const address = object(recipient.endereco);
       const digits = (value: unknown) => String(value || '').replace(/\D/g, '');
@@ -288,6 +291,8 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
     if (action === 'generate') {
       const orderId = String(input.orderId || '');
       if (!validId(orderId)) throw new BlingFiscalError('Informe o ID do pedido de venda do Bling.');
+      const clientReviewIssue = clientFiscalReviewIssue(object(object(input.quote).client));
+      if (clientReviewIssue) throw new BlingFiscalError(clientReviewIssue, 409);
       const order = object((await requestBling(token, `/pedidos/vendas/${orderId}`)).data);
       if (!validId(order.id)) throw new BlingFiscalError('O Bling não retornou o pedido de venda.', 502);
       const linkedId = object(order.notaFiscal).id;

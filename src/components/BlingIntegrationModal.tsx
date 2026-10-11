@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
+import { ClientFiscalReview } from './ClientFiscalReview';
+import { completeMissingIe } from '../clientLookup';
 import { NfeReviewModal } from './NfeReviewModal';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
@@ -101,7 +103,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [activeTab, setActiveTab] = useState<'direct' | 'app_register' | 'cadastral' | 'products' | 'xml' | 'json' | 'manual'>('direct');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
-  const readinessIssues = blingReadinessIssues({ ...quote, client: clientData });
+  const readinessIssues = blingReadinessIssues({ ...quote, client: clientData }, { checkFiscalReview: true });
   const orderChanged = blingOrderChanged({ ...quote, client: clientData });
 
   useEffect(() => {
@@ -494,12 +496,14 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
       const data = await res.json();
       if (data.success && data.client) {
-        setClientData(data.client);
-        onUpdateClient(data.client);
+        setStatusMessage('Dados lidos. Consultando a IE pelo CNPJ quando ausente...');
+        const completed = await completeMissingIe(data.client, apiFetch);
+        setClientData(completed.client);
+        onUpdateClient(completed.client);
         setStatusMessage(
-          attachedDoc
+          (attachedDoc
             ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso para o Bling!'
-            : 'Dados cadastrais extraídos com sucesso para emissão de NF-e!'
+            : 'Dados cadastrais extraídos com sucesso para emissão de NF-e!') + ' ' + completed.warnings.join(' ')
         );
         setActiveTab('direct');
       } else {
@@ -522,6 +526,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
           email: lookupClient.email || clientData.email || '',
           phone: lookupClient.phone || clientData.phone || '',
           ie: lookupClient.ie || (/^\s*isent[oa]\s*$/i.test(clientData.ie || '') ? '' : clientData.ie || ''),
+          fiscalReviewKey: undefined,
         }
       : lookupClient;
     setClientData(nextClient);
@@ -924,6 +929,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
                 <div className="order-first p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
                     <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
+                    {Number(nfe?.situacao) !== 5 && <ClientFiscalReview client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />}
                     {!orderResult ? (
                       <div className="space-y-2">
                         <p>Primeiro crie o pedido de venda. Depois, os botões para gerar a NF-e série 2 e enviar à SEFAZ aparecerão aqui.</p>
@@ -937,7 +943,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     {!nfe?.id ? (
                       <button
                         type="button"
-                        onClick={() => callNfe('generate', { orderId: orderResult.orderId, quote: { items: quote.items, financials: quote.financials } })}
+                        onClick={() => callNfe('generate', { orderId: orderResult.orderId, quote: { items: quote.items, financials: quote.financials, client: clientData } })}
                         disabled={nfeBusy !== null || readinessIssues.length > 0 || orderChanged || isResolvingProducts}
                         className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                       >
@@ -1279,6 +1285,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           {activeTab === 'cadastral' && (
             <div className="space-y-4">
               <CnpjLookup initialCnpj={clientData.document} onFound={handleCnpjFound} />
+              <ClientFiscalReview client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />
 
               <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-xl p-4">
                 <h4 className="font-bold text-blue-900 dark:text-blue-200 mb-1 flex items-center gap-1.5">

@@ -962,7 +962,7 @@ async function route(request: Request): Promise<Response> {
       if (!quote?.client) return json({ success: false, error: 'Dados do orçamento ou cliente não fornecidos.' }, 400);
       if (!token) return json({ success: false, error: 'Token de API do Bling não configurado.' }, 400);
       if (quote.bling?.orderId) return json({ success: false, error: 'Este orçamento já possui pedido vinculado no Bling. Continue a emissão no pedido existente.', blingOrderId: quote.bling.orderId }, 409);
-      const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false });
+      const nonFiscalIssues = blingReadinessIssues(quote, { checkNcm: false, checkFiscalReview: true });
       if (nonFiscalIssues.length) return json({ success: false, error: nonFiscalIssues.join(' '), issues: nonFiscalIssues }, 400);
       try {
         const resolved = await resolveBlingProducts(token, quote.items);

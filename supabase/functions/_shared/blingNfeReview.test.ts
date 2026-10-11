@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildNfeReview, nfeRevision } from './blingNfeReview.ts';
 import { blingFreight, buildSalePayment, handleBlingNfe } from './blingFiscal.ts';
+import { clientFiscalKey } from './clientFiscalReview.ts';
 
-const client = { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Teste', number: '62', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472' };
+const clientData = { name: 'Empresa Teste', document: '59085330000170', ie: '600320622110', address: 'Rua Teste', number: '62', neighborhood: 'Centro', city: 'Salto', state: 'SP', cep: '13321472' };
+const client = { ...clientData, fiscalReviewKey: clientFiscalKey(clientData) };
 const quote = { client, items: [{ description: 'Fresa', quantity: 2, unitPrice: 220, sku: '', blingProductId: '123', ncm: '8207.70.10' }], financials: { paymentMethod: 'Pix', shippingAmount: 14.79, insuranceAmount: 3.96, discountAmount: 0 } };
 const draft = {
   id: 99, numero: '12', serie: 2, tipo: 1, situacao: 1, valorNota: 458.75, valorFrete: 18.75,
@@ -120,6 +122,13 @@ test('edição fiscal relê dados, limita campos e exige revisão atual antes de
     stored.observacoes = 'Mudou no ERP';
     assert.equal((await handleBlingNfe('send-reviewed', { ...input, revision }, 'review-test')).status, 409);
     assert.equal(calls.some((call) => call.path.endsWith('/enviar')), false);
+  });
+  await t.test('sem conferência fiscal do cliente não transmite nem gera rascunho', async () => {
+    calls.length = 0;
+    const unreviewed = { ...input, quote: { ...quote, client: { ...client, fiscalReviewKey: undefined } }, revision: await nfeRevision(stored) };
+    assert.equal((await handleBlingNfe('send-reviewed', unreviewed, 'review-test')).status, 409);
+    assert.equal((await handleBlingNfe('generate', unreviewed, 'review-test')).status, 409);
+    assert.equal(calls.some((call) => call.method !== 'GET'), false);
   });
   await t.test('transmite edição confirmada e relê autorização sem repetir POST', async () => {
     calls.length = 0;

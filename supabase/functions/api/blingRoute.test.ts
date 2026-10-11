@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { clientFiscalKey } from '../_shared/clientFiscalReview.ts';
 
 test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (t) => {
   let handler: (request: Request) => Response | Promise<Response> = () => { throw new Error('Handler não registrado'); };
@@ -38,6 +39,8 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     items: [{ sku: '123', description: 'Fresa', unit: 'UN', ncm: '8207.70.10', quantity: 1, unitPrice: 170 }],
     financials: { shippingAmount: 27.07, paymentMethod: 'Pix' }, shipping: {},
   };
+  const client = { ...quote.client, fiscalReviewKey: clientFiscalKey(quote.client) };
+  Object.assign(quote.client, client);
   await t.test('exige autenticação nas rotas fiscais', async () => {
     assert.equal((await post('nfe/send', { nfeId: 33 }, false)).status, 401);
     for (const action of ['review', 'update-draft', 'send-reviewed']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
@@ -61,6 +64,13 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     const r = await post('create-order', { quote: { ...quote, items: [{ ...quote.items[0], ncm: '8207.70.00' }] } });
     assert.equal(r.status, 200);
     assert.ok(calls.some((call) => call.url.endsWith('/produtos/123')));
+  });
+  await t.test('conferência fiscal ausente bloqueia criação antes de chamar o Bling', async () => {
+    calls.length = 0;
+    const response = await post('create-order', { quote: { ...quote, client: { ...quote.client, fiscalReviewKey: undefined } } });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /condição de contribuinte/);
+    assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
   });
   await t.test('NCM inválido em item avulso não cria contato nem venda', async () => {
     calls.length = 0;

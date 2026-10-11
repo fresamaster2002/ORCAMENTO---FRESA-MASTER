@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { nfeTransmissionBlock } from '../nfeTransmissionState';
 import type { BlingNfe, QuoteData } from '../types';
 import type { NfeReview } from '../../supabase/functions/_shared/blingNfeReview';
 
@@ -48,6 +49,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
   const [links, setLinks] = useState<BlingNfe | null>(null);
   const editable = review?.situacao === 1;
   const dirty = Boolean(review && (observations !== review.observacoes || edits.some((item, index) => item.ncm !== review.itens[index].ncm || item.cfop !== review.itens[index].cfop)));
+  const transmissionBlock = nfeTransmissionBlock({ situation: review?.situacao, busy: busy !== null, dirty, ready, confirmed, orderChanged, error });
 
   const apply = (data: ReviewResponse) => {
     if (!data.review || !data.nfe || data.review.id !== String(nfeId) || !data.review.revision) throw new Error('O servidor não retornou a conferência da nota solicitada.');
@@ -83,7 +85,10 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
 
   const execute = async (action: 'review' | 'update-draft' | 'send-reviewed') => {
     if (busy) return;
-    if (action === 'send-reviewed' && (!confirmed || dirty || !ready || !review || orderChanged)) return;
+    if (action === 'send-reviewed' && transmissionBlock) {
+      setError(transmissionBlock);
+      return;
+    }
     if (action === 'send-reviewed' && !window.confirm(`Transmitir a NF-e nº ${review?.numero}, série ${review?.serie}, total ${money(review?.total ?? null)} à SEFAZ? Confira o ambiente configurado no Bling. Após autorização, os dados fiscais não poderão ser editados.`)) return;
     setBusy(action);
     setError(null);
@@ -122,13 +127,13 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
           {busy && <p role="status">{busy === 'review' ? 'Consultando a nota no Bling...' : busy === 'update-draft' ? 'Salvando e conferindo as correções...' : 'Transmitindo e consultando a SEFAZ...'}</p>}
           {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error} Recarregue a nota para conferir o estado atual antes de continuar.</p>}
           {message && <p role="status" className="p-3 bg-emerald-50 text-emerald-800 rounded-lg">{message}</p>}
-          {orderChanged && <p role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg">O orçamento mudou depois de criar o pedido. A transmissão fica bloqueada até revisar os dados da venda vinculada. Não crie outro pedido para esta nota.</p>}
+          {orderChanged && <p role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg">{review?.situacao === 5 ? 'O orçamento atual difere da venda desta nota já autorizada. Essa diferença não altera a NF-e emitida e não permite nova transmissão.' : 'O orçamento mudou depois de criar o pedido. A transmissão fica bloqueada até revisar os dados da venda vinculada. Não crie outro pedido para esta nota.'}</p>}
           {review && <>
             <div className="p-3 bg-indigo-50 rounded-lg space-y-1">
               <p><strong>NF-e {review.numero || 'sem número'} • Série {review.serie ?? 'não informada'}</strong></p>
               <p>Situação: {review.situacao === 5 ? 'Autorizada — somente consulta' : review.situacao === 1 ? 'Pendente — ainda não transmitida' : `Código ${review.situacao ?? 'não informado'}`}</p>
               <p>Natureza de operação: ID {review.naturezaOperacao || 'não informado'}</p>
-              <p className="text-amber-900">O ambiente produção/homologação não é informado pelo contrato da API. Confirme a configuração de emissão no Bling antes de transmitir.</p>
+              {review.situacao !== 5 && <p className="text-amber-900">A transmissão é feita aqui no app. O ambiente produção/homologação segue a configuração de emissão do Bling, que a API não informa. Se você já confirmou essa configuração, não precisa abrir o Bling novamente para cada nota.</p>}
             </div>
             {issues.map((issue, index) => <p key={index} role="alert" className="p-2 bg-red-50 text-red-800 rounded">{issue}</p>)}
             {warnings.map((warning, index) => <p key={index} className="p-2 bg-amber-50 text-amber-900 rounded">{warning}</p>)}
@@ -152,6 +157,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
               <p>Frete: {money(review.frete)} • Seguro fiscal: {money(review.seguro)}</p>
               <p>Desconto: {money(review.desconto)} • Despesas: {money(review.despesas)}</p>
               <p className="text-lg font-bold">Total da NF-e: {money(review.total)}</p>
+              <p>Total do orçamento atual: {money(quote.financials.totalAmount)}</p>
               {review.parcelas.map((installment, index) => <p key={index}>Parcela {index + 1}: {money(installment.valor)} • {installment.data} • Forma de pagamento ID {installment.formaPagamentoId}</p>)}
               <p>Pagamento do orçamento: {quote.financials.paymentMethod} (conferido por ID no Bling)</p>
             </section>
@@ -162,12 +168,12 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
           </>}
         </div>
         <footer className="shrink-0 p-3 border-t space-y-2 bg-slate-50">
-          {review && review.situacao !== 5 && <label className="flex items-start gap-2 text-xs"><input type="checkbox" aria-label="Conferi os dados fiscais e o ambiente de emissão" checked={confirmed} disabled={busy !== null || dirty || !ready} onChange={(event) => setConfirmed(event.target.checked)} /><span>Conferi os dados fiscais, o total e o ambiente de emissão configurado no Bling.</span></label>}
-          {dirty && <p className="text-xs text-amber-800">Salve as alterações antes de confirmar a emissão.</p>}
+          {review && review.situacao !== 5 && <p id="nfe-transmission-help" role="status" className="text-xs text-indigo-900">{transmissionBlock || 'Tudo conferido. O próximo botão transmite esta NF-e à SEFAZ pelo app.'}</p>}
+          {review && review.situacao !== 5 && <label className="flex items-start gap-2 text-xs"><input type="checkbox" aria-label="Conferi os dados fiscais e o ambiente de emissão" checked={confirmed} disabled={busy !== null || dirty || !ready || orderChanged || error !== null} onChange={(event) => setConfirmed(event.target.checked)} /><span>Conferi os dados fiscais, o total e o ambiente de emissão configurado no Bling.</span></label>}
           <div className="flex flex-wrap gap-2">
             <button type="button" disabled={busy !== null} onClick={() => { if (!dirty || window.confirm('Descartar alterações não salvas e recarregar a nota do Bling?')) execute('review'); }} className="border rounded-lg px-3 py-2 text-sm disabled:opacity-50">Recarregar nota</button>
             {editable && <button type="button" disabled={busy !== null || !dirty} onClick={() => execute('update-draft')} className="rounded-lg px-3 py-2 text-sm bg-emerald-700 text-white disabled:opacity-50">Salvar correções no Bling</button>}
-            {review && review.situacao !== 5 && <button type="button" disabled={busy !== null || dirty || !confirmed || !ready} onClick={() => execute('send-reviewed')} className="rounded-lg px-3 py-2 text-sm bg-indigo-700 text-white disabled:opacity-50">Conferi — emitir NF-e</button>}
+            {review && review.situacao !== 5 && <button type="button" aria-describedby="nfe-transmission-help" disabled={transmissionBlock !== null} onClick={() => execute('send-reviewed')} className="rounded-lg px-3 py-2 text-sm bg-indigo-700 text-white disabled:opacity-50">{busy === 'send-reviewed' ? 'Transmitindo à SEFAZ...' : 'Transmitir NF-e à SEFAZ'}</button>}
           </div>
         </footer>
       </section>

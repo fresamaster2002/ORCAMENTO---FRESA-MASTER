@@ -933,7 +933,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         </button>
                       </div>
                     ) : <>
-                    {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.</p>}
+                    {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{Number(nfe?.situacao) === 5 ? 'O orçamento atual difere da venda desta NF-e já autorizada. A nota emitida permanece inalterada e não deve ser transmitida novamente.' : 'O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.'}</p>}
                     {!nfe?.id ? (
                       <button
                         type="button"
@@ -953,14 +953,14 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         {Number(nfe.situacao) === 5 ? (
                           <p className="font-semibold text-emerald-700 dark:text-emerald-300">Esta NF-e já foi autorizada. Não é necessário emitir novamente. Abra o DANFE para visualizar.</p>
                         ) : !nfeReadyToSend && nfeBusy === null && !nfeError && nfeFiscalIssues.length === 0 ? (
-                          <p>Abra <strong>Conferir e editar NF-e no app</strong> para ver a nota real, salvar correções de NCM/CFOP e confirmar a transmissão.</p>
+                          <p>Abra <strong>Conferir e emitir NF-e no app</strong> para ver a nota real, salvar correções de NCM/CFOP e transmitir à SEFAZ. Atualizar a situação apenas consulta o Bling; não envia a nota.</p>
                         ) : null}
                         {nfe.chaveAcesso && <p className="break-all">Chave de acesso: <strong>{nfe.chaveAcesso}</strong></p>}
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
-                          <button type="button" onClick={() => setShowNfeReview(true)} disabled={nfeBusy !== null || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-50 cursor-pointer">{Number(nfe.situacao) === 5 ? 'Conferir NF-e emitida no app' : 'Conferir e editar NF-e no app'}</button>
+                          <button type="button" onClick={() => setShowNfeReview(true)} disabled={nfeBusy !== null || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-50 cursor-pointer">{Number(nfe.situacao) === 5 ? 'Conferir NF-e emitida no app' : 'Conferir e emitir NF-e no app'}</button>
                           <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
-                            {nfeBusy === 'status' ? 'Consultando...' : Number(nfe.situacao) === 5 ? 'Atualizar status' : 'Conferir NF-e e liberar envio'}
+                            {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar situação (não transmite)'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
                         </div>

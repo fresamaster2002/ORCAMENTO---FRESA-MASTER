@@ -186,7 +186,14 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
         body: JSON.stringify({ shipmentId: shipment.id, confirmSandbox: true, sandboxToken: sandboxToken.trim() || undefined }),
       });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Não foi possível finalizar o pagamento Sandbox.');
+      if (!response.ok || !result.success) {
+        if (response.status === 401 && result.error === 'Configure ou informe o token da conta Sandbox.') {
+          await updateShipmentPayment({ paymentStatus: 'pending', checkoutRequestedAt: undefined });
+          checkoutStarted = false;
+          setCheckoutConfirmed(false);
+        }
+        throw new Error(result.error || 'Não foi possível finalizar o pagamento Sandbox.');
+      }
       await updateShipmentPayment({
         paymentStatus: result.status,
         paymentCheckedAt: new Date().toISOString(),
@@ -299,6 +306,19 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
                 <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O envio não aparece como pendente nem pago. Não repita o checkout; confira o carrinho Sandbox e resolva o status primeiro.</p>
               ) : (
                 <>
+                  <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                    <span>Token do Melhor Envio Sandbox (opcional se configurado no servidor)</span>
+                    <input
+                      className={inputClass}
+                      type="password"
+                      autoComplete="off"
+                      disabled={isBusy}
+                      value={sandboxToken}
+                      onChange={(event) => setSandboxToken(event.target.value)}
+                      placeholder="Use somente um token da conta Sandbox"
+                    />
+                    <span className="block font-normal">Não é salvo no navegador. Nunca use o token da conta de produção.</span>
+                  </label>
                   {quote.sandboxShipment.paymentStatus === 'unknown' || quote.sandboxShipment.paymentStatus === 'processing' || checkoutMayHaveBeenSent ? (
                     <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O checkout já foi enviado ou pode ter sido enviado. Não repita o pagamento, mesmo que ainda apareça pendente; consulte o status do envio.</p>
                   ) : (

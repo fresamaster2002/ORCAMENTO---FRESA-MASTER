@@ -42,6 +42,8 @@ O operador confirma a condição de ICMS e a natureza selecionada no próprio ap
 
 O resumo dos dados do cliente mantém visíveis a natureza selecionada, a condição de ICMS e a situação cadastral após aplicar a consulta. Fonte e horário ficam na conferência fiscal.
 
+Depois de confirmar o cadastro fiscal, a etapa de criar pedido/gerar NF-e mostra somente a natureza e o status de conferência, sem repetir seletores ou exigir outra confirmação cadastral. **Revisar cadastro fiscal** abre a aba de cadastro quando necessário. Cadastro pendente ou alterado continua mostrando os campos de conferência e bloqueando a emissão. Na revisão da NF-e, a natureza aparece uma vez; divergências com a seleção do cadastro ficam explícitas. A confirmação final dos dados da nota e do ambiente antes de transmitir permanece obrigatória. Orientações longas ficam em detalhes expansíveis.
+
 Teste real em homologação em 11/10/2026: consulta de CNPJ com IE ativa selecionou **Venda de mercadoria** (`15110327796`). Pedido `27103607823` gerou o rascunho `27103608394`, NF-e nº 8/série 2, com a mesma natureza, CFOP 5102, NCM 8207.70.10, Pix de R$ 220,00 e retirada sem frete. O app retornou zero pendências de consistência e o vínculo persistiu após recarregar. **Esta nota não foi transmitida à SEFAZ.** A série da natureza foi alterada de 1 para 2 com autorização; regime e regras tributárias do Bling foram preservados, não redefinidos pelo app.
 
 ## Rejeição de pedido no Bling

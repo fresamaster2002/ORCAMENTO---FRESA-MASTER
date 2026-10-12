@@ -930,7 +930,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
                 <div className="order-first p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
                     <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
-                    {Number(nfe?.situacao) !== 5 && <ClientFiscalReview client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />}
+                    {Number(nfe?.situacao) !== 5 && <ClientFiscalReview compact onEdit={() => setActiveTab('cadastral')} client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />}
                     {!orderResult ? (
                       <div className="space-y-2">
                         <p>Primeiro crie o pedido de venda. Depois, os botões para gerar a NF-e série 2 e enviar à SEFAZ aparecerão aqui.</p>

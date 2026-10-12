@@ -23,6 +23,23 @@ test('sugestão exige condição confirmada e nome único, nunca presume ST', ()
   assert.ok(clientFiscalReviewIssue({ document: '52998224725' }));
 });
 
+test('cadastro confirmado pode ser resumido, mas alterações e pendências exigem nova conferência', () => {
+  assert.equal(clientFiscalReviewIssue(client), null);
+  for (const patch of [
+    { document: '29931837000136' },
+    { ie: '987654321' },
+    { state: 'RJ' },
+    { fiscalCondition: 'non-contributor', operationNature: natures[1] },
+    { operationNature: natures[2] },
+    { fiscalReviewKey: undefined },
+  ]) {
+    assert.ok(clientFiscalReviewIssue({ ...client, ...patch }));
+  }
+  const missingIe = { ...base, ie: '' };
+  assert.match(clientFiscalReviewIssue({ ...missingIe, fiscalReviewKey: clientFiscalKey(missingIe) }) || '', /informe a IE/);
+  assert.ok(clientFiscalReviewIssue({ ...client, registrationLookup: { document: base.document, cnpjStatusCode: '8' } }));
+});
+
 test('natureza vem da lista ativa do ERP; ID/descrição adulterados ou permissão negada não usam padrão', async (t) => {
   let denied = false;
   t.mock.method(globalThis, 'fetch', async () => denied

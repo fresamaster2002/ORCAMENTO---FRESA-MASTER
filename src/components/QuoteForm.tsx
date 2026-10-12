@@ -650,6 +650,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
         />
 
         {/* Section 2: Freight Shipping Calculator (Melhor Envio) */}
+        <div id="shipping-section" className="scroll-mt-4">
         <ShippingCalculator
           shipping={quote.shipping}
           items={quote.items}
@@ -659,6 +660,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
           onUpdateDestinationCep={handleUpdateDestinationCep}
           onUpdateShipping={handleUpdateShippingFull}
         />
+        </div>
 
         {/* Section 3: CNC Router Bits & Tooling Table */}
         <div>

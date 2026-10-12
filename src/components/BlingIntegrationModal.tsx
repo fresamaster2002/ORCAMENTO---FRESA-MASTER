@@ -4,6 +4,7 @@ import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
 import { NfeReviewModal } from './NfeReviewModal';
+import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
@@ -43,6 +44,7 @@ interface BlingIntegrationModalProps {
   onUpdateClient: (client: ClientInfo) => void;
   onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items'], client?: ClientInfo) => Promise<void>;
   onUpdateItems: (quoteId: string, items: QuoteData['items']) => Promise<void>;
+  onContinueShipping: () => void;
 }
 
 export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
@@ -52,6 +54,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   onUpdateClient,
   onUpdateBling,
   onUpdateItems,
+  onContinueShipping,
 }) => {
   // Bling API Token State
   const DEFAULT_BLING_TOKEN = '';
@@ -78,6 +81,9 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [nfeReadyToSend, setNfeReadyToSend] = useState(false);
   const [nfeFiscalIssues, setNfeFiscalIssues] = useState<string[]>([]);
   const [showNfeReview, setShowNfeReview] = useState(false);
+  const [preparationStep, setPreparationStep] = useState<NfePreparationStep | null>(null);
+  const preparationLock = React.useRef(false);
+  const orderLock = React.useRef(false);
   const [isResolvingProducts, setIsResolvingProducts] = useState(false);
   const [productWarnings, setProductWarnings] = useState<string[]>([]);
 
@@ -315,7 +321,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     }
   };
 
-  const callNfe = async (action: 'generate' | 'send' | 'status', payload: Record<string, unknown>) => {
+  const callNfe = async (action: 'generate' | 'send' | 'status', payload: Record<string, unknown>, saved = quote): Promise<BlingNfe | undefined> => {
     if (action !== 'status' && orderChanged) {
       setNfeError('O orçamento mudou depois de salvar o pedido. Revise os valores e itens no pedido existente no Bling antes de continuar; uma venda nova não será criada automaticamente.');
       return;
@@ -333,11 +339,12 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       if (data.nfeId || data.nfe?.id) {
         const nextNfe: BlingNfe = { ...(nfe || {}), ...(data.nfe || {}), id: data.nfeId ?? data.nfe?.id };
         setNfe(nextNfe);
-        await onUpdateBling(quote.id, { ...quote.bling, ...(orderResult || {}), nfe: nextNfe });
+        await onUpdateBling(saved.id, { ...saved.bling, ...(orderResult || {}), nfe: nextNfe });
       }
       setNfeReadyToSend(data.success === true && data.readyToSend === true);
       setNfeFiscalIssues(Array.isArray(data.fiscalIssues) ? data.fiscalIssues : []);
       if (!data.success) setNfeError(formatBlingError(data.details, data.error || 'Erro ao processar a NF-e no Bling.'));
+      if (res.ok && data.success && data.nfe?.id) return { ...data.nfe, id: data.nfeId ?? data.nfe.id };
     } catch (err: any) {
       setNfeError(`Falha de rede ou servidor: ${err.message}`);
     } finally {
@@ -345,10 +352,11 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     }
   };
 
-  const handleCreateDirectOrder = async () => {
-    if (orderResult || isSubmittingOrder) return;
+  const handleCreateDirectOrder = async (): Promise<QuoteData | undefined> => {
+    if (orderResult || orderLock.current) return;
     if (readinessIssues.length) { setOrderError(readinessIssues.join(' ')); return; }
     setIsSubmittingOrder(true);
+    orderLock.current = true;
     setOrderError(null);
     setDuplicateOrder(false);
     setOrderResult(null);
@@ -380,8 +388,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
           orderUrl: data.blingOrderUrl,
         });
         const usedItems: QuoteData['items'] = Array.isArray(data.items) ? data.items : quote.items;
-        await onUpdateBling(quote.id, { orderId: data.blingOrderId, orderNumber: data.blingOrderNumber, orderUrl: data.blingOrderUrl, orderSnapshot: blingOrderSnapshot({ ...quote, items: usedItems, client: clientData }) }, usedItems);
+        const saved: QuoteData = { ...quote, items: usedItems, client: clientData, bling: { orderId: data.blingOrderId, orderNumber: data.blingOrderNumber, orderUrl: data.blingOrderUrl, orderSnapshot: blingOrderSnapshot({ ...quote, items: usedItems, client: clientData }) } };
+        await onUpdateBling(quote.id, saved.bling!, usedItems);
         setStatusMessage(`Pedido #${data.blingOrderNumber} criado com sucesso diretamente no Bling ERP!`);
+        return saved;
       } else {
         setDuplicateOrder(isDuplicateBlingSale(data.blingDetails));
         setOrderError(
@@ -394,6 +404,29 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       setOrderError(`Falha de rede ou servidor: ${err.message}`);
     } finally {
       setIsSubmittingOrder(false);
+      orderLock.current = false;
+    }
+  };
+
+  const handlePrepareNfe = async () => {
+    if (preparationLock.current || orderLock.current || nfeBusy || isResolvingProducts) return;
+    if (orderChanged || readinessIssues.length) {
+      setNfeError(orderChanged ? 'O orçamento difere do pedido vinculado. Revise a venda existente no Bling antes de preparar a nota.' : readinessIssues.join(' '));
+      return;
+    }
+    preparationLock.current = true;
+    try {
+      await prepareNfe({ ...quote, client: clientData, bling: { ...quote.bling, ...orderResult, ...(nfe ? { nfe } : {}) } }, {
+        createOrder: handleCreateDirectOrder,
+        generateDraft: (saved) => callNfe('generate', { orderId: saved.bling?.orderId, quote: saved }, saved),
+        onStep: setPreparationStep,
+        openReview: () => setShowNfeReview(true),
+      });
+    } catch (failure) {
+      setNfeError(failure instanceof Error ? failure.message : 'Não foi possível preparar a NF-e. Confira os vínculos antes de repetir.');
+    } finally {
+      setPreparationStep(null);
+      preparationLock.current = false;
     }
   };
 
@@ -588,7 +621,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           <button
             type="button"
             onClick={onClose}
-            disabled={isSubmittingOrder || nfeBusy !== null || isResolvingProducts}
+            disabled={preparationStep !== null || isSubmittingOrder || nfeBusy !== null || isResolvingProducts}
             className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
             title="Fechar Janela"
           >
@@ -610,12 +643,12 @@ Telefone/WhatsApp: (41) 98888-5544`;
           <ArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-600 shrink-0" />
           <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold shrink-0">
             <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>3. Criação Direta no Bling</span>
+            <span>3. Preparar e conferir NF-e</span>
           </div>
         </div>
 
         {/* Tabs - Spacious and Touch Friendly */}
-        <div className="flex items-center gap-2 px-5 sm:px-7 pt-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto text-xs sm:text-sm font-bold">
+        <fieldset disabled={preparationStep !== null || isSubmittingOrder || nfeBusy !== null} className="min-w-0 flex items-center gap-2 px-5 sm:px-7 pt-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto text-xs sm:text-sm font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('direct')}
@@ -686,7 +719,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           >
             ⚡ JSON
           </button>
-        </div>
+        </fieldset>
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs">
@@ -930,13 +963,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
                 <div className="order-first p-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl space-y-3">
                     <strong className="text-sm block text-indigo-900 dark:text-indigo-200">Nota Fiscal (NF-e)</strong>
-                    {Number(nfe?.situacao) !== 5 && <ClientFiscalReview compact onEdit={() => setActiveTab('cadastral')} client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />}
+                    {Number(nfe?.situacao) !== 5 && <ClientFiscalReview compact onEdit={() => { if (!preparationLock.current && !isSubmittingOrder && !nfeBusy) setActiveTab('cadastral'); }} client={clientData} onChange={(next) => { setClientData(next); onUpdateClient(next); }} />}
                     {!orderResult ? (
                       <div className="space-y-2">
-                        <p>Primeiro crie o pedido de venda. Depois, os botões para gerar a NF-e série 2 e enviar à SEFAZ aparecerão aqui.</p>
-                        {readinessIssues.length > 0 && <p role="alert" className="text-amber-700 dark:text-amber-300">{readinessIssues.join(' ')}</p>}
-                        <button type="button" onClick={handleCreateDirectOrder} disabled={isSubmittingOrder || readinessIssues.length > 0 || isResolvingProducts} className="w-full px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer">
-                          {isSubmittingOrder ? 'Criando pedido...' : '1. Criar pedido para emitir NF-e'}
+                        <p>Prepare o pedido e o rascunho em uma ação. Você confere a nota antes de autorizar o envio à SEFAZ.</p>
+                        {readinessIssues.length > 0 && <div className="space-y-2"><p role="alert" className="text-amber-700 dark:text-amber-300">{readinessIssues.join(' ')}</p><div className="flex flex-wrap gap-2 text-xs"><button type="button" onClick={() => setActiveTab('cadastral')} className="underline">Corrigir cadastro fiscal</button><button type="button" onClick={handleResolveProducts} disabled={isResolvingProducts || isSubmittingOrder || preparationStep !== null} className="underline disabled:opacity-50">Conferir produtos/NCM no Bling</button></div></div>}
+                        <button type="button" onClick={handlePrepareNfe} disabled={preparationStep !== null || isSubmittingOrder || readinessIssues.length > 0 || isResolvingProducts} className="w-full px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer">
+                          {preparationStep === 'creating-order' ? 'Salvando pedido...' : preparationStep ? 'Preparando rascunho...' : 'Preparar NF-e'}
                         </button>
                       </div>
                     ) : <>
@@ -944,16 +977,16 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     {!nfe?.id ? (
                       <button
                         type="button"
-                        onClick={() => callNfe('generate', { orderId: orderResult.orderId, quote: { items: quote.items, financials: quote.financials, client: clientData } })}
-                        disabled={nfeBusy !== null || readinessIssues.length > 0 || orderChanged || isResolvingProducts}
+                        onClick={handlePrepareNfe}
+                        disabled={preparationStep !== null || nfeBusy !== null || readinessIssues.length > 0 || orderChanged || isResolvingProducts}
                         className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                       >
-                        {nfeBusy === 'generate' ? 'Gerando NF-e...' : 'Gerar NF-e a partir do pedido'}
+                        {nfeBusy === 'generate' ? 'Preparando rascunho...' : 'Preparar NF-e'}
                       </button>
                     ) : (
                       <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
                         <p>
-                          Situação: <strong>{Number(nfe.situacao) === 5 ? 'Autorizada' : Number(nfe.situacao) === 1 ? 'Pendente de envio' : String(nfe.situacao ?? 'rascunho')}</strong>
+                          Situação: <strong>{nfeSituationLabel(nfe.situacao)}</strong>
                           {nfe.numero ? <> • Número: <strong>{nfe.numero}</strong></> : null}
                           {nfe.serie ? <> • Série: <strong>{nfe.serie}</strong></> : null}
                         </p>
@@ -970,6 +1003,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
                             {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar situação (não transmite)'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
+                          {nfe.linkXml && <a href={nfe.linkXml} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">Baixar XML</a>}
+                          {Number(nfe.situacao) === 5 && <button type="button" onClick={onContinueShipping} className="px-3 py-2 rounded-lg border border-indigo-300 font-bold">Continuar para envio</button>}
                         </div>
                         {showNfeReview && nfe?.id && orderResult && <NfeReviewModal
                           key={`${quote.id}:${nfe.id}`}
@@ -978,6 +1013,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
                           orderId={orderResult.orderId}
                           token={blingToken}
                           orderChanged={orderChanged}
+                          onContinueShipping={onContinueShipping}
+                          onReviewClient={() => { setShowNfeReview(false); setActiveTab('cadastral'); }}
                           onAdoptRecipient={async (client) => {
                             const orderSnapshot = adoptBlingRecipient({ ...quote, client: clientData }, client);
                             await onUpdateBling(quote.id, { ...quote.bling, ...orderResult, nfe, orderSnapshot }, undefined, client);
@@ -994,7 +1031,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       </div>
                     )}</>}
                     {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}
-                    {nfeFiscalIssues.length > 0 && <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{nfeFiscalIssues.join(' ')}</p>}
+                    {nfeFiscalIssues.length > 0 && <div className="text-xs text-amber-700 dark:text-amber-300"><p role="alert">{nfeFiscalIssues.join(' ')}</p><button type="button" onClick={() => setShowNfeReview(true)} disabled={!nfe?.id || nfeBusy !== null} className="underline disabled:opacity-50">Abrir conferência e corrigir pendências</button></div>}
                   </div>
 
                 {/* Big Action Submit Button */}                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
@@ -1002,10 +1039,12 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>Transmissão segura via API v3 oficial do Bling ERP</span>
                   </div>
+                  <details className="text-xs">
+                    <summary className="cursor-pointer">Opção avançada: criar somente o pedido</summary>
                   <button
                     type="button"
-                    onClick={handleCreateDirectOrder}
-                    disabled={isSubmittingOrder || readinessIssues.length > 0 || Boolean(orderResult) || isResolvingProducts}
+                    onClick={() => { void handleCreateDirectOrder(); }}
+                    disabled={preparationStep !== null || nfeBusy !== null || isSubmittingOrder || readinessIssues.length > 0 || Boolean(orderResult) || isResolvingProducts}
                     className="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg hover:shadow-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isSubmittingOrder ? (
@@ -1020,6 +1059,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       </>
                     )}
                   </button>
+                  </details>
                 </div>
               </div>
             </div>
@@ -1594,7 +1634,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmittingOrder || nfeBusy !== null || isResolvingProducts}
+              disabled={preparationStep !== null || isSubmittingOrder || nfeBusy !== null || isResolvingProducts}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
             >
               Fechar

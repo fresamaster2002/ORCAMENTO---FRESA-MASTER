@@ -44,6 +44,18 @@ O resumo dos dados do cliente mantém visíveis a natureza selecionada, a condi�
 
 Depois de confirmar o cadastro fiscal, a etapa de criar pedido/gerar NF-e mostra somente a natureza e o status de conferência, sem repetir seletores ou exigir outra confirmação cadastral. **Revisar cadastro fiscal** abre a aba de cadastro quando necessário. Cadastro pendente ou alterado continua mostrando os campos de conferência e bloqueando a emissão. Na revisão da NF-e, a natureza aparece uma vez; divergências com a seleção do cadastro ficam explícitas. A confirmação final dos dados da nota e do ambiente antes de transmitir permanece obrigatória. Orientações longas ficam em detalhes expansíveis.
 
+### Emissão guiada da NF-e
+
+**Preparar NF-e** cria e salva o vínculo do pedido, gera e salva o rascunho, e abre a conferência. Se já houver pedido ou nota vinculados, reutiliza-os. Falhas de persistência interrompem a sequência; não há repetição automática de gravações. **Criar somente o pedido** permanece como opção avançada. Preparar não transmite à SEFAZ.
+
+A conferência prioriza destinatário, natureza, ferramentas, valores, pagamento e entrega. **Mostrar detalhes fiscais / editar** abre NCM, CFOP, impostos e observações; pendências retornadas pelo backend abrem esses detalhes automaticamente. Atalhos levam ao cadastro fiscal, consulta de produtos ou nota no Bling. As regras tributárias continuam no ERP.
+
+Antes de transmitir, o app salva no vínculo da nota o horário da solicitação. Com resultado ainda indefinido, bloqueia uma nova transmissão, inclusive após recarregar. Depois de um envio aceito com situação pendente, faz no máximo seis consultas, espaçadas em cinco segundos, interrompendo em autorização, rejeição ou outra situação final. Parar o acompanhamento não cancela o envio; falha ou demora exige consulta, nunca reenvio automático. Uma rejeição confirmada permite corrigir e conferir antes de tentar novamente. A API nem sempre retorna o motivo detalhado da SEFAZ; o app conserva os erros recebidos e oferece acesso à rejeição no Bling, sem inventar diagnóstico.
+
+Após autorização, os dados reais da nota permanecem somente leitura e aparecem atalhos para DANFE, XML, compartilhamento (ou cópia da mensagem) e retorno à logística. Os links do Bling podem expirar; recarregar obtém links atuais. **Continuar para envio** abre o painel de logística, não compra frete nem gera etiqueta automaticamente. O Sandbox continua sendo somente teste.
+
+Validação do fluxo guiado: 23 testes focados passaram, além de TypeScript/build. Em fixture isolada no navegador, clique duplo gerou uma única criação de pedido e um único rascunho; a transmissão simulada ocorreu uma vez, seguida de duas consultas até autorização. Conferidos também detalhes fiscais recolhidos/editáveis, compartilhamento, retorno à logística e ausência de transbordamento em 390 px. A NF-e existente foi consultada em modo somente leitura; nenhuma nova nota foi transmitida no teste desta melhoria.
+
 Teste real em homologação em 11/10/2026: consulta de CNPJ com IE ativa selecionou **Venda de mercadoria** (`15110327796`). Pedido `27103607823` gerou o rascunho `27103608394`, NF-e nº 8/série 2, com a mesma natureza, CFOP 5102, NCM 8207.70.10, Pix de R$ 220,00 e retirada sem frete. O app retornou zero pendências de consistência e o vínculo persistiu após recarregar. **Esta nota não foi transmitida à SEFAZ.** A série da natureza foi alterada de 1 para 2 com autorização; regime e regras tributárias do Bling foram preservados, não redefinidos pelo app.
 
 ## Rejeição de pedido no Bling

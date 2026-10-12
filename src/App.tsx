@@ -960,6 +960,7 @@ export default function App() {
         onUpdateClient={handleUpdateClientFromBling}
         onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
+        onContinueShipping={() => { handleGoHome(); window.setTimeout(() => document.getElementById('shipping-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }}
       />
 
       <SavedQuotesModal

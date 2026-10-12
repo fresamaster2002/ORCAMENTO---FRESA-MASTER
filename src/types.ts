@@ -161,6 +161,7 @@ export interface BlingNfe {
   chaveAcesso?: string;
   linkDanfe?: string;
   linkXml?: string;
+  transmissionRequestedAt?: string;
 }
 
 export interface ExtractQuoteRequest {

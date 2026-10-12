@@ -6,6 +6,7 @@ import type { BlingNfe, ClientInfo, QuoteData } from '../types';
 import type { NfeReview } from '../../supabase/functions/_shared/blingNfeReview';
 import { monitorNfe, nfeSituationLabel, nfeWithTransmissionRequest } from '../nfeWorkflow';
 import { formatBlingError } from '../../supabase/functions/_shared/blingErrors';
+import { NfeSuccessBanner } from './NfeSuccessBanner';
 
 interface Props {
   quote: QuoteData;
@@ -220,6 +221,7 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
           {orderChanged && <p role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg">{review?.situacao === 5 ? 'O orçamento atual difere da venda desta nota já autorizada. Essa diferença não altera a NF-e emitida e não permite nova transmissão.' : 'O orçamento mudou depois de criar o pedido. A transmissão fica bloqueada até revisar os dados da venda vinculada. Não crie outro pedido para esta nota.'}</p>}
           {clientReviewIssue && review?.situacao !== 5 && <div role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg"><p>{clientReviewIssue}</p><button type="button" onClick={onReviewClient} disabled={busy !== null} className="underline">Conferir cadastro fiscal</button></div>}
           {review && <>
+            <NfeSuccessBanner situation={review.situacao} number={review.numero} series={review.serie} />
             <div className="p-3 bg-indigo-50 rounded-lg space-y-1">
               <p><strong>NF-e {review.numero || 'sem número'} • Série {review.serie ?? 'não informada'}</strong></p>
               <p>Situação: {nfeSituationLabel(review.situacao)}{review.situacao === 5 ? ' — somente consulta' : ''}</p>

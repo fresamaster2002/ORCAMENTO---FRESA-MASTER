@@ -4,6 +4,7 @@ import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
 import { NfeReviewModal } from './NfeReviewModal';
+import { NfeSuccessBanner } from './NfeSuccessBanner';
 import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
@@ -991,7 +992,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                           {nfe.serie ? <> • Série: <strong>{nfe.serie}</strong></> : null}
                         </p>
                         {Number(nfe.situacao) === 5 ? (
-                          <p className="font-semibold text-emerald-700 dark:text-emerald-300">Esta NF-e já foi autorizada. Não é necessário emitir novamente. Abra o DANFE para visualizar.</p>
+                          <NfeSuccessBanner situation={nfe.situacao} number={nfe.numero} series={nfe.serie} />
                         ) : !nfeReadyToSend && nfeBusy === null && !nfeError && nfeFiscalIssues.length === 0 ? (
                           <p>Abra <strong>Conferir e emitir NF-e no app</strong> para ver a nota real, salvar correções de NCM/CFOP e transmitir à SEFAZ. Atualizar a situação apenas consulta o Bling; não envia a nota.</p>
                         ) : null}

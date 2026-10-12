@@ -4,6 +4,12 @@ const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
 const text = (v: unknown) => String(v || '').trim();
 const host = 'https://sandbox.melhorenvio.com.br';
 
+function errorMessages(value: unknown): string[] {
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap(errorMessages);
+  return Object.values(object(value)).flatMap(errorMessages);
+}
+
 export class SandboxShipmentError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -76,8 +82,8 @@ async function request(token: string, path: string, method = 'GET', payload?: un
   const data: unknown = await response.json();
   if (!response.ok) {
     const details = object(data);
-    const errors = Object.values(object(details.errors)).flat().map(text).filter(Boolean).join(' ');
-    throw new SandboxShipmentError(`${text(details.message) || `Melhor Envio Sandbox retornou HTTP ${response.status}.`} ${errors}`.trim(), response.status);
+    const errors = [...new Set(errorMessages([details.message, details.error, details.errors, Array.isArray(data) ? data : undefined]))].join(' ');
+    throw new SandboxShipmentError(errors || `Melhor Envio Sandbox retornou HTTP ${response.status}.`, response.status);
   }
   return data;
 }
@@ -90,9 +96,41 @@ export async function createSandboxShipment(input: Data, token: string) {
     package: payload.volumes[0], options: { insurance_value: payload.options.insurance_value, receipt: false, own_hand: false },
     services: String(payload.service),
   });
-  const rate = Array.isArray(rates) ? rates.map(object).find((r) => Number(r.id) === payload.service && !r.error) : undefined;
-  if (!rate) throw new SandboxShipmentError('O serviço selecionado não está disponível para essa rota no Sandbox. Confira serviço, endereço e pacote.', 422);
+  const rate = (Array.isArray(rates) ? rates : [rates]).map(object).find((r) => Number(r.id) === payload.service);
+  if (!rate || rate.error) throw new SandboxShipmentError(`O serviço selecionado não está disponível para essa rota no Sandbox. ${text(rate?.error) || 'Confira serviço, endereço e pacote.'}`, 422);
   const result = object(await request(token, '/me/cart', 'POST', payload));
   if (!text(result.id)) throw new SandboxShipmentError('O Sandbox respondeu sem o ID do envio. Confira o carrinho antes de repetir.', 502);
   return { success: true, shipmentId: text(result.id), protocol: text(result.protocol) || null, environment: 'sandbox', message: 'Envio adicionado ao carrinho Sandbox. Nenhuma etiqueta foi comprada ou paga.' };
+}
+
+export async function quoteSandboxShipment(input: Data, token: string) {
+  if (!token) throw new SandboxShipmentError('Informe o token Sandbox ou configure MELHOR_ENVIO_SANDBOX_TOKEN no backend.', 401);
+  const quote = object(input.quote);
+  const shipping = object(quote.shipping);
+  const originCep = digits(object(input.sender).cep);
+  const destinationCep = digits(shipping.destinationCep);
+  if (originCep.length !== 8 || destinationCep.length !== 8) throw new SandboxShipmentError('Confira os CEPs do remetente e da entrega antes de cotar.');
+  const dimensions = object(shipping.packageDimensions);
+  const volume = { height: Number(dimensions.height), width: Number(dimensions.width), length: Number(dimensions.length), weight: Number(shipping.weightKg) };
+  if (Object.values(volume).some((n) => !Number.isFinite(n) || n <= 0)) throw new SandboxShipmentError('Confira peso e dimensões do pacote.');
+  const items = Array.isArray(quote.items) ? quote.items.map(object) : [];
+  if (items.some((item) => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0)) throw new SandboxShipmentError('Confira quantidade e valor dos produtos antes de cotar.');
+  const declaredValue = items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
+  if (!items.length || !Number.isFinite(declaredValue) || declaredValue <= 0) throw new SandboxShipmentError('Inclua produtos com quantidade e valor válidos antes de cotar.');
+  const rates = await request(token, '/me/shipment/calculate', 'POST', {
+    from: { postal_code: originCep }, to: { postal_code: destinationCep }, package: volume,
+    options: { insurance_value: shipping.insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
+    services: '2',
+  });
+  const rate = (Array.isArray(rates) ? rates : [rates]).map(object).find((r) => Number(r.id) === 2);
+  if (!rate || rate.error) throw new SandboxShipmentError(text(rate?.error) || 'Sedex indisponível para essa rota no Sandbox.', 422);
+  const price = Number(rate.custom_price ?? rate.price);
+  const deliveryDays = Number(rate.custom_delivery_time ?? rate.delivery_time);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(deliveryDays) || deliveryDays < 0) throw new SandboxShipmentError('A cotação Sandbox retornou preço ou prazo inválido.', 502);
+  return {
+    success: true, environment: 'sandbox', originCep, destinationCep,
+    option: { service: 'SEDEX', melhorEnvioServiceId: 2, name: 'SEDEX (Melhor Envio Sandbox)', carrier: 'Correios',
+      price, deliveryDays, selected: true, insuranceIncluded: Boolean(shipping.insuranceEnabled),
+      insuranceCost: 0, isRealTimeMelhorEnvio: true },
+  };
 }

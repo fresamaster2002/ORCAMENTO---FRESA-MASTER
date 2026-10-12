@@ -977,6 +977,16 @@ export default function App() {
           quote={quote}
           missing={sandboxMissing}
           onClose={() => setIsSandboxShipmentOpen(false)}
+          onQuoted={(originCep, option) => {
+            setQuote((current) => ({
+              ...current,
+              shipping: { ...current.shipping, originCep, options: [option], selectedOption: option, insuranceAmount: 0 },
+              financials: {
+                ...current.financials, shippingAmount: option.price, insuranceAmount: 0,
+                totalAmount: Number(Math.max(0, current.financials.totalAmount - current.financials.shippingAmount - (current.financials.insuranceAmount || 0) + option.price).toFixed(2)),
+              },
+            }));
+          }}
           onCreated={(shipment) => {
             setQuote((current) => ({ ...current, sandboxShipment: shipment }));
             setIsSandboxShipmentOpen(false);

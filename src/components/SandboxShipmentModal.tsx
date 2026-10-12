@@ -1,7 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { apiFetch } from '../api';
 import { AlertTriangle, CheckCircle2, LoaderCircle, X } from 'lucide-react';
-import { QuoteData } from '../types';
+import { QuoteData, ShippingOption } from '../types';
 
 interface SenderData {
   name: string;
@@ -23,6 +23,7 @@ interface SandboxShipmentModalProps {
   missing?: string[];
   onClose: () => void;
   onCreated: (shipment: { id: string | null; protocol: string | null; createdAt: string }) => void;
+  onQuoted: (originCep: string, option: ShippingOption) => void;
 }
 
 const initialSender: SenderData = {
@@ -66,18 +67,46 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
   { key: 'cep', label: 'CEP', required: true },
 ];
 
-export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }: SandboxShipmentModalProps) {
+export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, onQuoted }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(loadSender);
   const [invoiceKey, setInvoiceKey] = useState(() => quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : '');
   const [sandboxToken, setSandboxToken] = useState('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isQuoting, setIsQuoting] = useState(false);
+  const operationLock = useRef(false);
+  const isBusy = isSubmitting || isTestingConnection || isQuoting;
   const [error, setError] = useState<string | null>(null);
   const routeMismatch = sender.cep.replace(/\D/g, '') !== quote.shipping.originCep.replace(/\D/g, '');
   const allMissing = [...missing, ...(routeMismatch ? ['O CEP do remetente difere da origem cotada. Corrija a origem e recalcule o frete antes de criar o envio.'] : [])];
 
+  const quoteSandbox = async () => {
+    if (operationLock.current || quote.bling?.orderId || quote.sandboxShipment?.id) return;
+    operationLock.current = true;
+    setIsQuoting(true);
+    setError(null);
+    setConnectionMessage(null);
+    try {
+      const response = await apiFetch('/api/shipping/quote-sandbox', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quote, sender, sandboxToken: sandboxToken.trim() || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.option) throw new Error(result.error || 'Não foi possível cotar o Sedex no Sandbox.');
+      onQuoted(result.originCep, result.option);
+      setConnectionMessage('Sedex cotado diretamente no Sandbox. Origem e valor atualizados somente neste orçamento; nenhuma etiqueta criada.');
+    } catch (quoteError) {
+      setError(quoteError instanceof Error ? quoteError.message : 'Falha ao cotar o frete Sandbox.');
+    } finally {
+      setIsQuoting(false);
+      operationLock.current = false;
+    }
+  };
+
   const testConnection = async () => {
+    if (operationLock.current) return;
+    operationLock.current = true;
     setIsTestingConnection(true);
     setConnectionMessage(null);
     setError(null);
@@ -93,6 +122,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
       setError(connectionError instanceof Error ? connectionError.message : 'Falha ao testar a conexão Sandbox.');
     } finally {
       setIsTestingConnection(false);
+      operationLock.current = false;
     }
   };
 
@@ -110,6 +140,8 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (operationLock.current) return;
+    operationLock.current = true;
     setError(null);
     setIsSubmitting(true);
 
@@ -134,6 +166,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
       setError(submitError instanceof Error ? submitError.message : 'Falha de comunicação com o servidor.');
     } finally {
       setIsSubmitting(false);
+      operationLock.current = false;
     }
   };
 
@@ -147,7 +180,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
             <p className="text-[11px] font-bold uppercase text-emerald-700">Melhor Envio Sandbox</p>
             <h2 id="sandbox-shipment-title" className="text-lg font-bold">Adicionar envio ao carrinho de teste</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-2 text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+          <button type="button" onClick={onClose} disabled={isBusy} className="rounded p-2 text-slate-500 hover:bg-slate-100" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </header>
@@ -180,6 +213,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
                     value={sender[key]}
                     onChange={(event) => updateSender(key, event.target.value)}
                     required={required}
+                    disabled={isBusy}
                     maxLength={key === 'state' ? 2 : undefined}
                     autoComplete="off"
                   />
@@ -190,12 +224,16 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
 
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Token do Melhor Envio Sandbox (opcional se configurado no servidor)</span>
-            <input className={inputClass} type="password" autoComplete="off" value={sandboxToken} onChange={(event) => setSandboxToken(event.target.value)} placeholder="Use somente um token da conta Sandbox" />
+            <input className={inputClass} type="password" autoComplete="off" disabled={isBusy} value={sandboxToken} onChange={(event) => setSandboxToken(event.target.value)} placeholder="Use somente um token da conta Sandbox" />
             <span className="block font-normal">Não é salvo no navegador. Nunca use o token da conta de produção.</span>
           </label>
-          <button type="button" onClick={testConnection} disabled={isTestingConnection || isSubmitting} className="rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
+          <button type="button" onClick={testConnection} disabled={isBusy} className="rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
             {isTestingConnection ? 'Testando Sandbox...' : 'Testar conexão Sandbox'}
           </button>
+          <button type="button" onClick={quoteSandbox} disabled={isBusy || Boolean(quote.bling?.orderId || quote.sandboxShipment?.id)} className="ml-2 rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
+            {isQuoting ? 'Cotando Sandbox...' : 'Cotar Sedex no Sandbox'}
+          </button>
+          <p className="text-xs text-slate-600">Atualiza a origem pelo CEP do remetente e o frete deste orçamento com uma cotação de teste, sem estimativas. Use um orçamento separado, sem pedido vinculado no Bling.</p>
           {connectionMessage && <p role="status" className="text-sm text-emerald-800">{connectionMessage}</p>}
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Chave de acesso da NF-e (44 dígitos) *</span>
@@ -209,6 +247,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
               pattern="[0-9]{44}"
               placeholder="Digite a chave da NF-e emitida no Bling"
               required
+              disabled={isBusy}
             />
           </label>
 
@@ -219,8 +258,8 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated }
             </div>
             {error && <p role="alert" className="mb-3 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
             <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
-              <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50">Cancelar</button>
-              <button type="submit" disabled={isSubmitting || isTestingConnection || invoiceKey.length !== 44 || allMissing.length > 0} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={onClose} disabled={isBusy} className="rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50">Cancelar</button>
+              <button type="submit" disabled={isBusy || quote.sandboxShipment?.id != null || invoiceKey.length !== 44 || allMissing.length > 0} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
                 {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Adicionar ao carrinho sandbox
               </button>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildSandboxShipment, createSandboxShipment, quoteSandboxShipment } from './sandboxShipment.ts';
+import { buildSandboxShipment, checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment } from './sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from './shippingDefaults.ts';
 
 function invoiceKey(series = '002') {
@@ -139,4 +139,63 @@ test('apresenta erros aninhados ou em lista do carrinho sem chamar checkout', as
     await assert.rejects(createSandboxShipment(input(), 'sandbox-test'), /Telefone inválido/);
     assert.deepEqual(calls, ['https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate', 'https://sandbox.melhorenvio.com.br/api/v2/me/cart']);
   }
+});
+
+test('checkout exige confirmação e não consulta nem chama endpoint sem ela', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; return Response.json({}); });
+  await assert.rejects(checkoutSandboxShipment({ shipmentId: 'sandbox-id', confirmSandbox: false }, 'sandbox-token'), /Confirme que deseja/);
+  assert.equal(calls, 0);
+});
+
+test('checkout só envia um envio pendente ao host Sandbox e confirma o estado relendo o carrinho', async (t) => {
+  const calls: Array<{ url: string; method: string; body: unknown }> = [];
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL, options?: RequestInit) => {
+    const address = String(url);
+    const method = options?.method || 'GET';
+    const body = options?.body ? JSON.parse(String(options.body)) : undefined;
+    calls.push({ url: address, method, body });
+    if (address.endsWith('/me/shipment/checkout')) return Response.json({ purchase: { id: 'purchase-123', status: 'pending' } });
+    if (calls.filter((call) => call.method === 'GET').length === 1) return Response.json({ id: 'sandbox-id', status: 'pending', price: '13.38' });
+    return Response.json({ id: 'sandbox-id', status: 'released', paid_at: '2026-10-30T15:50:00Z' });
+  });
+
+  const result = await checkoutSandboxShipment({ shipmentId: 'sandbox-id', confirmSandbox: true }, 'sandbox-token');
+  assert.equal(result.environment, 'sandbox');
+  assert.equal(result.status, 'paid');
+  assert.equal(result.paidAt, '2026-10-30T15:50:00Z');
+  assert.deepEqual(calls.map((call) => [call.url, call.method]), [
+    ['https://sandbox.melhorenvio.com.br/api/v2/me/cart/sandbox-id', 'GET'],
+    ['https://sandbox.melhorenvio.com.br/api/v2/me/shipment/checkout', 'POST'],
+    ['https://sandbox.melhorenvio.com.br/api/v2/me/cart/sandbox-id', 'GET'],
+  ]);
+  assert.deepEqual(calls[1].body, { orders: ['sandbox-id'] });
+});
+
+test('checkout reconhece envio já pago e bloqueia estados não pendentes sem repetir a cobrança', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (_url: RequestInfo | URL) => {
+    calls++;
+    return calls === 1
+      ? Response.json({ id: 'sandbox-id', status: 'released', paid_at: '2026-10-30T15:50:00Z' })
+      : Response.json({ id: 'sandbox-id', status: 'processing' });
+  });
+  const result = await checkoutSandboxShipment({ shipmentId: 'sandbox-id', confirmSandbox: true }, 'sandbox-token');
+  assert.equal(result.status, 'paid');
+  assert.equal(calls, 1);
+
+  await assert.rejects(checkoutSandboxShipment({ shipmentId: 'sandbox-id', confirmSandbox: true }, 'sandbox-token'), /não está pendente/);
+  assert.equal(calls, 2);
+});
+
+test('consulta somente leitura valida a identidade e o status do envio do carrinho', async (t) => {
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL, options?: RequestInit) => {
+    calls.push(`${String(url)}:${options?.method || 'GET'}`);
+    return Response.json({ id: 'sandbox-id', status: 'pending', price: '13.38' });
+  });
+  const result = await getSandboxShipmentStatus({ shipmentId: 'sandbox-id' }, 'sandbox-token');
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(calls, ['https://sandbox.melhorenvio.com.br/api/v2/me/cart/sandbox-id:GET']);
+  await assert.rejects(getSandboxShipmentStatus({ shipmentId: 'wrong-id' }, 'sandbox-token'), /não retornou o envio solicitado/);
 });

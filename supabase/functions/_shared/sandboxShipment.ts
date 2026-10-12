@@ -88,6 +88,52 @@ async function request(token: string, path: string, method = 'GET', payload?: un
   return data;
 }
 
+function shipmentRecord(value: unknown, shipmentId: string): Data {
+  const response = object(value);
+  const record = Object.keys(object(response.data)).length ? object(response.data) : response;
+  if (text(record.id) !== shipmentId) throw new SandboxShipmentError('O Melhor Envio não retornou o envio solicitado. Não tente pagar novamente antes de conferir o carrinho.', 502);
+  return record;
+}
+
+function paymentStatus(record: Data): 'pending' | 'paid' | 'unavailable' {
+  const status = text(record.status).toLowerCase();
+  if (record.paid_at || ['paid', 'released'].includes(status)) return 'paid';
+  if (status === 'pending') return 'pending';
+  return 'unavailable';
+}
+
+export async function getSandboxShipmentStatus(input: Data, token: string) {
+  if (!token) throw new SandboxShipmentError('Configure ou informe o token da conta Sandbox.', 401);
+  const shipmentId = text(input.shipmentId);
+  if (!/^[a-zA-Z0-9-]{1,100}$/.test(shipmentId)) throw new SandboxShipmentError('ID do envio Sandbox inválido.');
+  const record = shipmentRecord(await request(token, `/me/cart/${encodeURIComponent(shipmentId)}`), shipmentId);
+  return {
+    success: true, environment: 'sandbox', shipmentId,
+    status: paymentStatus(record), rawStatus: text(record.status),
+    paidAt: text(record.paid_at) || null, price: Number(record.price ?? record.quote) || null,
+  };
+}
+
+export async function checkoutSandboxShipment(input: Data, token: string) {
+  if (!token) throw new SandboxShipmentError('Configure ou informe o token da conta Sandbox.', 401);
+  if (input.confirmSandbox !== true) throw new SandboxShipmentError('Confirme que deseja usar o saldo fictício do Sandbox.', 400);
+  const shipmentId = text(input.shipmentId);
+  if (!/^[a-zA-Z0-9-]{1,100}$/.test(shipmentId)) throw new SandboxShipmentError('ID do envio Sandbox inválido.');
+  const existing = shipmentRecord(await request(token, `/me/cart/${encodeURIComponent(shipmentId)}`), shipmentId);
+  const currentStatus = paymentStatus(existing);
+  if (currentStatus === 'paid') {
+    return { success: true, environment: 'sandbox', shipmentId, status: 'paid', paidAt: text(existing.paid_at) || null, message: 'Este envio já consta como pago no Sandbox.' };
+  }
+  if (currentStatus !== 'pending') throw new SandboxShipmentError('O envio não está pendente no Sandbox. Atualize a situação e confira o carrinho antes de continuar.', 409);
+  await request(token, '/me/shipment/checkout', 'POST', { orders: [shipmentId] });
+  const result = await getSandboxShipmentStatus({ shipmentId }, token);
+  return {
+    ...result, message: result.status === 'paid'
+      ? 'Pagamento confirmado com saldo fictício do Sandbox. Nenhuma etiqueta foi gerada.'
+      : 'Checkout enviado ao Sandbox; o envio ainda aparece pendente. Atualize a situação antes de repetir o pagamento.',
+  };
+}
+
 export async function createSandboxShipment(input: Data, token: string) {
   const payload = buildSandboxShipment(input);
   if (!token) throw new SandboxShipmentError('Configure MELHOR_ENVIO_SANDBOX_TOKEN no backend ou informe o token Sandbox no campo protegido do app. O token de produção não é usado.', 401);

@@ -150,6 +150,12 @@ export interface QuoteData {
     id: string | null;
     protocol: string | null;
     createdAt: string;
+    paymentStatus?: 'pending' | 'processing' | 'paid' | 'unknown' | 'unavailable';
+    checkoutRequestedAt?: string;
+    paymentCheckedAt?: string;
+    paidAt?: string | null;
+    purchaseId?: string | null;
+    purchaseProtocol?: string | null;
   };
 }
 

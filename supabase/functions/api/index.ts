@@ -4,7 +4,7 @@ import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from '../_shared/blingFiscal.ts';
 import { resolveBlingProducts } from '../_shared/blingProducts.ts';
 import { fetchBlingApi } from '../_shared/blingTransport.ts';
-import { createSandboxShipment, quoteSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
+import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
@@ -897,10 +897,13 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, messageText: messageText || fallback });
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
-    if (['/shipping/create-sandbox-shipment', '/shipping/quote-sandbox'].includes(path) && request.method === 'POST') {
+    if (['/shipping/create-sandbox-shipment', '/shipping/quote-sandbox', '/shipping/checkout-sandbox', '/shipping/sandbox-shipment-status'].includes(path) && request.method === 'POST') {
       try {
         const token = body.sandboxToken || env('MELHOR_ENVIO_SANDBOX_TOKEN') || (env('MELHOR_ENVIO_SANDBOX') === 'true' ? env('MELHOR_ENVIO_TOKEN') : '');
-        return json(await (path === '/shipping/quote-sandbox' ? quoteSandboxShipment(body, token) : createSandboxShipment(body, token)));
+        if (path === '/shipping/quote-sandbox') return json(await quoteSandboxShipment(body, token));
+        if (path === '/shipping/checkout-sandbox') return json(await checkoutSandboxShipment(body, token));
+        if (path === '/shipping/sandbox-shipment-status') return json(await getSandboxShipmentStatus(body, token));
+        return json(await createSandboxShipment(body, token));
       } catch (error) {
         if (error instanceof SandboxShipmentError) return json({ success: false, error: error.message }, error.status);
         console.error('Falha de comunicação com o Melhor Envio Sandbox:', error);

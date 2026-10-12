@@ -895,24 +895,24 @@ export default function App() {
             <span>Melhor Envio & Bling ERP NF-e Integration</span>
           </div>
           <div className="flex items-center gap-4">
-            {quote.status === 'approved' && quote.items.length > 0 && !quote.sandboxShipment && (
+            {(quote.sandboxShipment || (quote.status === 'approved' && quote.items.length > 0)) && (
               <div className="flex flex-col items-center gap-1 sm:items-end">
                 <button
                   type="button"
                   onClick={() => setIsSandboxShipmentOpen(true)}
-                  disabled={!hasSelectedLiveShipping}
+                  disabled={!quote.sandboxShipment && !hasSelectedLiveShipping}
                   className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Truck className="h-4 w-4" />
-                  Criar envio no Sandbox
+                  {quote.sandboxShipment ? 'Acompanhar / pagar no Sandbox' : 'Criar envio no Sandbox'}
                 </button>
-                {!hasSelectedLiveShipping && <span className="text-[10px] text-slate-500">Recalcule e selecione uma cotação oficial primeiro</span>}
+                {!quote.sandboxShipment && !hasSelectedLiveShipping && <span className="text-[10px] text-slate-500">Recalcule e selecione uma cotação oficial primeiro</span>}
               </div>
             )}
             {quote.sandboxShipment && (
               <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
                 <CheckCircle2 className="h-4 w-4" />
-                Envio de teste criado{quote.sandboxShipment.protocol ? ` • ${quote.sandboxShipment.protocol}` : ''}
+                {quote.sandboxShipment.paymentStatus === 'paid' ? 'Pagamento de teste confirmado' : 'Envio de teste criado'}{quote.sandboxShipment.protocol ? ` • ${quote.sandboxShipment.protocol}` : ''}
               </span>
             )}
             <button
@@ -987,9 +987,23 @@ export default function App() {
               },
             }));
           }}
-          onCreated={(shipment) => {
-            setQuote((current) => ({ ...current, sandboxShipment: shipment }));
-            setIsSandboxShipmentOpen(false);
+          onUpdateShipment={async (shipment) => {
+            const updated = { ...quote, sandboxShipment: shipment };
+            setQuote((current) => current.id === quote.id ? { ...current, sandboxShipment: shipment } : current);
+            setRecentQuotes((current) => [updated, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
+            if (!supabase || !supabaseUser) throw new Error('O envio foi atualizado apenas nesta sessão. Entre na conta para salvar o estado do Sandbox antes de pagar.');
+            setCloudSaveState('saving');
+            const { error } = await supabase.from('quotes').upsert({
+              id: quote.id,
+              owner_id: supabaseUser.id,
+              quote: JSON.parse(JSON.stringify(updated)),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'owner_id,id' });
+            if (error) {
+              setCloudSaveState('error');
+              throw new Error(`Não foi possível salvar o estado do envio no orçamento: ${error.message}. O checkout não será enviado.`);
+            }
+            setCloudSaveState('saved');
           }}
         />
       )}

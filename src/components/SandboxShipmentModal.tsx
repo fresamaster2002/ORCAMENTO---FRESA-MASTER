@@ -22,7 +22,7 @@ interface SandboxShipmentModalProps {
   quote: QuoteData;
   missing?: string[];
   onClose: () => void;
-  onCreated: (shipment: { id: string | null; protocol: string | null; createdAt: string }) => void;
+  onUpdateShipment: (shipment: NonNullable<QuoteData['sandboxShipment']>) => Promise<void>;
   onQuoted: (originCep: string, option: ShippingOption) => void;
 }
 
@@ -67,7 +67,7 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
   { key: 'cep', label: 'CEP', required: true },
 ];
 
-export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, onQuoted }: SandboxShipmentModalProps) {
+export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShipment, onQuoted }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(loadSender);
   const [invoiceKey, setInvoiceKey] = useState(() => quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : '');
   const [sandboxToken, setSandboxToken] = useState('');
@@ -75,9 +75,13 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, 
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
+  const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [checkoutConfirmed, setCheckoutConfirmed] = useState(false);
   const operationLock = useRef(false);
-  const isBusy = isSubmitting || isTestingConnection || isQuoting;
+  const isBusy = isSubmitting || isTestingConnection || isQuoting || isCheckoutSubmitting || isCheckingPayment;
   const [error, setError] = useState<string | null>(null);
+  const checkoutMayHaveBeenSent = Boolean(quote.sandboxShipment?.checkoutRequestedAt);
   const routeMismatch = sender.cep.replace(/\D/g, '') !== quote.shipping.originCep.replace(/\D/g, '');
   const allMissing = [...missing, ...(routeMismatch ? ['O CEP do remetente difere da origem cotada. Corrija a origem e recalcule o frete antes de criar o envio.'] : [])];
 
@@ -126,6 +130,91 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, 
     }
   };
 
+  const updateShipmentPayment = async (patch: Partial<NonNullable<QuoteData['sandboxShipment']>>) => {
+    const shipment = quote.sandboxShipment;
+    if (!shipment?.id) throw new Error('Não foi encontrado o envio Sandbox deste orçamento.');
+    await onUpdateShipment({ ...shipment, ...patch });
+  };
+
+  const checkPaymentStatus = async () => {
+    const shipment = quote.sandboxShipment;
+    if (operationLock.current || !shipment?.id) return;
+    operationLock.current = true;
+    setIsCheckingPayment(true);
+    setError(null);
+    try {
+      const response = await apiFetch('/api/shipping/sandbox-shipment-status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipmentId: shipment.id, sandboxToken: sandboxToken.trim() || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Não foi possível consultar o envio no Sandbox.');
+      await updateShipmentPayment({
+        paymentStatus: result.status,
+        paymentCheckedAt: new Date().toISOString(),
+        paidAt: result.paidAt || null,
+      });
+      setConnectionMessage(result.status === 'paid'
+        ? 'Pagamento confirmado no Sandbox. A etiqueta ainda não foi gerada.'
+        : result.status === 'pending'
+          ? 'O envio ainda está pendente e não consta como pago.'
+          : `O envio está no Sandbox com situação "${result.rawStatus || result.status}".`);
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : 'Falha ao consultar pagamento Sandbox.');
+    } finally {
+      setIsCheckingPayment(false);
+      operationLock.current = false;
+    }
+  };
+
+  const checkout = async () => {
+    const shipment = quote.sandboxShipment;
+    if (operationLock.current || !shipment?.id || !checkoutConfirmed || shipment.checkoutRequestedAt || shipment.paymentStatus === 'paid' || shipment.paymentStatus === 'processing' || shipment.paymentStatus === 'unknown' || shipment.paymentStatus === 'unavailable') return;
+    operationLock.current = true;
+    setIsCheckoutSubmitting(true);
+    setError(null);
+    setConnectionMessage(null);
+    let checkoutStarted = false;
+    try {
+      await updateShipmentPayment({
+        paymentStatus: 'processing',
+        checkoutRequestedAt: new Date().toISOString(),
+      });
+      checkoutStarted = true;
+      const response = await apiFetch('/api/shipping/checkout-sandbox', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipmentId: shipment.id, confirmSandbox: true, sandboxToken: sandboxToken.trim() || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Não foi possível finalizar o pagamento Sandbox.');
+      await updateShipmentPayment({
+        paymentStatus: result.status,
+        paymentCheckedAt: new Date().toISOString(),
+        paidAt: result.paidAt || null,
+        purchaseId: result.purchaseId || null,
+        purchaseProtocol: result.purchaseProtocol || null,
+      });
+      setConnectionMessage(result.message || (result.status === 'paid'
+        ? 'Pagamento confirmado com saldo fictício do Sandbox. Nenhuma etiqueta foi gerada.'
+        : 'O checkout foi recebido pelo Sandbox. Consulte novamente antes de tentar pagar outra vez.'));
+    } catch (checkoutError) {
+      if (checkoutStarted) {
+        try {
+          await updateShipmentPayment({ paymentStatus: 'unknown' });
+        } catch (persistError) {
+          setError(`${checkoutError instanceof Error ? checkoutError.message : 'Falha ao finalizar pagamento.'} Não foi possível salvar o estado do envio; confira o carrinho Sandbox antes de qualquer nova tentativa.`);
+          setIsCheckoutSubmitting(false);
+          operationLock.current = false;
+          return;
+        }
+      }
+      setError(checkoutError instanceof Error ? checkoutError.message : 'Falha ao finalizar pagamento Sandbox. Consulte o estado antes de repetir.');
+    } finally {
+      setIsCheckoutSubmitting(false);
+      operationLock.current = false;
+    }
+  };
+
   const updateSender = (key: keyof SenderData, value: string) => {
     setSender((current) => {
       const next = { ...current, [key]: value };
@@ -157,11 +246,13 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, 
       }
       if (!result.shipmentId) throw new Error('O servidor respondeu sem o ID do envio. Confira o carrinho antes de repetir.');
 
-      onCreated({
+      await onUpdateShipment({
         id: result.shipmentId,
         protocol: result.protocol || null,
         createdAt: new Date().toISOString(),
+        paymentStatus: 'pending',
       });
+      setConnectionMessage('Envio adicionado ao carrinho Sandbox. Nenhuma cobrança foi feita; continue abaixo para revisar o checkout.');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Falha de comunicação com o servidor.');
     } finally {
@@ -188,9 +279,53 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, 
         <form onSubmit={submit} className="space-y-5 p-5">
           <div className="flex gap-3 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <AlertTriangle className="h-5 w-5 shrink-0" />
-            <p>Este passo exige a chave de uma NF-e série 2 já emitida no Bling. Confira o remetente e o mesmo CEP de origem cotado ({quote.shipping.originCep}). Ele apenas cria o envio no carrinho sandbox; não compra nem paga a etiqueta e não vale para postagem real.</p>
+            <p>{quote.sandboxShipment?.id
+              ? 'Ambiente de teste isolado. O checkout usa somente o saldo fictício da conta Sandbox; não há acesso à carteira ou ao host de produção.'
+              : `Este passo exige a chave de uma NF-e série 2 já emitida no Bling. Confira o remetente e o mesmo CEP de origem cotado (${quote.shipping.originCep}). A inclusão no carrinho não cobra nem gera etiqueta.`}</p>
           </div>
 
+          {quote.sandboxShipment?.id ? (
+            <section className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4" aria-label="Pagamento de teste Sandbox">
+              <div>
+                <h3 className="font-bold text-emerald-950">Envio {quote.sandboxShipment.protocol || quote.sandboxShipment.id}</h3>
+                <p className="mt-1 text-sm text-emerald-900">Status do pagamento: <strong>{quote.sandboxShipment.paymentStatus === 'paid' ? 'Pago no Sandbox' : quote.sandboxShipment.paymentStatus === 'processing' ? 'Checkout em andamento' : quote.sandboxShipment.paymentStatus === 'unknown' ? 'Confirmação necessária' : quote.sandboxShipment.paymentStatus === 'unavailable' ? 'Revisar no carrinho' : 'Pendente'}</strong></p>
+                <p className="mt-1 text-sm text-slate-700">Valor do frete: <strong>R$ {Number(quote.shipping.selectedOption?.price || 0).toFixed(2).replace('.', ',')}</strong></p>
+                <p className="mt-2 text-xs text-slate-700">Este checkout usa o saldo de teste do Sandbox. Pagamento não gera etiqueta automaticamente; nenhuma etiqueta será comprada ou impressa pelo app.</p>
+              </div>
+
+              {quote.sandboxShipment.paymentStatus === 'paid' ? (
+                <p role="status" className="rounded border border-emerald-300 bg-white p-3 text-sm font-semibold text-emerald-900">Pagamento confirmado no Sandbox. A etiqueta ainda não foi gerada. Acompanhe o envio no painel Sandbox.</p>
+              ) : quote.sandboxShipment.paymentStatus === 'unavailable' ? (
+                <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O envio não aparece como pendente nem pago. Não repita o checkout; confira o carrinho Sandbox e resolva o status primeiro.</p>
+              ) : (
+                <>
+                  {quote.sandboxShipment.paymentStatus === 'unknown' || quote.sandboxShipment.paymentStatus === 'processing' || checkoutMayHaveBeenSent ? (
+                    <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O checkout já foi enviado ou pode ter sido enviado. Não repita o pagamento, mesmo que ainda apareça pendente; consulte o status do envio.</p>
+                  ) : (
+                    <label className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                      <input type="checkbox" checked={checkoutConfirmed} onChange={(event) => setCheckoutConfirmed(event.target.checked)} disabled={isBusy} className="mt-0.5" />
+                      <span>Confirmo finalizar o pagamento deste envio usando somente o saldo fictício da conta Sandbox. Sei que essa ação altera o carrinho de teste; nenhum pagamento de produção será iniciado.</span>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {quote.sandboxShipment.paymentStatus !== 'unknown' && quote.sandboxShipment.paymentStatus !== 'processing' && !checkoutMayHaveBeenSent && (
+                      <button type="button" onClick={checkout} disabled={isBusy || !checkoutConfirmed} className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                        {isCheckoutSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        Finalizar pagamento Sandbox
+                      </button>
+                    )}
+                    <button type="button" onClick={checkPaymentStatus} disabled={isBusy} className="rounded-md border border-emerald-700 px-4 py-2.5 text-sm font-bold text-emerald-900 disabled:opacity-50">
+                      {isCheckingPayment ? 'Consultando...' : 'Verificar situação no Sandbox'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {error && <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+              {connectionMessage && <p role="status" className="text-sm text-emerald-800">{connectionMessage}</p>}
+              <button type="button" onClick={onClose} disabled={isBusy} className="rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold disabled:opacity-50">Fechar</button>
+            </section>
+          ) : (
+          <>
           {allMissing.length > 0 && (
             <div className="border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
               <p className="mb-1 font-bold">Antes de enviar, falta:</p>
@@ -265,6 +400,8 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onCreated, 
               </button>
             </div>
           </div>
+          </>
+          )}
         </form>
       </section>
     </div>

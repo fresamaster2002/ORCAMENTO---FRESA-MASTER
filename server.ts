@@ -20,7 +20,7 @@ import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handl
 import { listBlingNatures, selectedBlingNature } from "./supabase/functions/_shared/blingNature";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
-import { createSandboxShipment, quoteSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
+import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
 
@@ -566,10 +566,13 @@ async function fetchMelhorEnvioLiveRates(
 }
 
 // Shipping calculation endpoint
-app.post(["/api/shipping/create-sandbox-shipment", "/api/shipping/quote-sandbox"], async (req, res) => {
+app.post(["/api/shipping/create-sandbox-shipment", "/api/shipping/quote-sandbox", "/api/shipping/checkout-sandbox", "/api/shipping/sandbox-shipment-status"], async (req, res) => {
   try {
     const token = req.body.sandboxToken || process.env.MELHOR_ENVIO_SANDBOX_TOKEN || (process.env.MELHOR_ENVIO_SANDBOX === "true" ? process.env.MELHOR_ENVIO_TOKEN : "") || "";
-    res.json(await (req.path === "/api/shipping/quote-sandbox" ? quoteSandboxShipment(req.body, token) : createSandboxShipment(req.body, token)));
+    if (req.path === "/api/shipping/quote-sandbox") return res.json(await quoteSandboxShipment(req.body, token));
+    if (req.path === "/api/shipping/checkout-sandbox") return res.json(await checkoutSandboxShipment(req.body, token));
+    if (req.path === "/api/shipping/sandbox-shipment-status") return res.json(await getSandboxShipmentStatus(req.body, token));
+    res.json(await createSandboxShipment(req.body, token));
   } catch (error) {
     if (error instanceof SandboxShipmentError) return res.status(error.status).json({ success: false, error: error.message });
     console.error("Falha de comunicação com o Melhor Envio Sandbox:", error);

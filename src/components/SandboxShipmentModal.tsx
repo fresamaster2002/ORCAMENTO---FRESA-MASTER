@@ -38,15 +38,19 @@ const initialSender: SenderData = {
   neighborhood: 'Jardim Santo Antonio',
   city: 'Salto',
   state: 'SP',
-  cep: '13321-472',
+  cep: '13329-350',
 };
 
 const SENDER_STORAGE_KEY = 'fresa_master_sender_v2';
+const PREVIOUS_DEFAULT_SENDER_CEP = '13321472';
 
 function loadSender(): SenderData {
   try {
     const saved = localStorage.getItem(SENDER_STORAGE_KEY);
-    return saved ? { ...initialSender, ...JSON.parse(saved) } : initialSender;
+    if (!saved) return initialSender;
+    const sender = { ...initialSender, ...JSON.parse(saved) };
+    if (sender.cep.replace(/\D/g, '') === PREVIOUS_DEFAULT_SENDER_CEP) sender.cep = initialSender.cep;
+    return sender;
   } catch {
     return initialSender;
   }
@@ -97,9 +101,9 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
         body: JSON.stringify({ quote, sender, sandboxToken: sandboxToken.trim() || undefined }),
       });
       const result = await response.json();
-      if (!response.ok || !result.success || !result.option) throw new Error(result.error || 'Não foi possível cotar o Sedex no Sandbox.');
+      if (!response.ok || !result.success || !result.option) throw new Error(result.error || 'Não foi possível cotar a modalidade selecionada no Sandbox.');
       onQuoted(result.originCep, result.option);
-      setConnectionMessage('Sedex cotado diretamente no Sandbox. Origem e valor atualizados somente neste orçamento; nenhuma etiqueta criada.');
+      setConnectionMessage(`${result.option.name} cotado diretamente no Sandbox. Origem e valor atualizados somente neste orçamento; nenhuma etiqueta criada.`);
     } catch (quoteError) {
       setError(quoteError instanceof Error ? quoteError.message : 'Falha ao cotar o frete Sandbox.');
     } finally {
@@ -386,9 +390,9 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
             {isTestingConnection ? 'Testando Sandbox...' : 'Testar conexão Sandbox'}
           </button>
           <button type="button" onClick={quoteSandbox} disabled={isBusy || Boolean(quote.bling?.orderId || quote.sandboxShipment?.id)} className="ml-2 rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
-            {isQuoting ? 'Cotando Sandbox...' : 'Cotar Sedex no Sandbox'}
+            {isQuoting ? 'Cotando Sandbox...' : `Cotar ${quote.shipping.selectedOption?.name || 'modalidade selecionada'} no Sandbox`}
           </button>
-          <p className="text-xs text-slate-600">Atualiza a origem pelo CEP do remetente e o frete deste orçamento com uma cotação de teste, sem estimativas. Use um orçamento separado, sem pedido vinculado no Bling.</p>
+          <p className="text-xs text-slate-600">Cota no Sandbox a modalidade selecionada (Sedex, PAC ou Jadlog), atualizando a origem pelo CEP do remetente e o frete deste orçamento, sem estimativas. Use um orçamento separado, sem pedido vinculado no Bling.</p>
           {connectionMessage && <p role="status" className="text-sm text-emerald-800">{connectionMessage}</p>}
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Chave de acesso da NF-e (44 dígitos) *</span>

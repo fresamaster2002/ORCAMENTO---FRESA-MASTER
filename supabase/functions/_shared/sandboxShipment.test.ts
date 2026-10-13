@@ -54,6 +54,35 @@ test('cota Sedex somente no Sandbox pela origem do remetente, sem exigir NF-e ne
   assert.equal(result.option.isRealTimeMelhorEnvio, true);
   assert.equal(result.environment, 'sandbox');
 });
+test('cota no Sandbox a modalidade selecionada quando a opção ainda não tem ID oficial', async (t) => {
+  const rates = [
+    { id: 2, name: 'SEDEX', price: '18.50', delivery_time: 2 },
+    { id: 1, name: 'PAC', price: '12.50', delivery_time: 5 },
+    { id: 3, name: 'Jadlog.Package', price: '10.50', delivery_time: 4 },
+  ];
+  for (const expected of [
+    { service: 'SEDEX', id: 2, price: 18.5 },
+    { service: 'PAC', id: 1, price: 12.5 },
+    { service: 'JADLOG_PACKAGE', id: 3, price: 10.5 },
+  ]) {
+    await t.test(expected.service, async (subtest) => {
+      const d = input();
+      const quote = {
+        ...d.quote,
+        shipping: { ...d.quote.shipping, selectedOption: { service: expected.service } },
+      };
+      subtest.mock.method(globalThis, 'fetch', async (_url: RequestInfo | URL, options?: RequestInit) => {
+        assert.equal(JSON.parse(String(options?.body)).services, '1,2,3,4,17');
+        return Response.json(rates);
+      });
+      const result = await quoteSandboxShipment({ quote, sender: d.sender }, 'sandbox-test');
+      assert.equal(result.option.service, expected.service);
+      assert.equal(result.option.melhorEnvioServiceId, expected.id);
+      assert.equal(result.option.price, expected.price);
+      subtest.mock.restoreAll();
+    });
+  }
+});
 test('cotação Sandbox rejeita token ausente, pacote inválido e preço inválido sem estimativas', async (t) => {
   await assert.rejects(quoteSandboxShipment(input(), ''), /SANDBOX_TOKEN/);
   const d = input();

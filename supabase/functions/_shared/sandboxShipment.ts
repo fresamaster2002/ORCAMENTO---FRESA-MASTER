@@ -153,6 +153,14 @@ export async function quoteSandboxShipment(input: Data, token: string) {
   if (!token) throw new SandboxShipmentError('Informe o token Sandbox ou configure MELHOR_ENVIO_SANDBOX_TOKEN no backend.', 401);
   const quote = object(input.quote);
   const shipping = object(quote.shipping);
+  const selectedOption = object(shipping.selectedOption);
+  const service = text(selectedOption.service);
+  if (!['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(service)) {
+    throw new SandboxShipmentError('Selecione Sedex, PAC ou Jadlog antes de cotar no Sandbox.');
+  }
+  const selectedServiceId = Number(selectedOption.melhorEnvioServiceId);
+  const hasSelectedServiceId = Number.isInteger(selectedServiceId) && [1, 2, 3, 4, 17].includes(selectedServiceId);
+  const fallbackServiceId = service === 'SEDEX' ? 2 : service === 'PAC' ? 1 : 3;
   const originCep = digits(object(input.sender).cep);
   const destinationCep = digits(shipping.destinationCep);
   if (originCep.length !== 8 || destinationCep.length !== 8) throw new SandboxShipmentError('Confira os CEPs do remetente e da entrega antes de cotar.');
@@ -166,16 +174,23 @@ export async function quoteSandboxShipment(input: Data, token: string) {
   const rates = await request(token, '/me/shipment/calculate', 'POST', {
     from: { postal_code: originCep }, to: { postal_code: destinationCep }, package: volume,
     options: { insurance_value: shipping.insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
-    services: '2',
+    services: hasSelectedServiceId ? String(selectedServiceId) : '1,2,3,4,17',
   });
-  const rate = (Array.isArray(rates) ? rates : [rates]).map(object).find((r) => Number(r.id) === 2);
-  if (!rate || rate.error) throw new SandboxShipmentError(text(rate?.error) || 'Sedex indisponível para essa rota no Sandbox.', 422);
+  const rate = (Array.isArray(rates) ? rates : [rates]).map(object).find((candidate) => {
+    if (hasSelectedServiceId) return Number(candidate.id) === selectedServiceId;
+    if (Number(candidate.id) === fallbackServiceId) return true;
+    const label = `${text(candidate.name)} ${text(object(candidate.company).name)}`.toLowerCase();
+    return service === 'SEDEX' ? label.includes('sedex')
+      : service === 'PAC' ? label.includes('pac')
+        : label.includes('jadlog') && label.includes('package');
+  });
+  if (!rate || rate.error) throw new SandboxShipmentError(text(rate?.error) || `${service} indisponível para essa rota no Sandbox.`, 422);
   const price = Number(rate.custom_price ?? rate.price);
   const deliveryDays = Number(rate.custom_delivery_time ?? rate.delivery_time);
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(deliveryDays) || deliveryDays < 0) throw new SandboxShipmentError('A cotação Sandbox retornou preço ou prazo inválido.', 502);
   return {
     success: true, environment: 'sandbox', originCep, destinationCep,
-    option: { service: 'SEDEX', melhorEnvioServiceId: 2, name: 'SEDEX (Melhor Envio Sandbox)', carrier: 'Correios',
+    option: { service, melhorEnvioServiceId: Number(rate.id), name: `${text(rate.name) || service} (Melhor Envio Sandbox)`, carrier: service === 'JADLOG_PACKAGE' ? 'Jadlog' : 'Correios',
       price, deliveryDays, selected: true, insuranceIncluded: Boolean(shipping.insuranceEnabled),
       insuranceCost: 0, isRealTimeMelhorEnvio: true },
   };

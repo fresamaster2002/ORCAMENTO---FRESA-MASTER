@@ -98,6 +98,26 @@ test('preserva dimensões personalizadas no carrinho', () => {
   data.quote.shipping.packageDimensions = { height: 12, width: 20, length: 30 };
   assert.deepEqual(buildSandboxShipment(data).volumes, [{ height: 12, width: 20, length: 30, weight: 0.5 }]);
 });
+test('aceita Sedex, PAC ou Jadlog selecionados mesmo sem ID prévio nem cotação online', () => {
+  const d = input();
+  const sedex = buildSandboxShipment({
+    ...d,
+    quote: { ...d.quote, shipping: { ...d.quote.shipping, selectedOption: { service: 'SEDEX', price: 25 } } },
+  });
+  assert.equal(sedex.service, 2);
+
+  const pac = buildSandboxShipment({
+    ...d,
+    quote: { ...d.quote, shipping: { ...d.quote.shipping, selectedOption: { service: 'PAC', price: 18 } } },
+  });
+  assert.equal(pac.service, 1);
+
+  const jadlog = buildSandboxShipment({
+    ...d,
+    quote: { ...d.quote, shipping: { ...d.quote.shipping, selectedOption: { service: 'JADLOG_PACKAGE', price: 15 } } },
+  });
+  assert.equal(jadlog.service, 3);
+});
 test('recusa série diferente, DV inválido, outro emissor, IE ausente e rota divergente', () => {
   const d = input();
   assert.throws(() => buildSandboxShipment({ ...d, invoiceKey: invoiceKey('001') }), /série 2/);

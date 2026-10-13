@@ -90,7 +90,7 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
   const allMissing = [...missing, ...(routeMismatch ? ['O CEP do remetente difere da origem cotada. Corrija a origem e recalcule o frete antes de criar o envio.'] : [])];
 
   const quoteSandbox = async () => {
-    if (operationLock.current || quote.bling?.orderId || quote.sandboxShipment?.id) return;
+    if (operationLock.current || quote.sandboxShipment?.id) return;
     operationLock.current = true;
     setIsQuoting(true);
     setError(null);
@@ -389,10 +389,10 @@ export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShi
           <button type="button" onClick={testConnection} disabled={isBusy} className="rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
             {isTestingConnection ? 'Testando Sandbox...' : 'Testar conexão Sandbox'}
           </button>
-          <button type="button" onClick={quoteSandbox} disabled={isBusy || Boolean(quote.bling?.orderId || quote.sandboxShipment?.id)} className="ml-2 rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
+          <button type="button" onClick={quoteSandbox} disabled={isBusy || Boolean(quote.sandboxShipment?.id)} className="ml-2 rounded-md border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
             {isQuoting ? 'Cotando Sandbox...' : `Cotar ${quote.shipping.selectedOption?.name || 'modalidade selecionada'} no Sandbox`}
           </button>
-          <p className="text-xs text-slate-600">Cota no Sandbox a modalidade selecionada (Sedex, PAC ou Jadlog), atualizando a origem pelo CEP do remetente e o frete deste orçamento, sem estimativas. Use um orçamento separado, sem pedido vinculado no Bling.</p>
+          <p className="text-xs text-slate-600">Cota no Sandbox a modalidade selecionada (Sedex, PAC ou Jadlog), atualizando a origem pelo CEP do remetente e o frete deste orçamento com valor e prazo oficiais do Sandbox.</p>
           {connectionMessage && <p role="status" className="text-sm text-emerald-800">{connectionMessage}</p>}
           <label className="block space-y-1 text-xs font-semibold text-slate-700">
             <span>Chave de acesso da NF-e (44 dígitos) *</span>

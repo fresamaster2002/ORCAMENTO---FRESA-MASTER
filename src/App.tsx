@@ -741,28 +741,21 @@ export default function App() {
   const invoiceRequired = ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(
     quote.shipping.selectedOption?.service || ''
   );
+  const isEligibleSandboxService = Boolean(
+    quote.shipping.selectedOption &&
+    ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(quote.shipping.selectedOption.service)
+  );
   const canCreateSandboxShipment = Boolean(
-    quote.status === 'approved' &&
-      quote.shipping.selectedOption &&
-      ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(quote.shipping.selectedOption.service) &&
-      quote.shipping.selectedOption.melhorEnvioServiceId
+    quote.status === 'approved' && isEligibleSandboxService
   );
 
   const sandboxMissing: string[] = [];
   if (quote.status !== 'approved') sandboxMissing.push('Marcar o pedido como aprovado (botão "Pedido aprovado").');
   if (!quote.shipping.selectedOption) {
     sandboxMissing.push('Escolher uma opção de frete (Sedex, PAC ou Jadlog .Package).');
-  } else if (
-    !['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(quote.shipping.selectedOption.service) ||
-    !quote.shipping.selectedOption.melhorEnvioServiceId
-  ) {
-    sandboxMissing.push('Selecionar um frete cotado no Melhor Envio (Sedex, PAC ou Jadlog .Package).');
+  } else if (!isEligibleSandboxService) {
+    sandboxMissing.push('Selecionar uma modalidade compatível com o Melhor Envio (Sedex, PAC ou Jadlog .Package).');
   }
-
-  const hasSelectedLiveShipping = Boolean(
-    quote.shipping.selectedOption?.isRealTimeMelhorEnvio &&
-    quote.shipping.selectedOption.melhorEnvioServiceId
-  );
 
   if (!isSupabaseConfigured && import.meta.env.PROD) {
     return (
@@ -900,13 +893,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsSandboxShipmentOpen(true)}
-                  disabled={!quote.sandboxShipment && !hasSelectedLiveShipping}
+                  disabled={!quote.sandboxShipment && !isEligibleSandboxService}
                   className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Truck className="h-4 w-4" />
                   {quote.sandboxShipment ? 'Acompanhar / pagar no Sandbox' : 'Criar envio no Sandbox'}
                 </button>
-                {!quote.sandboxShipment && !hasSelectedLiveShipping && <span className="text-[10px] text-slate-500">Recalcule e selecione uma cotação oficial primeiro</span>}
+                {!quote.sandboxShipment && !isEligibleSandboxService && (
+                  <span className="text-[10px] text-slate-500">Selecione Sedex, PAC ou Jadlog primeiro</span>
+                )}
               </div>
             )}
             {quote.sandboxShipment && (

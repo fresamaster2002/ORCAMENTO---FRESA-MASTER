@@ -36,7 +36,13 @@ export function buildSandboxShipment(input: Data) {
   if (object(quote.sandboxShipment).id) throw new SandboxShipmentError('Este orçamento já possui envio de teste. Confira o carrinho Sandbox antes de repetir.', 409);
   const shipping = object(quote.shipping);
   const option = object(shipping.selectedOption);
-  if (option.isRealTimeMelhorEnvio !== true || !['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(text(option.service)) || ![1, 2, 3, 4, 17].includes(Number(option.melhorEnvioServiceId))) throw new SandboxShipmentError('Selecione um serviço oficial cotado do Melhor Envio antes de criar o envio.');
+  const service = text(option.service);
+  if (!['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(service)) {
+    throw new SandboxShipmentError('Selecione uma opção de frete compatível com o Melhor Envio (Sedex, PAC ou Jadlog .Package) antes de criar o envio.');
+  }
+  const defaultServiceId = service === 'SEDEX' ? 2 : service === 'PAC' ? 1 : 3;
+  const rawServiceId = Number(option.melhorEnvioServiceId);
+  const serviceId = [1, 2, 3, 4, 17].includes(rawServiceId) ? rawServiceId : defaultServiceId;
   const key = digits(input.invoiceKey);
   if (key.length !== 44 || key.slice(20, 22) !== '55' || Number(key.slice(22, 25)) !== 2) throw new SandboxShipmentError('Informe a chave de 44 dígitos de uma NF-e modelo 55, série 2.');
   let sum = 0;
@@ -68,7 +74,7 @@ export function buildSandboxShipment(input: Data) {
   const subtotal = products.reduce((sum, p) => sum + p.quantity * p.unitary_value, 0);
   const insuranceValue = shipping.insuranceEnabled ? subtotal : 0;
   return {
-    service: Number(option.melhorEnvioServiceId), from, to, products, volumes: [volume],
+    service: serviceId, from, to, products, volumes: [volume],
     options: { insurance_value: insuranceValue, receipt: false, own_hand: false, reverse: false, non_commercial: false,
       invoice: { key }, platform: 'Fresa Master', tags: [{ tag: text(quote.id), url: null }] },
   };

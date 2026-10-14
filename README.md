@@ -8,6 +8,14 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 - Supabase Edge Function para APIs de IA, Bling e Melhor Envio
 - GitHub Pages para hospedar a interface
 
+## Retomar o trabalho ao reabrir
+
+Cada alteração do orçamento é gravada imediatamente neste navegador, separada por conta, antes da sincronização com o Supabase. Ao reabrir, o app retoma o orçamento ativo (não apenas o último da lista), o texto do comando rápido, a edição do cliente, a janela aberta, a aba e o texto cadastral do Bling, a chave de NF-e digitada para o Sandbox e a posição da página. Orçamentos alterados antes de trocar para outro ficam na fila de sincronização; falhas na nuvem não apagam os rascunhos locais nem os substituem por um orçamento vazio. A renovação do login não recarrega o orçamento nem descarta edições.
+
+O salvamento na nuvem continua automático e também pode ser solicitado em **Salvar**. Falhas de armazenamento/sincronização aparecem na tela. Se a leitura inicial da nuvem falhar, a sincronização fica pausada para evitar sobrescrever dados; reabra com conexão. Entre dispositivos, apenas dados já sincronizados na nuvem estão disponíveis. O ponto da tela e rascunhos pendentes são próprios do navegador; limpar seus dados ou usar navegação privada pode removê-los.
+
+Senhas, novos tokens Sandbox, arquivos anexados ainda não processados e confirmações de emissão/pagamento não são guardados nessa sessão. Reabrir uma tela não transmite NF-e, cria envio nem repete pagamento automaticamente.
+
 ## Pacote padrão e descrição das ferramentas
 
 Novos orçamentos usam **7 cm de altura × 12 cm de largura × 17 cm de comprimento**. Em **Cálculo de Frete & Logística > Configurações**, altere as três medidas e clique em **Aplicar medidas** para recalcular, ou use **Padrão 7 × 12 × 17 cm** para restaurar. Medidas explícitas de orçamentos já salvos são preservadas; confira-as antes de cotar um envio novo.

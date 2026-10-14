@@ -40,6 +40,8 @@ interface QuoteFormProps {
   onChange: (updatedQuote: QuoteData) => void;
   onPreview: () => void;
   onOpenBling: () => void;
+  isEditingClient: boolean;
+  onEditingClientChange: (editing: boolean) => void;
 }
 
 export const QuoteForm: React.FC<QuoteFormProps> = ({
@@ -47,10 +49,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   onChange,
   onPreview,
   onOpenBling,
+  isEditingClient,
+  onEditingClientChange: setIsEditingClient,
 }) => {
   const [isCadastralModalOpen, setIsCadastralModalOpen] = useState(false);
   const [isBlingCatalogModalOpen, setIsBlingCatalogModalOpen] = useState(false);
-  const [isEditingClient, setIsEditingClient] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [liveBlingCatalog, setLiveBlingCatalog] = useState<BlingCatalogProduct[] | null>(null);
   const [isLoadingBlingCatalog, setIsLoadingBlingCatalog] = useState(false);

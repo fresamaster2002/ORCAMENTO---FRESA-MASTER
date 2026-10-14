@@ -24,6 +24,8 @@ interface SandboxShipmentModalProps {
   onClose: () => void;
   onUpdateShipment: (shipment: NonNullable<QuoteData['sandboxShipment']>) => Promise<void>;
   onQuoted: (originCep: string, option: ShippingOption) => void;
+  invoiceKey: string;
+  onInvoiceKeyChange: (key: string) => void;
 }
 
 const initialSender: SenderData = {
@@ -71,9 +73,8 @@ const fields: Array<{ key: keyof SenderData; label: string; required?: boolean }
   { key: 'cep', label: 'CEP', required: true },
 ];
 
-export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShipment, onQuoted }: SandboxShipmentModalProps) {
+export function SandboxShipmentModal({ quote, missing = [], onClose, onUpdateShipment, onQuoted, invoiceKey, onInvoiceKeyChange: setInvoiceKey }: SandboxShipmentModalProps) {
   const [sender, setSender] = useState(loadSender);
-  const [invoiceKey, setInvoiceKey] = useState(() => quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : '');
   const [sandboxToken, setSandboxToken] = useState('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);

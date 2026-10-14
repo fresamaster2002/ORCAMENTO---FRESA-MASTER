@@ -16,6 +16,8 @@ import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
 import { allowedAdminEmail, isSupabaseConfigured, supabase } from './supabase';
 import { extractCepFromText, extractDiscountAmountFromText, extractUnitPricesFromText, extractMotoboyPriceFromText, extractQuantityFromText } from './quoteParsing';
+import { useWorkspaceSession } from './useWorkspaceSession';
+import type { WorkspaceView } from './workspaceSession';
 
 const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
   id: 'FM-849201',
@@ -191,7 +193,7 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
 
   const defaults = createEmptyQuote();
   const items = (Array.isArray(saved.items) ? saved.items : []).map((item: Record<string, any>, index: number) => {
-    const quantity = Number(item.quantity) || 1;
+    const quantity = Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : 1;
     const unitPrice = Number(item.unitPrice) || 0;
     return {
       ...item,
@@ -358,17 +360,21 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
 };
 
 export default function App() {
-  const [quote, setQuote] = useState<QuoteData>(INITIAL_FRESA_MASTER_QUOTE);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
-  const [isCloudReady, setIsCloudReady] = useState(!isSupabaseConfigured);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState(allowedAdminEmail);
   const [authPassword, setAuthPassword] = useState('');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
-  const [recentQuotes, setRecentQuotes] = useState<QuoteData[]>([]);
-  const [cloudSaveState, setCloudSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const {
+    quote, setQuote, recentQuotes, setRecentQuotes, view, setView, ready: isCloudReady,
+    status: cloudSaveState, error: persistenceError,
+    saveNow, persistQuote, forgetQuote,
+  } = useWorkspaceSession(
+    supabaseUser?.email?.toLowerCase() === allowedAdminEmail ? supabaseUser.id : null,
+    INITIAL_FRESA_MASTER_QUOTE, normalizeSavedQuote, createEmptyQuote,
+  );
   const [isExtracting, setIsExtracting] = useState(false);
   const [transcribedText, setTranscribedText] = useState<string>('');
   const [summary, setSummary] = useState<string | undefined>(
@@ -379,11 +385,19 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Modals
-  const [isApiDocsOpen, setIsApiDocsOpen] = useState(false);
-  const [isProposalOpen, setIsProposalOpen] = useState(false);
-  const [isBlingOpen, setIsBlingOpen] = useState(false);
-  const [isSandboxShipmentOpen, setIsSandboxShipmentOpen] = useState(false);
-  const [isSavedQuotesOpen, setIsSavedQuotesOpen] = useState(false);
+  const isApiDocsOpen = view.modal === 'api';
+  const isProposalOpen = view.modal === 'proposal';
+  const isBlingOpen = view.modal === 'bling';
+  const isSandboxShipmentOpen = view.modal === 'sandbox';
+  const isSavedQuotesOpen = view.modal === 'saved';
+  const toggleModal = (modal: WorkspaceView['modal'], open: boolean) => {
+    if (open || view.modal === modal) setView({ modal: open ? modal : 'home' });
+  };
+  const setIsApiDocsOpen = (open: boolean) => toggleModal('api', open);
+  const setIsProposalOpen = (open: boolean) => toggleModal('proposal', open);
+  const setIsBlingOpen = (open: boolean) => toggleModal('bling', open);
+  const setIsSandboxShipmentOpen = (open: boolean) => toggleModal('sandbox', open);
+  const setIsSavedQuotesOpen = (open: boolean) => toggleModal('saved', open);
 
   // Dark mode theme state (default: true for dark background)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -397,7 +411,6 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const user = session?.user || null;
       setSupabaseUser(user);
-      setIsCloudReady(!user);
       setIsPasswordRecovery(event === 'PASSWORD_RECOVERY');
       setIsAuthLoading(false);
     });
@@ -407,74 +420,26 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
-    if (!supabaseUser) {
-      setRecentQuotes([]);
-      setIsCloudReady(true);
-      return;
-    }
+    if (!supabaseUser) return;
 
     if (supabaseUser.email?.toLowerCase() !== allowedAdminEmail) {
       setAuthError(`Acesso permitido somente para ${allowedAdminEmail}.`);
-      setIsCloudReady(true);
       void supabase.auth.signOut();
       return;
     }
 
-    let active = true;
-    setIsCloudReady(false);
-    setAuthError(null);
-    void (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('quotes')
-          .select('quote')
-          .order('updated_at', { ascending: false })
-          .limit(500);
-        if (error) throw error;
-
-        const savedQuotes = (data || [])
-          .map((row) => normalizeSavedQuote(row.quote))
-          .filter((savedQuote): savedQuote is QuoteData => savedQuote !== null);
-        if (!active) return;
-        setRecentQuotes(savedQuotes);
-        setQuote(savedQuotes[0] || createEmptyQuote(savedQuotes.map((savedQuote) => savedQuote.id)));
-        setCloudSaveState(savedQuotes.length ? 'saved' : 'idle');
-      } catch (error: any) {
-        if (!active) return;
-        setAuthError(`Login concluído, mas não foi possível ler seus orçamentos no Supabase: ${error.message}`);
-        setCloudSaveState('error');
-        setQuote(createEmptyQuote());
-      } finally {
-        if (active) setIsCloudReady(true);
-      }
-    })();
-
-    return () => { active = false; };
   }, [supabaseUser]);
 
   useEffect(() => {
-    const database = supabase;
-    if (!isSupabaseConfigured || !database || !supabaseUser || !isCloudReady) return;
-    setCloudSaveState('saving');
-    const saveTimer = window.setTimeout(async () => {
-      try {
-        const { error } = await database.from('quotes').upsert({
-          id: quote.id,
-          owner_id: supabaseUser.id,
-          quote: JSON.parse(JSON.stringify(quote)),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'owner_id,id' });
-        if (error) throw error;
-        setRecentQuotes((current) => [quote, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
-        setCloudSaveState('saved');
-      } catch (error: any) {
-        setCloudSaveState('error');
-        setAuthError(`Não foi possível sincronizar o orçamento: ${error.message}`);
-      }
-    }, 800);
-
-    return () => window.clearTimeout(saveTimer);
-  }, [quote, supabaseUser, isCloudReady]);
+    if (!isCloudReady) return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo(0, view.scrollY));
+    const rememberScroll = () => setView({ scrollY: window.scrollY });
+    window.addEventListener('scroll', rememberScroll, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', rememberScroll);
+    };
+  }, [isCloudReady, setView]);
 
   useEffect(() => {
     localStorage.setItem('fresa_master_dark_mode', String(isDarkMode));
@@ -584,20 +549,9 @@ export default function App() {
   };
 
   const handleSaveNow = async () => {
-    if (!supabase || !supabaseUser) return;
-    setCloudSaveState('saving');
     try {
-      const { error } = await supabase.from('quotes').upsert({
-        id: quote.id,
-        owner_id: supabaseUser.id,
-        quote: JSON.parse(JSON.stringify(quote)),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'owner_id,id' });
-      if (error) throw error;
-      setRecentQuotes((current) => [quote, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
-      setCloudSaveState('saved');
+      await persistQuote(quote);
     } catch (error: any) {
-      setCloudSaveState('error');
       setAuthError(`Não foi possível salvar o orçamento: ${error.message}`);
     }
   };
@@ -606,31 +560,23 @@ export default function App() {
     const original = quote.id === quoteId ? quote : recentQuotes.find((saved) => saved.id === quoteId);
     if (!original) throw new Error('Não foi possível localizar o orçamento para salvar o vínculo do Bling.');
     const updated = { ...original, ...patch };
-    setQuote((current) => current.id === quoteId ? { ...current, ...patch } : current);
-    setRecentQuotes((current) => [updated, ...current.filter((saved) => saved.id !== quoteId)].slice(0, 500));
-    if (!supabase || !supabaseUser) throw new Error('O vínculo do Bling está na memória, mas é necessário entrar para salvá-lo na nuvem. Não repita a criação da venda.');
-    setCloudSaveState('saving');
-    const { error } = await supabase.from('quotes').upsert({
-      id: quoteId,
-      owner_id: supabaseUser.id,
-      quote: JSON.parse(JSON.stringify(updated)),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'owner_id,id' });
-    if (error) {
-      setCloudSaveState('error');
-      setAuthError(`Pedido/nota já criado no Bling, mas falhou o salvamento do vínculo: ${error.message}. Não repita a criação.`);
-      throw error;
-    }
-    setCloudSaveState('saved');
+    await persistQuote(updated);
+    if (!supabase || !supabaseUser) throw new Error('O vínculo do Bling foi salvo neste navegador, mas é necessário entrar para salvá-lo na nuvem. Não repita a criação da venda.');
   };
 
   const handleDeleteQuote = async (target: QuoteData) => {
     if (!supabase || !supabaseUser) return;
+    try {
+      await saveNow();
+    } catch {
+      return;
+    }
     const { error } = await supabase.from('quotes').delete().eq('id', target.id).eq('owner_id', supabaseUser.id);
     if (error) {
       setAuthError(`Não foi possível remover o orçamento: ${error.message}`);
       return;
     }
+    forgetQuote(target.id);
     const remaining = recentQuotes.filter((savedQuote) => savedQuote.id !== target.id);
     setRecentQuotes(remaining);
     if (target.id === quote.id) {
@@ -640,19 +586,11 @@ export default function App() {
   const barBtn = 'cursor-pointer rounded-md border border-slate-300 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_10px_rgba(255,106,0,0.55)] active:border-[#ff6a00] dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500';
 
   const openOnly = (target: 'proposal' | 'bling' | 'sandbox') => {
-    setIsApiDocsOpen(false);
-    setIsSavedQuotesOpen(false);
-    setIsProposalOpen(target === 'proposal');
-    setIsBlingOpen(target === 'bling');
-    setIsSandboxShipmentOpen(target === 'sandbox');
+    setView({ modal: target });
   };
 
   const handleGoHome = () => {
-    setIsApiDocsOpen(false);
-    setIsProposalOpen(false);
-    setIsBlingOpen(false);
-    setIsSandboxShipmentOpen(false);
-    setIsSavedQuotesOpen(false);
+    setView({ modal: 'home', scrollY: 0 });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -851,6 +789,11 @@ export default function App() {
             <span>{errorMessage}</span>
           </div>
         )}
+        {persistenceError && (
+          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+            {persistenceError}
+          </div>
+        )}
         {authError && supabaseUser && (
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
             {authError}
@@ -863,6 +806,8 @@ export default function App() {
           isLoading={isExtracting}
           summary={summary}
           externalText={transcribedText}
+          draftText={view.quickText}
+          onDraftChange={(quickText) => setView({ quickText })}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-900/60">
@@ -873,6 +818,8 @@ export default function App() {
         {/* Form with CNC Tools, Shipping Calculator & Totals */}
         <QuoteForm
           quote={quote}
+          isEditingClient={view.clientEditing}
+          onEditingClientChange={(clientEditing) => setView({ clientEditing })}
           onChange={(updated) => setQuote(updated)}
           onPreview={() => setIsProposalOpen(true)}
           onOpenBling={() => setIsBlingOpen(true)}
@@ -952,6 +899,10 @@ export default function App() {
         isOpen={isBlingOpen}
         onClose={() => setIsBlingOpen(false)}
         quote={quote}
+        activeTab={view.blingTab}
+        onTabChange={(blingTab) => setView({ blingTab })}
+        cadastralInput={view.cadastralDraft?.quoteId === quote.id ? view.cadastralDraft.text : ''}
+        onCadastralInputChange={(text) => setView({ cadastralDraft: { quoteId: quote.id, text } })}
         onUpdateClient={handleUpdateClientFromBling}
         onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
@@ -970,6 +921,10 @@ export default function App() {
       {isSandboxShipmentOpen && (
         <SandboxShipmentModal
           quote={quote}
+          invoiceKey={view.invoiceDraft?.quoteId === quote.id
+            ? view.invoiceDraft.key
+            : quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : ''}
+          onInvoiceKeyChange={(key) => setView({ invoiceDraft: { quoteId: quote.id, key } })}
           missing={sandboxMissing}
           onClose={() => setIsSandboxShipmentOpen(false)}
           onQuoted={(originCep, option) => {
@@ -984,21 +939,8 @@ export default function App() {
           }}
           onUpdateShipment={async (shipment) => {
             const updated = { ...quote, sandboxShipment: shipment };
-            setQuote((current) => current.id === quote.id ? { ...current, sandboxShipment: shipment } : current);
-            setRecentQuotes((current) => [updated, ...current.filter((savedQuote) => savedQuote.id !== quote.id)].slice(0, 500));
-            if (!supabase || !supabaseUser) throw new Error('O envio foi atualizado apenas nesta sessão. Entre na conta para salvar o estado do Sandbox antes de pagar.');
-            setCloudSaveState('saving');
-            const { error } = await supabase.from('quotes').upsert({
-              id: quote.id,
-              owner_id: supabaseUser.id,
-              quote: JSON.parse(JSON.stringify(updated)),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'owner_id,id' });
-            if (error) {
-              setCloudSaveState('error');
-              throw new Error(`Não foi possível salvar o estado do envio no orçamento: ${error.message}. O checkout não será enviado.`);
-            }
-            setCloudSaveState('saved');
+            await persistQuote(updated);
+            if (!supabase || !supabaseUser) throw new Error('O envio foi salvo neste navegador. Entre na conta para salvar o estado do Sandbox na nuvem antes de pagar.');
           }}
         />
       )}

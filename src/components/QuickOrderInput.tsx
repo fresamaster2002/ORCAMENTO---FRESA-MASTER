@@ -6,6 +6,8 @@ interface QuickOrderInputProps {
   isLoading: boolean;
   externalText?: string;
   summary?: string;
+  draftText: string;
+  onDraftChange: (text: string) => void;
 }
 
 const PRESETS = [
@@ -32,11 +34,13 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
   isLoading,
   externalText,
   summary,
+  draftText,
+  onDraftChange,
 }) => {
-  const [text, setText] = useState(
-    externalText ||
-      'Razão social do cliente Móveis Requinte Ltda, CEP 80010-000, serão 2 fresas de 3 cortes TCT por 140 cada, calcule o envio pelo melhor envio sedex.'
-  );
+  const text = draftText;
+  const draftChangeRef = useRef(onDraftChange);
+  draftChangeRef.current = onDraftChange;
+  const setText = (value: string) => draftChangeRef.current(value);
   const [isRecording, setIsRecording] = useState(false);
   const [hasSpeechSupport, setHasSpeechSupport] = useState(true);
   const recognitionRef = useRef<any>(null);

@@ -37,6 +37,7 @@ import {
   Layers
 } from 'lucide-react';
 import { QuoteData, ClientInfo, BlingNfe } from '../types';
+import type { WorkspaceView } from '../workspaceSession';
 
 interface BlingIntegrationModalProps {
   isOpen: boolean;
@@ -46,6 +47,10 @@ interface BlingIntegrationModalProps {
   onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items'], client?: ClientInfo) => Promise<void>;
   onUpdateItems: (quoteId: string, items: QuoteData['items']) => Promise<void>;
   onContinueShipping: () => void;
+  activeTab: WorkspaceView['blingTab'];
+  onTabChange: (tab: WorkspaceView['blingTab']) => void;
+  cadastralInput: string;
+  onCadastralInputChange: (text: string) => void;
 }
 
 export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
@@ -56,6 +61,10 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   onUpdateBling,
   onUpdateItems,
   onContinueShipping,
+  activeTab,
+  onTabChange: setActiveTab,
+  cadastralInput,
+  onCadastralInputChange: setCadastralInput,
 }) => {
   // Bling API Token State
   const DEFAULT_BLING_TOKEN = '';
@@ -93,7 +102,6 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [syncedProducts, setSyncedProducts] = useState<any[] | null>(null);
 
   // Cadastral Input State
-  const [cadastralInput, setCadastralInput] = useState('');
   const [attachedDoc, setAttachedDoc] = useState<{
     name: string;
     size: number;
@@ -107,14 +115,12 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [blingXml, setBlingXml] = useState('');
   const [blingJson, setBlingJson] = useState<any>(null);
   const [payloadError, setPayloadError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'direct' | 'app_register' | 'cadastral' | 'products' | 'xml' | 'json' | 'manual'>('direct');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
   const readinessIssues = blingReadinessIssues({ ...quote, client: clientData }, { checkFiscalReview: true });
   const orderChanged = blingOrderChanged({ ...quote, client: clientData });
 
   useEffect(() => {
-    if (isOpen) setActiveTab('direct');
     setShowNfeReview(false);
     const saved = quote.bling;
     setOrderResult(saved?.orderId ? { orderId: saved.orderId, orderNumber: saved.orderNumber || saved.orderId, orderUrl: saved.orderUrl } : null);

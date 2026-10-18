@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
+import { cadastralWarnings, readCadastralDocument } from '../cadastralDocument';
 import { 
   Sparkles, 
   X, 
@@ -67,49 +68,19 @@ CEP: 80010-000
 E-mail Fiscal (XML/DANFE): fiscal@moveisrequinte.com.br
 Telefone/WhatsApp: (41) 98888-5544`;
 
-  const handleFileProcess = (file: File) => {
-    // Check type: images (png, jpg, jpeg, webp) or PDF
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      setErrorMessage('Formato inválido. Anexe uma imagem (JPG, PNG, WEBP) ou PDF do Cartão CNPJ.');
-      return;
-    }
-
-    // Max 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      setErrorMessage('O arquivo deve ter no máximo 10MB.');
-      return;
-    }
-
+  const handleFileProcess = async (file: File) => {
     setErrorMessage(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const resultStr = e.target?.result as string;
-      const isImage = file.type.startsWith('image/');
-      const finish = (base64: string, type: string) => setAttachedDoc({
-        name: file.name,
-        size: file.size,
-        type,
-        base64,
-        previewUrl: isImage ? base64 : undefined,
-      });
-      if (!isImage) return finish(resultStr, file.type);
-      const img = new Image();
-      img.onload = () => {
-        const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return finish(resultStr, file.type);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        finish(canvas.toDataURL('image/jpeg', 0.88), 'image/jpeg');
-      };
-      img.onerror = () => finish(resultStr, file.type);
-      img.src = resultStr;
-    };    reader.readAsDataURL(file);
+    setAttachedDoc(null);
+    setExtractedPreview(null);
+    setApplyState('idle');
+    setStatusMessage(null);
+    if (textFromAi) setInputText('');
+    setTextFromAi(false);
+    try {
+      setAttachedDoc(await readCadastralDocument(file));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível ler o arquivo.');
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -140,18 +111,12 @@ Telefone/WhatsApp: (41) 98888-5544`;
     setStatusMessage(null);
 
     try {
-      const payload: any = {
+      const payload = {
         text: inputText,
-        currentClient: attachedDoc && !(textFromAi && inputText.trim()) ? {} : (extractedPreview || currentClient),
+        file: attachedDoc && !textFromAi ? {
+          base64: attachedDoc.base64, mimeType: attachedDoc.type, fileName: attachedDoc.name,
+        } : undefined,
       };
-
-      if (attachedDoc && !(textFromAi && inputText.trim())) {
-        payload.file = {
-          base64: attachedDoc.base64,
-          mimeType: attachedDoc.type,
-          fileName: attachedDoc.name,
-        };
-      }
 
       const res = await apiFetch('/api/bling/extract-cadastral', {
         method: 'POST',
@@ -160,23 +125,22 @@ Telefone/WhatsApp: (41) 98888-5544`;
       });
 
       const data = await res.json();
-      if (data.success && data.client) {
+      if (res.ok && data.success && data.client) {
         setStatusMessage('Dados lidos. Consultando a IE pelo CNPJ quando ausente...');
         const completed = await completeMissingIe(data.client, apiFetch);
         setExtractedPreview(completed.client);
         setInputText(clientToText(completed.client));
         setTextFromAi(true);
         setStatusMessage(
-          (attachedDoc
-            ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso pela IA!'
-            : data.summary || 'Dados cadastrais identificados pela IA!') + ' ' + completed.warnings.join(' ')
+          (data.summary || 'Dados cadastrais lidos. Confira antes de aplicar.') + ' ' +
+          [...cadastralWarnings(data.warnings), ...completed.warnings].join(' ')
         );
       } else {
         setErrorMessage(data.error || 'Não foi possível extrair os dados cadastrais.');
       }
     } catch (err: any) {
       console.error('Erro na extração cadastral:', err);
-      setErrorMessage('Falha ao comunicar com o serviço de extração de dados.');
+      setErrorMessage(err instanceof Error ? err.message : 'Falha ao comunicar com o serviço de extração de dados.');
     } finally {
       setIsProcessing(false);
     }
@@ -187,7 +151,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
     `Nome Fantasia: ${c.tradeName || ''}`,
     `CNPJ/CPF: ${c.document || ''}`,
     `Inscrição Estadual: ${c.ie || ''}`,
-    `Endereço: ${c.address || ''}, ${c.number || 'S/N'}${c.complement ? ' - ' + c.complement : ''}`,
+    `Endereço: ${c.address || ''}, ${c.number || ''}${c.complement ? ' - ' + c.complement : ''}`,
     `Bairro: ${c.neighborhood || ''}`,
     `Cidade: ${c.city || ''} - ${c.state || ''}`,
     `CEP: ${c.cep || ''}`,
@@ -256,11 +220,11 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   Leitor de Dados Cadastrais com IA
                 </h3>
                 <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white/20 text-amber-100 border border-white/30">
-                  Cartão CNPJ & Texto
+                  Cartão CNPJ / Ficha cadastral
                 </span>
               </div>
               <p className="text-xs text-amber-100">
-                Anexe o Cartão CNPJ (foto, PDF ou print) ou cole o texto do cliente para a IA ler e preencher todos os dados
+                Anexe o Cartão CNPJ ou uma ficha cadastral do cliente (PDF, foto ou print), ou cole os dados. Confira os campos e os avisos antes de aplicar.
               </p>
             </div>
           </div>
@@ -284,9 +248,9 @@ Telefone/WhatsApp: (41) 98888-5544`;
               <div className="flex items-center justify-between mb-1.5">
                 <label className="font-bold text-slate-800 flex items-center gap-1.5">
                   <Paperclip className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Anexar Cartão CNPJ (Foto / PDF):</span>
+                  <span>Anexar Cartão CNPJ ou ficha cadastral:</span>
                 </label>
-                <span className="text-[10px] font-medium text-slate-400">PDF, JPG, PNG até 10MB</span>
+                <span className="text-[10px] font-medium text-slate-400">PDF, JPG, PNG, WEBP até 6 MB</span>
               </div>
 
               {!attachedDoc ? (
@@ -319,7 +283,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     Clique para selecionar ou arraste o arquivo
                   </span>
                   <span className="text-[11px] text-slate-500">
-                    Foto do celular, PDF da Receita Federal ou print do WhatsApp
+                    PDF da Receita, ficha do cliente, foto legível ou print do WhatsApp
                   </span>
                 </div>
               ) : (
@@ -428,14 +392,14 @@ E-mail fiscal: fiscal@cliente.com.br"
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>
-                    {attachedDoc ? 'IA lendo Cartão CNPJ e dados...' : 'IA lendo dados cadastrais...'}
+                    {attachedDoc ? 'IA lendo e conferindo documento...' : 'IA lendo dados cadastrais...'}
                   </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
                   <span>
-                    {attachedDoc ? 'Ler Cartão CNPJ com IA' : 'Ler e Extrair com IA'}
+                    {attachedDoc ? 'Ler documento com IA' : 'Ler e Extrair com IA'}
                   </span>
                 </>
               )}

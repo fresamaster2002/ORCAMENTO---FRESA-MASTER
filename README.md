@@ -38,6 +38,14 @@ O recurso usa `/api/shipping/extract-delivery` no Express e `/shipping/extract-d
 
 ## Consulta cadastral por CNPJ
 
+### Leitura de PDF, foto e ficha cadastral
+
+As duas telas usam a mesma leitura estruturada para Cartão CNPJ e fichas criadas pelo cliente, inclusive tabelas e PDFs multipágina. Imagens são enviadas na qualidade original, sem redução automática que apague letras pequenas. O limite é **6 MB por arquivo** (PDF/JPG/PNG/WEBP) e **12.000 caracteres de texto**.
+
+A IA extrai campos com trechos de origem, distingue cliente de fornecedor/contador e cadastro fiscal de endereço de entrega, prioriza o contato de faturamento e faz uma segunda conferência para anexos. CPF/CNPJ, CEP, UF, e-mail e telefone passam por validação; dados ausentes, contraditórios ou inválidos ficam em branco com aviso, sem inventar IE, “ISENTO”, “S/N” ou reaproveitar cadastro de outro cliente. Arquivo ilegível, resposta truncada, indisponibilidade da IA e múltiplos clientes sem identificação explícita não produzem um cadastro de sucesso fictício.
+
+A leitura não substitui o endereço ou contato do documento por informações de uma consulta pública. A consulta por CNPJ continua separada, e a complementação de IE conserva os dados expressos com aviso de divergências. No Bling, o cadastro permanece aberto para conferência após a leitura. A IA não garante acerto em arquivos ilegíveis: confira antes de aplicar/emissão. Para disponibilizar a melhoria, publique frontend e Edge Function `api`.
+
 Na janela **Preencher c/ IA (Cartão CNPJ)** e na aba cadastral do Bling, informe o CNPJ para consultar os dados públicos da empresa e, quando disponível, uma Inscrição Estadual ativa correspondente à UF do estabelecimento. O recurso usa `/api/bling/lookup-cnpj` no Express e `/bling/lookup-cnpj` na Edge Function, consultando BrasilAPI e CNPJ.ws no backend. Para disponibilizá-lo no app publicado, publique a versão atualizada da função `api` no Supabase.
 
 Confira os dados retornados antes de emitir a NF-e. A consulta pode não localizar uma IE ou estar desatualizada; nesses casos, o campo fica em branco e o app recomenda confirmação com o cliente/SEFAZ. A ausência de IE na consulta não significa que a empresa seja isenta. Informe a IE ou confirme manualmente a condição de isento antes do faturamento.

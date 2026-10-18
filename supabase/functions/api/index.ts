@@ -8,6 +8,7 @@ import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatu
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
+import { CadastralExtractionError, extractCadastralDocument } from '../_shared/cadastralExtraction.ts';
 
 type EdgeRuntime = {
   env: { get(name: string): string | undefined };
@@ -648,107 +649,13 @@ async function extractDelivery(body: JsonObject): Promise<Response> {
 }
 
 async function extractCadastral(body: JsonObject): Promise<Response> {
-  const text = typeof body.text === 'string' ? body.text : '';
-  const file = body.file || {};
-  if (!text.trim() && !file.base64) return json({ error: 'Texto ou documento com dados cadastrais é obrigatório.' }, 400);
-  if (text.length > 5000) return json({ error: 'O texto cadastral excede o limite de 5.000 caracteres.' }, 413);
-  if (typeof file.base64 === 'string' && file.base64.length > 9000000) return json({ error: 'O documento excede o limite de tamanho.' }, 413);
-  const schema = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, client: { type: 'OBJECT', properties: { name: { type: 'STRING' }, tradeName: { type: 'STRING' }, document: { type: 'STRING' }, ie: { type: 'STRING' }, email: { type: 'STRING' }, phone: { type: 'STRING' }, cep: { type: 'STRING' }, address: { type: 'STRING' }, number: { type: 'STRING' }, complement: { type: 'STRING' }, neighborhood: { type: 'STRING' }, city: { type: 'STRING' }, state: { type: 'STRING' } }, required: ['name'] } }, required: ['client', 'summary'] };
-  const prompt = `Leia com atenção TODO o documento/texto e extraia os dados fiscais brasileiros para cadastro no Bling. Se for Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral), retorne: NOME EMPRESARIAL em name, TÍTULO DO ESTABELECIMENTO (nome fantasia) em tradeName, número de inscrição (CNPJ) com 14 dígitos em document, LOGRADOURO em address, NÚMERO em number, COMPLEMENTO em complement, CEP em cep (formato 00000-000), BAIRRO/DISTRITO em neighborhood, MUNICÍPIO em city, UF em state, endereço eletrônico em email e telefone em phone. IE: use somente o número expresso no documento; se não estiver disponível, deixe string vazia e não presuma "ISENTO". Nunca deixe um campo vazio se a informação está no documento; se ela NÃO existir, deixe string vazia (não invente, não use "não informado" nem zeros). Texto adicional do operador: ${text || '(nenhum)'}`;
-  const parts: JsonObject[] = [];
-  if (file.base64 && file.mimeType) parts.push({ inlineData: { data: String(file.base64).replace(/^data:[^;]+;base64,/, ''), mimeType: file.mimeType } });
-  parts.push({ text: prompt });
-  let parsedObject: JsonObject | null = null;
-  const models = file.base64 ? ['gemini-3.6-flash', 'gemini-3.8-flash', env('GEMINI_MODEL', 'gemini-3.5-flash-lite')] : [env('GEMINI_MODEL', 'gemini-3.5-flash-lite'), 'gemini-3.6-flash', 'gemini-3.8-flash'];
-  const score = (o: JsonObject | null) => {
-    const c = (o?.client || {}) as JsonObject;
-    return (String(c.document || '').replace(/\D/g, '').length >= 11 ? 5 : 0) + ['name', 'cep', 'address', 'city', 'state'].filter((k) => String(c[k] || '').trim()).length;
-  };
-  for (const model of models) {
-    const parsed = await callGemini(parts, 'Você é especialista em dados cadastrais brasileiros para NF-e. Transcreva fielmente os dados do documento, sem aspas ou pontuação extra. Não invente informações.', schema, 3000, model);
-    if (parsed && typeof parsed === 'object' && parsed.client) {
-      if (!parsedObject) parsedObject = parsed;
-      else {
-        const base = parsedObject.client as JsonObject;
-        for (const [k, v] of Object.entries(parsed.client as JsonObject)) if (typeof v === 'string' && v.trim() && !String(base[k] || '').trim()) base[k] = v;
-      }
-      if (score(parsedObject) >= 8) break;
-    }
+  try {
+    return json(await extractCadastralDocument(body, { apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') }));
+  } catch (error) {
+    if (error instanceof CadastralExtractionError) return json({ success: false, error: error.message }, error.status);
+    console.error('Falha na leitura cadastral:', error);
+    return json({ success: false, error: 'Não foi possível ler o documento. Tente novamente com um PDF/foto legível.' }, 502);
   }
-  if (parsedObject?.client) {
-    for (const [k, v] of Object.entries(parsedObject.client as JsonObject)) if (typeof v === 'string') {
-      const cleaned = v.split(/\r?\n|==End/)[0].replace(/^[\s"'“”]+|[\s"'“”,;]+$/g, '');
-      const placeholder = /^(n[aã]o\s*informad[oa]|n\/?a|null|undefined|desconhecido|[0\s()-]+)$/i.test(cleaned) || /naoinformado|@email\.com$/i.test(cleaned);
-      (parsedObject.client as JsonObject)[k] = placeholder ? '' : cleaned;
-    }
-  }
-  if (parsedObject?.client) {
-    const current = body.currentClient || {};
-    const ai = parsedObject.client as JsonObject;
-    const client: JsonObject = { ...current };
-    for (const [key, value] of Object.entries(ai)) if (typeof value === 'string' && value.trim()) client[key] = value.trim();
-    const digits = String(client.document || '').replace(/\D/g, '');
-    if (digits.length === 14) {
-      client.document = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
-      try {
-        const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`, { headers: { 'User-Agent': 'Mozilla/5.0 FresaMaster', Accept: 'application/json' } });
-        let d: JsonObject | null = res.ok ? await res.json() : null;
-        if (!d) {
-          const alt = await fetch(`https://publica.cnpj.ws/cnpj/${digits}`, { headers: { 'User-Agent': 'Mozilla/5.0 FresaMaster' } });
-          if (alt.ok) {
-            const w = await alt.json();
-            const e = w.estabelecimento || {};
-            d = { razao_social: w.razao_social, nome_fantasia: e.nome_fantasia, cep: e.cep, descricao_tipo_de_logradouro: e.tipo_logradouro, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.cidade?.nome, uf: e.estado?.sigla, email: e.email, ddd_telefone_1: `${e.ddd1 || ''}${e.telefone1 || ''}` };
-          }
-        }
-        const words = (v: unknown) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !/^(ltda|eireli|epp|sa|me|com|industria|comercio|dos|das|del)$/.test(w));
-        const readWords = words(client.name).concat(words(client.tradeName));
-        const regWords = words(d?.razao_social).concat(words(d?.nome_fantasia));
-        const sameCompany = !readWords.length || readWords.some((w) => regWords.includes(w));
-        if (d && sameCompany) {
-          const cleanCep = String(d.cep || '').replace(/\D/g, '');
-          const title = (v: unknown) => String(v || '').trim();
-          const force = Boolean(file.base64);
-          const put = (key: string, value: string) => { if (value && (force || !client[key])) client[key] = value; };
-          put('name', title(d.razao_social));
-          put('tradeName', title(d.nome_fantasia) || String(client.name || ''));
-          if (cleanCep.length === 8) put('cep', `${cleanCep.slice(0, 5)}-${cleanCep.slice(5)}`);
-          put('address', [title(d.descricao_tipo_de_logradouro), title(d.logradouro)].filter(Boolean).join(' '));
-          put('number', title(d.numero));
-          put('complement', title(d.complemento));
-          put('neighborhood', title(d.bairro));
-          put('city', title(d.municipio));
-          put('state', title(d.uf));          if (!client.email && title(d.email)) client.email = title(d.email).toLowerCase();
-          if (!client.phone && title(d.ddd_telefone_1)) {
-            const p = title(d.ddd_telefone_1).replace(/\D/g, '');
-            client.phone = p.length >= 10 ? `(${p.slice(0, 2)}) ${p.slice(2, p.length - 4)}-${p.slice(-4)}` : p;
-          }
-        }
-      } catch { /* mantém os dados lidos pela IA */ }
-    }
-    const address = await lookupViaCep(String(client.cep || ''));
-    if (address) {
-      client.address ||= address.logradouro;
-      client.neighborhood ||= address.bairro;
-      client.city ||= address.cidade;
-      client.state ||= address.uf;
-    }
-    return json({ success: true, summary: parsedObject.summary, client });
-  }
-  if (file.base64 && !text.trim()) return json({ error: 'A IA não conseguiu ler o documento agora. Tente novamente ou cole o texto.' }, 502);  const cnpj = text.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || text.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
-  const cepMatch = text.match(/\bcep\b\s*:?\s*(\d{5}-?\d{3})/i) || text.match(/(?<![\d-])(\d{5}-\d{3})(?!\d)/);
-  const email = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  const name = text.match(/(?:raz[aã]o social|nome empresarial|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);
-  const tradeName = text.match(/(?:nome fantasia|fantasia)\s*:?\s*([^,\n\r]+)/i);
-  const phone = text.match(/(?:\+?55\s*)?\(?\b(\d{2})\)?\s*(9?\d{4})[-\s]?(\d{4})\b/);
-  const addressLine = text.match(/(?:endere[cç]o|logradouro)\s*:?\s*([^\n\r]+)/i)?.[1] || '';
-  const streetParts = addressLine.split(/\s*,\s*|\s+-\s+/).map((part) => part.trim()).filter(Boolean);
-  const streetNumber = addressLine.match(/,\s*(\d+[A-Za-z]?)\b|\s-\s*(\d+[A-Za-z]?)\b/);
-  const cityState = text.match(/([A-Za-zÀ-ú' ]{3,})\s*[-/]\s*([A-Z]{2})\b(?!\w)/);
-  const addressInfo = await lookupViaCep(cepMatch?.[1] || body.currentClient?.cep || '');
-  const current = body.currentClient || {};
-  const client = { ...current, name: name?.[1]?.trim() || current.name || 'Empresa Cliente Ltda', tradeName: tradeName?.[1]?.trim() || name?.[1]?.trim() || current.tradeName || '', document: cnpj?.[0] || current.document || '', ie: text.match(/(?:\bie\b|inscri[cç][aã]o estadual)\s*:?\s*([0-9.-]+|isento)/i)?.[1] || current.ie || '', cep: cepMatch?.[1] || current.cep || '', email: email?.[0] || current.email || '', phone: phone ? `(${phone[1]}) ${phone[2]}-${phone[3]}` : current.phone || '', address: addressInfo?.logradouro || streetParts[0] || current.address || '', number: streetNumber?.[1] || streetNumber?.[2] || current.number || '', complement: streetParts.find((part) => /galp[aã]o|sala|andar|bloco|apto|conj/i.test(part)) || current.complement || '', neighborhood: addressInfo?.bairro || streetParts.find((part) => /bairro|jardim|vila|distrito/i.test(part))?.replace(/^bairro\s*/i, '') || current.neighborhood || '', city: addressInfo?.cidade || cityState?.[1]?.trim() || current.city || '', state: addressInfo?.uf || cityState?.[2] || current.state || '' };
-  return json({ success: true, summary: 'Dados cadastrais extraídos pelo analisador local.', client });
 }
 
 function generateBlingPayload(quote: JsonObject): JsonObject {

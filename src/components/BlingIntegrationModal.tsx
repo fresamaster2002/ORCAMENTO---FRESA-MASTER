@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
+import { cadastralWarnings, readCadastralDocument } from '../cadastralDocument';
 import { NfeReviewModal } from './NfeReviewModal';
 import { NfeSuccessBanner } from './NfeSuccessBanner';
 import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
@@ -486,25 +487,14 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleCadastralFileUpload = (file: File) => {
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      setStatusMessage('Formato inválido. Selecione imagem (JPG/PNG) ou PDF do Cartão CNPJ.');
-      return;
+  const handleCadastralFileUpload = async (file: File) => {
+    setAttachedDoc(null);
+    setStatusMessage(null);
+    try {
+      setAttachedDoc(await readCadastralDocument(file));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Não foi possível ler o arquivo.');
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const resultStr = e.target?.result as string;
-      const isImage = file.type.startsWith('image/');
-      setAttachedDoc({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        base64: resultStr,
-        previewUrl: isImage ? resultStr : undefined,
-      });
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleProcessCadastral = async (e?: React.FormEvent) => {
@@ -515,18 +505,12 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setStatusMessage(null);
 
     try {
-      const payload: any = {
+      const payload = {
         text: cadastralInput,
-        currentClient: clientData,
+        file: attachedDoc ? {
+          base64: attachedDoc.base64, mimeType: attachedDoc.type, fileName: attachedDoc.name,
+        } : undefined,
       };
-
-      if (attachedDoc) {
-        payload.file = {
-          base64: attachedDoc.base64,
-          mimeType: attachedDoc.type,
-          fileName: attachedDoc.name,
-        };
-      }
 
       const res = await apiFetch('/api/bling/extract-cadastral', {
         method: 'POST',
@@ -535,23 +519,22 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
       });
 
       const data = await res.json();
-      if (data.success && data.client) {
+      if (res.ok && data.success && data.client) {
         setStatusMessage('Dados lidos. Consultando a IE pelo CNPJ quando ausente...');
         const completed = await completeMissingIe(data.client, apiFetch);
         setClientData(completed.client);
         onUpdateClient(completed.client);
         setStatusMessage(
-          (attachedDoc
-            ? 'Dados cadastrais do Cartão CNPJ lidos e estruturados com sucesso para o Bling!'
-            : 'Dados cadastrais extraídos com sucesso para emissão de NF-e!') + ' ' + completed.warnings.join(' ')
+          (data.summary || 'Dados cadastrais lidos. Confira antes de faturar.') + ' ' +
+          [...cadastralWarnings(data.warnings), ...completed.warnings].join(' ')
         );
-        setActiveTab('direct');
+        setAttachedDoc(null);
       } else {
-        setStatusMessage('Não foi possível extrair todos os dados cadastrais.');
+        setStatusMessage(data.error || 'Não foi possível ler os dados cadastrais.');
       }
     } catch (err: any) {
       console.error('Erro:', err);
-      setStatusMessage('Falha ao processar dados cadastrais.');
+      setStatusMessage(err instanceof Error ? err.message : 'Falha ao processar dados cadastrais.');
     } finally {
       setIsProcessing(false);
     }
@@ -1348,7 +1331,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   Preenchimento Cadastral com IA:
                 </h4>
                 <p className="text-blue-800 dark:text-blue-300 leading-relaxed">
-                  Quando o cliente aprovar o orçamento da Fresa Master, peça os dados cadastrais (por WhatsApp, e-mail ou foto do Cartão CNPJ). Cole a mensagem ou anexe o PDF/imagem e a IA preencherá automaticamente a Razão Social, CNPJ, Inscrição Estadual e CEP para o Bling.
+                  Cole a mensagem ou anexe um Cartão CNPJ ou ficha cadastral feita pelo cliente. A IA lê e confere os dados; revise os campos e avisos antes de faturar. Endereço e contatos expressos no documento são preservados.
                 </p>
                 <button
                   type="button"
@@ -1365,7 +1348,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                       <Paperclip className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Anexar Cartão CNPJ (Foto / PDF):</span>
+                      <span>Anexar Cartão CNPJ ou ficha cadastral (até 6 MB):</span>
                     </label>
                     <span className="text-[10px] text-slate-400">Opcional</span>
                   </div>
@@ -1377,7 +1360,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     >
                       <UploadCloud className="w-4 h-4 text-emerald-600" />
                       <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                        Clique para anexar foto ou PDF do Cartão CNPJ
+                        Anexar PDF, JPG, PNG ou WEBP do cadastro do cliente
                       </span>
                     </div>
                   ) : (
@@ -1439,7 +1422,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     ) : (
                       <>
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>{attachedDoc ? 'Ler Cartão CNPJ com IA' : 'Processar Cadastro com IA'}</span>
+                        <span>{attachedDoc ? 'Ler e conferir documento com IA' : 'Processar Cadastro com IA'}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     )}

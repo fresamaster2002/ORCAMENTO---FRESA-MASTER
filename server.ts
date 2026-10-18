@@ -23,6 +23,7 @@ import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
+import { CadastralExtractionError, extractCadastralDocument } from "./supabase/functions/_shared/cadastralExtraction";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { ZipArchive } = require("archiver");
@@ -1410,181 +1411,13 @@ app.post("/api/bling/lookup-cnpj", async (req, res) => {
 
 app.post("/api/bling/extract-cadastral", async (req, res) => {
   try {
-    const { text, currentClient, file } = req.body;
-    // file: { base64: string, mimeType: string, fileName?: string }
-    if ((!text || typeof text !== "string") && (!file || !file.base64)) {
-      return res.status(400).json({ error: "Texto ou documento com dados cadastrais é obrigatório." });
-    }
-    if (typeof text === "string" && text.length > 5000) {
-      return res.status(413).json({ error: "O texto cadastral excede o limite de 5.000 caracteres." });
-    }
-    if (typeof file?.base64 === "string" && file.base64.length > 2500000) {
-      return res.status(413).json({ error: "O documento excede o limite de tamanho de 1,8 MB." });
-    }
-
-    const ai = getGeminiClient();
-
-    if (ai) {
-      try {
-        const textInstruction = `
-Você é o assistente fiscal e de faturamento da Fresa Master.
-O cliente enviou seus dados cadastrais (por escrito, imagem do Cartão CNPJ, PDF ou comprovante de inscrição) para a emissão da Nota Fiscal Eletrônica (NF-e) no Bling ERP.
-
-Analise o documento e/ou texto fornecido e extraia com máxima precisão fiscal brasileira:
-- Razão Social (name) - Nome empresarial oficial
-- Nome Fantasia (tradeName) - Se não houver, use o mesmo da Razão Social
-- CNPJ ou CPF (document) - remova pontuações e mantenha apenas números ou formato padrão
-- Inscrição Estadual (ie) - use somente a IE expressa; se não estiver disponível, deixe em branco e não presuma "ISENTO"
-- CEP (formato 00000-000)
-- Logradouro (address - rua, avenida, rodovia)
-- Número (number)
-- Complemento (complement - sala, galpão, lote, etc.)
-- Bairro (neighborhood)
-- Cidade (city)
-- Estado (state - sigla UF de 2 letras, ex: PR, SP, SC)
-- E-mail fiscal para envio do XML e DANFE (email)
-- Telefone / Celular (phone)
-
-Texto adicional fornecido:
-"""
-${text || "(Documento/Cartão CNPJ anexado em imagem/PDF)"}
-"""
-`;
-
-        const candidateModels = [GEMINI_MODEL];
-        let cadastralResponseText = "";
-
-        // Build contents parts (text + optional image or PDF inlineData)
-        const parts: any[] = [];
-        if (file && file.base64 && file.mimeType) {
-          // Normalize base64 in case it includes data url prefix
-          const cleanBase64 = file.base64.replace(/^data:[^;]+;base64,/, "");
-          parts.push({
-            inlineData: {
-              data: cleanBase64,
-              mimeType: file.mimeType,
-            },
-          });
-        }
-        parts.push({ text: textInstruction });
-
-        if (!await reserveGeminiRequest()) {
-          return res.status(429).json({ success: false, error: "Limite diário de uso da IA atingido ou controle de custo indisponível. Tente novamente amanhã." });
-        }
-
-        for (const modelName of candidateModels) {
-          try {
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: { parts },
-              config: {
-                systemInstruction:
-                  "Você é um especialista em emissão de NF-e e leitura de Cartão CNPJ e cadastros de clientes no Bling ERP.",
-                responseMimeType: "application/json",
-                maxOutputTokens: 1200,
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: {
-                    success: { type: Type.BOOLEAN },
-                    summary: { type: Type.STRING },
-                    client: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        tradeName: { type: Type.STRING },
-                        document: { type: Type.STRING },
-                        ie: { type: Type.STRING },
-                        email: { type: Type.STRING },
-                        phone: { type: Type.STRING },
-                        cep: { type: Type.STRING },
-                        address: { type: Type.STRING },
-                        number: { type: Type.STRING },
-                        complement: { type: Type.STRING },
-                        neighborhood: { type: Type.STRING },
-                        city: { type: Type.STRING },
-                        state: { type: Type.STRING },
-                      },
-                      required: ["name", "document", "cep"],
-                    },
-                  },
-                  required: ["client", "summary"],
-                },
-              },
-            });
-            cadastralResponseText = response.text?.trim() || "";
-            if (cadastralResponseText) break;
-          } catch (cadErr: any) {
-            console.warn(`Modelo ${modelName} indisponível no cadastro:`, cadErr.message);
-          }
-        }
-
-        if (cadastralResponseText) {
-          const parsed = JSON.parse(cadastralResponseText || "{}");
-          const client = {
-            ...currentClient,
-            ...parsed.client,
-          };
-
-          // If CEP is present, query ViaCEP to ensure state, city and neighborhood match
-          if (client.cep) {
-            const addressInfo = await lookupViaCep(client.cep);
-            if (addressInfo) {
-              client.city = client.city || addressInfo.cidade;
-              client.state = client.state || addressInfo.uf;
-              client.neighborhood = client.neighborhood || addressInfo.bairro;
-              client.address = client.address || addressInfo.logradouro;
-            }
-          }
-
-          return res.json({
-            success: true,
-            summary: parsed.summary || "Dados cadastrais extraídos com sucesso para emissão de NF-e!",
-            client,
-          });
-        }
-      } catch (geminiError) {
-        console.warn("Gemini temporariamente indisponível no cadastro, usando analisador heurístico:", geminiError);
-      }
-    }
-
-    // Robust Fallback extraction for Brazilian Fiscal and Cadastral data
-    const cleanText = text;
-    const nameMatch = cleanText.match(/(?:raz[aã]o social|empresa|cliente)\s*:?\s*([^,\n\r]+)/i);
-    const cnpjMatch = cleanText.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || cleanText.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/);
-    const ieMatch = cleanText.match(/(?:ie|inscri[cç][aã]o estadual)\s*:?\s*([0-9.-]+|isento)/i);
-    const cepMatch = cleanText.match(/cep\s*:?\s*(\d{5}-?\d{3})/i) || cleanText.match(/\b\d{5}-?\d{3}\b/);
-    const emailMatch = cleanText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const phoneMatch = cleanText.match(/(?:tel|telefone|fone|cel|whats(?:app)?)\s*:?\s*([0-9()\s-]+)/i) || cleanText.match(/(?:\(?\d{2}\)?\s*)?(?:9\d{4}[-\s]?\d{4})/);
-    const addressMatch = cleanText.match(/(?:rua|av|avenida|rodovia|estrada|alameda)\s+[^,\n\r]+/i);
-
-    const detectedCep = cepMatch ? (cepMatch[1] || cepMatch[0]) : currentClient?.cep || "";
-    let addressInfo: any = null;
-    if (detectedCep) {
-      addressInfo = await lookupViaCep(detectedCep);
-    }
-
-    const client = {
-      ...currentClient,
-      name: nameMatch ? nameMatch[1].trim() : currentClient?.name || "Empresa Cliente Ltda",
-      document: cnpjMatch ? cnpjMatch[0] : currentClient?.document || "",
-      ie: ieMatch ? ieMatch[1].trim().toUpperCase() : (currentClient?.ie || ""),
-      cep: detectedCep,
-      address: addressMatch ? addressMatch[0].trim() : (addressInfo?.logradouro || currentClient?.address || ""),
-      neighborhood: addressInfo?.bairro || currentClient?.neighborhood || "",
-      city: addressInfo?.cidade || currentClient?.city || "",
-      state: addressInfo?.uf || currentClient?.state || "",
-      email: emailMatch ? emailMatch[0] : currentClient?.email || "",
-      phone: phoneMatch ? (phoneMatch[1] || phoneMatch[0]).trim() : currentClient?.phone || "",
-    };
-
-    return res.json({
-      success: true,
-      summary: "Dados cadastrais extraídos com sucesso para a Nota Fiscal!",
-      client,
-    });
-  } catch (error: any) {
+    return res.json(await extractCadastralDocument(req.body, {
+      apiKey: process.env.GEMINI_API_KEY || "", model: GEMINI_MODEL, reserve: reserveGeminiRequest,
+    }));
+  } catch (error) {
     console.error("Erro na extração cadastral:", error);
-    res.status(500).json({ error: error.message });
+    if (error instanceof CadastralExtractionError) return res.status(error.status).json({ success: false, error: error.message });
+    return res.status(502).json({ success: false, error: "Não foi possível ler o documento. Tente novamente com um PDF/foto legível." });
   }
 });
 

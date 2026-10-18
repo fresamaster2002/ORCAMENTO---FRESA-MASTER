@@ -8,6 +8,14 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 - Supabase Edge Function para APIs de IA, Bling e Melhor Envio
 - GitHub Pages para hospedar a interface
 
+## Refinamento da área de trabalho
+
+O ponto de retorno anterior a esta etapa é a tag Git **`checkpoint-antes-refino-2026-10-18`**, no commit `f08aee4`, publicada no GitHub. Ela preserva o código anterior para comparação/retorno controlado; não é um backup do banco de dados ou dos orçamentos.
+
+O resumo do orçamento acompanha a rolagem abaixo da navegação, mostrando cliente, situação e total, com acesso à proposta. A tela indica uma próxima ação sem executar aprovação, faturamento ou envio automaticamente. Os vínculos existentes de pedido Bling, NF-e e envio Sandbox ficam disponíveis para consulta; “autorizada” e pagamento de teste confirmado dependem dos estados já registrados, não apenas da existência de um ID.
+
+Em **Orçamentos**, busque por nome (com ou sem acentos), CPF/CNPJ ou número e filtre pela situação. **Duplicar** inicia um rascunho com nova identificação/data, mantém produtos, preços e condições comerciais, mas remove vínculos de pedido/NF-e/envio, a confirmação fiscal e a cotação anterior. O frete e o seguro voltam a zero até nova seleção; confira os preços e o cadastro antes de continuar. O orçamento original não é alterado.
+
 ## Publicação automática do backend
 
 O workflow [Deploy Fresa Master API to Supabase](.github/workflows/deploy-supabase.yml) publica a função `api` no projeto `jnakhctoigbepxwbaygk` quando mudanças do backend, suas dependências ou testes chegam à `main`. Também pode ser executado manualmente em **GitHub > Actions > Deploy Fresa Master API to Supabase > Run workflow**. A publicação exige tipagem e testes aprovados e mantém a configuração de autenticação de `supabase/config.toml`.
@@ -53,6 +61,10 @@ As duas telas usam a mesma leitura estruturada para Cartão CNPJ e fichas criada
 A IA extrai campos com trechos de origem, distingue cliente de fornecedor/contador e cadastro fiscal de endereço de entrega, prioriza o contato de faturamento e faz uma segunda conferência para anexos. CPF/CNPJ, CEP, UF, e-mail e telefone passam por validação; dados ausentes, contraditórios ou inválidos ficam em branco com aviso, sem inventar IE, “ISENTO”, “S/N” ou reaproveitar cadastro de outro cliente. Arquivo ilegível, resposta truncada, indisponibilidade da IA e múltiplos clientes sem identificação explícita não produzem um cadastro de sucesso fictício.
 
 A leitura não substitui o endereço ou contato do documento por informações de uma consulta pública. A consulta por CNPJ continua separada, e a complementação de IE conserva os dados expressos com aviso de divergências. No Bling, o cadastro permanece aberto para conferência após a leitura. A IA não garante acerto em arquivos ilegíveis: confira antes de aplicar/emissão. Para disponibilizar a melhoria, publique frontend e Edge Function `api`.
+
+Para anexos, a segunda passagem é independente: não recebe a resposta inicial para evitar repetir um erro por influência da primeira leitura. CPF/CNPJ válidos diferentes bloqueiam o resultado; outros campos divergentes ficam em branco com aviso. Trechos de origem e o estado da conferência são retornados pela API e apresentados nas duas telas. Esses trechos também são transcritos pela IA, não constituem validação independente. Avisos ficam separados do sucesso da operação e campos obrigatórios ausentes são destacados para revisão. Um número parcial não é aceito apenas por estar contido nos dígitos de um trecho maior.
+
+Validação desta etapa: testes da API real com documentos sintéticos de conteúdo conhecido cobriram cartão cadastral sem IE, ficha de duas páginas com endereço de entrega/contador separados, PDF somente de imagem e documento com duas empresas ambíguas. Os três documentos identificados tiveram os campos comparados ao conteúdo esperado; a ambiguidade foi bloqueada. Isso não mede a taxa de acerto em documentos reais dos clientes nem garante leitura de fotos desfocadas, cortes de página ou PDFs ilegíveis.
 
 Na janela **Preencher c/ IA (Cartão CNPJ)** e na aba cadastral do Bling, informe o CNPJ para consultar os dados públicos da empresa e, quando disponível, uma Inscrição Estadual ativa correspondente à UF do estabelecimento. O recurso usa `/api/bling/lookup-cnpj` no Express e `/bling/lookup-cnpj` na Edge Function, consultando BrasilAPI e CNPJ.ws no backend. Para disponibilizá-lo no app publicado, publique a versão atualizada da função `api` no Supabase.
 

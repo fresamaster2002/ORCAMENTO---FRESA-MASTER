@@ -67,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   const tabIdle =
     'text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500';
   const tabOn =
-    'text-[#ff6a00] border-[#ff6a00] shadow-[0_0_0_1px_#ff6a00,0_0_12px_rgba(255,106,0,0.55)]';
+    'text-amber-700 dark:text-amber-400 border-amber-500 bg-amber-50 dark:bg-amber-950/30';
   const cls = (k: string) => `${tab} ${activeTab === k ? tabOn : tabIdle}`;
 
   return (

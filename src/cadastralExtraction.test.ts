@@ -70,6 +70,15 @@ test('remove valores sem evidência e números que não correspondem ao trecho d
   assert.ok(result.warnings.length >= 3);
 });
 
+test('um número parcial não é aceito apenas por estar contido nos dígitos da evidência', () => {
+  const raw = reading({ number: '17', ie: '23456' });
+  raw.evidence.number = 'Número: 217';
+  raw.evidence.ie = 'Inscrição estadual: 1234567';
+  const result = normalizeCadastralResult(raw);
+  assert.equal(result.client.number, '');
+  assert.equal(result.client.ie, '');
+});
+
 test('avisa sobre CPF/CNPJ, CEP, UF e contatos inválidos sem adivinhar correções', () => {
   const result = normalizeCadastralResult(reading({
     document: '11111111111111', cep: '1234', state: 'XX',
@@ -90,14 +99,33 @@ test('texto usa uma leitura e não recebe dados de cadastro anterior', async () 
   assert.equal(result.client.ie, '');
 });
 
-test('PDF faz conferência dupla e retorna os campos revistos', async () => {
+test('PDF faz conferência independente e deixa divergências em branco', async () => {
   let calls = 0;
   const result = await extractCadastralDocument(attachment, {
     apiKey: 'test',
-    fetcher: async () => aiResponse(reading({ number: ++calls === 1 ? '17' : '18' })),
+    fetcher: async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.ok(!JSON.stringify(body.contents).includes('a primeira leitura foi'));
+      return aiResponse(reading({ number: ++calls === 1 ? '17' : '18' }));
+    },
   });
   assert.equal(calls, 2);
-  assert.equal(result.client.number, '18');
+  assert.equal(result.client.number, '');
+  assert.equal(result.verification, 'double-read');
+  assert.match(result.warnings.join(' '), /divergiram em número/);
+  assert.equal('number' in result.evidence, false);
+});
+
+test('conferência aceita diferenças de formatação e informa origem apenas de campos mantidos', async () => {
+  let calls = 0;
+  const result = await extractCadastralDocument(attachment, {
+    apiKey: 'test',
+    fetcher: async () => aiResponse(reading({ name: ++calls === 1 ? 'Cliente de Teste' : 'CLIENTE DE TESTE', ie: '123.456' })),
+  });
+  assert.equal(result.client.name, 'CLIENTE DE TESTE');
+  assert.equal(result.client.ie, '123.456');
+  assert.ok(result.evidence.ie);
+  assert.equal('cep' in result.evidence, false);
 });
 
 test('bloqueia aplicação quando duas leituras encontram CNPJs válidos diferentes', async () => {

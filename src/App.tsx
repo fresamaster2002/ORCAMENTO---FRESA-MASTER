@@ -11,6 +11,8 @@ import { ProposalModal } from './components/ProposalModal';
 import { BlingIntegrationModal } from './components/BlingIntegrationModal';
 import { SandboxShipmentModal } from './components/SandboxShipmentModal';
 import { SavedQuotesModal } from './components/SavedQuotesModal';
+import { QuoteSummaryBar } from './components/QuoteSummaryBar';
+import { duplicateQuote } from './quoteWorkspaceTools';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
@@ -377,9 +379,7 @@ export default function App() {
   );
   const [isExtracting, setIsExtracting] = useState(false);
   const [transcribedText, setTranscribedText] = useState<string>('');
-  const [summary, setSummary] = useState<string | undefined>(
-    'Orçamento Fresa Master carregado com cálculo de frete Melhor Envio Sedex.'
-  );
+  const [summary, setSummary] = useState<string | undefined>();
   const [missingInfo, setMissingInfo] = useState<string[] | undefined>([]);
   const [confidence, setConfidence] = useState<number | undefined>(0.98);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -600,6 +600,16 @@ export default function App() {
     setMissingInfo([]);
   };
 
+  const handleDuplicateQuote = (source: QuoteData) => {
+    const empty = createEmptyQuote([quote.id, ...recentQuotes.map((saved) => saved.id)]);
+    setQuote(duplicateQuote(source.id === quote.id ? quote : source, empty));
+    setView({ modal: 'home', clientEditing: false, quickText: '', scrollY: 0 });
+    setSummary(`Cópia de ${source.id} criada como ${empty.id}. Confira os preços, selecione o frete novamente e revise os dados fiscais. Pedidos, NF-e e envios anteriores não foram copiados.`);
+    setErrorMessage(null);
+    setMissingInfo([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handlePasswordSignIn = async () => {
     if (!supabase) return;
     setIsAuthLoading(true);
@@ -780,6 +790,8 @@ export default function App() {
           </div>
         )}
 
+        <QuoteSummaryBar quote={quote} onPreview={() => openOnly('proposal')} onOpenBling={() => openOnly('bling')} />
+
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Error notification */}
         {errorMessage && (
@@ -810,11 +822,6 @@ export default function App() {
           onDraftChange={(quickText) => setView({ quickText })}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
-            {quote.client.name || 'Cliente ainda não identificado'} • {quote.items.length} item{quote.items.length === 1 ? '' : 'ns'} • {quote.financials.totalAmount > 0 ? 'Orçamento pronto' : 'Em elaboração'}
-          </p>
-        </div>
         {/* Form with CNC Tools, Shipping Calculator & Totals */}
         <QuoteForm
           quote={quote}
@@ -916,6 +923,7 @@ export default function App() {
         onClose={() => setIsSavedQuotesOpen(false)}
         onOpen={(selected) => { setQuote(selected); setIsSavedQuotesOpen(false); }}
         onDelete={handleDeleteQuote}
+        onDuplicate={handleDuplicateQuote}
       />
 
       {isSandboxShipmentOpen && (

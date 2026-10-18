@@ -193,6 +193,9 @@ export interface ExtractCadastralResponse {
   success: boolean;
   client: ClientInfo;
   summary: string;
+  warnings?: string[];
+  evidence?: Record<string, string>;
+  verification?: 'single-read' | 'double-read' | 'unavailable';
 }
 
 export interface GenerateProposalRequest {

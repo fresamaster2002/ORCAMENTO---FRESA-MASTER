@@ -108,6 +108,22 @@ a {
   transform: translateY(0);
 }
 
+.fm-summary {
+  top: var(--fm-nav-h, 0px);
+}
+
+html {
+  scroll-padding-top: calc(var(--fm-nav-h, 0px) + 110px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (max-width: 640px) {
   .dark header > div {
     align-items: stretch;

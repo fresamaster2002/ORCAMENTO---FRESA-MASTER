@@ -7,6 +7,7 @@ on:
       - 'supabase/functions/**'
       - 'supabase/config.toml'
       - 'src/*.test.ts'
+      - 'src/components/*.test.tsx'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-supabase.yml'
@@ -42,7 +43,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - name: Run regression tests
-        run: node --import tsx --test src/*.test.ts supabase/functions/_shared/*.test.ts
+        run: node --import tsx --test src/*.test.ts src/components/*.test.tsx supabase/functions/_shared/*.test.ts
       - uses: supabase/setup-cli@v1
         with:
           version: 2.120.0

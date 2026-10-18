@@ -97,7 +97,12 @@ export function normalizeCadastralResult(value: unknown) {
     }
     if (['document', 'cep', 'ie', 'number', 'email', 'phone'].includes(field)) {
       const comparable = (text: string) => text.toLowerCase().replace(/[\s./()+-]/g, '');
-      if (!comparable(evidence[field]).includes(comparable(cleaned))) {
+      const expected = comparable(cleaned);
+      const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matches = field === 'email'
+        ? comparable(evidence[field]).includes(expected)
+        : new RegExp(`(^|[^0-9])${escaped}(?![0-9])`).test(comparable(evidence[field]));
+      if (!matches) {
         warnings.push(`O valor de ${labels[field]} não corresponde ao trecho de origem e ficou em branco.`);
         continue;
       }
@@ -175,15 +180,31 @@ export async function extractCadastralDocument(input: RecordData, options: Cadas
   }
   if (!usedModel) throw lastFailure instanceof CadastralExtractionError ? lastFailure : new CadastralExtractionError('Não foi possível ler o documento. Tente novamente ou cole os dados em texto.', 502);
   let verificationWarning = '';
+  let verification = hasFile ? 'unavailable' : 'single-read';
+  const comparisonWarnings: string[] = [];
   if (hasFile) {
     try {
-      const verified = await readWithModel([...parts, { text: `Conferência: a primeira leitura foi ${JSON.stringify(raw)}. Releia todas as páginas diretamente no arquivo e devolva uma versão completa corrigida. Verifique cada dígito de CPF/CNPJ, IE, CEP, número e os contatos fiscais. Não complete campos apenas a partir da primeira leitura. Para divergências que não consiga resolver no original, retorne vazio e avise.` }], options, usedModel, cadastralInstruction);
+      const verified = await readWithModel([...parts, { text: 'Faça uma leitura independente de todas as páginas do arquivo. Confira cada dígito de CPF/CNPJ, IE, CEP, número e contatos fiscais diretamente no original. Para dados ilegíveis ou conflitantes, retorne vazio e avise. Diferencie endereço fiscal de entrega e inscrição estadual de municipal.' }], options, usedModel, cadastralInstruction);
       const firstClient = normalizeCadastralResult(raw).client;
       const verifiedClient = normalizeCadastralResult(verified).client;
       if (firstClient.document && verifiedClient.document && firstClient.document !== verifiedClient.document) {
         throw new CadastralExtractionError('As duas leituras identificaram CPF/CNPJ diferentes. Informe no texto o documento correto ou anexe páginas mais legíveis.');
       }
+      const verifiedObject = object(verified);
+      const verifiedFields = object(verifiedObject.client);
+      const verifiedEvidence = object(verifiedObject.evidence);
+      for (const field of cadastralFields) {
+        const comparable = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s.,/()+-]/g, '');
+        if (firstClient[field] && verifiedClient[field] && comparable(firstClient[field]) !== comparable(verifiedClient[field])) {
+          verifiedFields[field] = '';
+          verifiedEvidence[field] = '';
+          comparisonWarnings.push(`As duas leituras divergiram em ${labels[field]}. O campo ficou em branco para conferência no original.`);
+        } else if (firstClient[field] && !verifiedClient[field]) {
+          comparisonWarnings.push(`O campo ${labels[field]} não foi confirmado na segunda leitura e ficou em branco.`);
+        }
+      }
       raw = verified;
+      verification = 'double-read';
     } catch (cause) {
       if (cause instanceof CadastralExtractionError && cause.status === 422) throw cause;
       console.warn('Falha na conferência cadastral:', cause instanceof Error ? cause.message : String(cause));
@@ -193,6 +214,9 @@ export async function extractCadastralDocument(input: RecordData, options: Cadas
   const normalized = normalizeCadastralResult(raw);
   return {
     success: true, summary: 'Dados lidos do documento/texto. Confira o cadastro antes de aplicar ou faturar.',
-    client: normalized.client, warnings: [...normalized.warnings, ...(verificationWarning ? [verificationWarning] : [])],
+    client: normalized.client,
+    evidence: Object.fromEntries(cadastralFields.filter((field) => normalized.client[field]).map((field) => [field, normalized.evidence[field]])),
+    verification,
+    warnings: [...new Set([...normalized.warnings, ...comparisonWarnings, ...(verificationWarning ? [verificationWarning] : [])])],
   };
 }

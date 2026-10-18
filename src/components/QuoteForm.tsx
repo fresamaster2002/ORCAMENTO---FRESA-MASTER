@@ -417,6 +417,15 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       done: Number(quote.bling?.nfe?.situacao) === 5,
     },
   ];
+  const nextAction = !quote.items.length
+    ? { text: 'Comece pelos produtos ou use o comando rápido acima.', label: 'Ver produtos', target: 'quote-items' }
+    : !quote.client.name
+    ? { text: 'Identifique o cliente para preparar a proposta.', label: 'Ver cadastro', target: 'quote-client' }
+    : !quote.shipping.selectedOption
+    ? { text: 'Selecione o frete, retirada ou cortesia antes de enviar a proposta.', label: 'Ver frete', target: 'shipping-section' }
+    : quote.status !== 'approved'
+    ? { text: 'Confira os valores e envie a proposta. A aprovação continua sendo registrada por você.', label: 'Ver proposta', target: 'proposal' }
+    : { text: Number(quote.bling?.nfe?.situacao) === 5 ? 'NF-e autorizada. Consulte os documentos e confira a entrega.' : 'Pedido aprovado. Confira o cadastro fiscal e continue no Bling.', label: 'Abrir Bling', target: 'bling' };
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden space-y-6">
@@ -426,7 +435,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             <span className="text-xs font-mono font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
               {quote.id}
             </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">Validade: 10 dias</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Validade: {quote.project.validityDays} dias</span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -453,7 +462,24 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             </button>
           </div>
         </div>
-
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <p className="flex-1 basis-52 text-slate-500 dark:text-slate-400">{nextAction.text}</p>
+            <button type="button" onClick={() => {
+              if (nextAction.target === 'proposal') onPreview();
+              else if (nextAction.target === 'bling') onOpenBling();
+              else document.getElementById(nextAction.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} className="min-h-9 cursor-pointer rounded-lg border border-slate-300 px-3 font-semibold text-slate-700 hover:border-amber-500 dark:border-slate-700 dark:text-slate-200">{nextAction.label}</button>
+          </div>
+          {(quote.bling?.orderId || quote.bling?.nfe?.id || quote.sandboxShipment) && (
+            <details className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              <summary className="cursor-pointer">Vínculos registrados neste orçamento</summary>
+              <ul className="mt-2 space-y-1 break-words">
+                {quote.bling?.orderId && <li>Pedido Bling: {quote.bling.orderNumber || quote.bling.orderId}</li>}
+                {quote.bling?.nfe?.id && <li>NF-e: {quote.bling.nfe.numero || `ID ${quote.bling.nfe.id}`} · {Number(quote.bling.nfe.situacao) === 5 ? 'Autorizada' : 'Consulte a situação no Bling'}</li>}
+                {quote.sandboxShipment && <li>Envio Sandbox (teste): {quote.sandboxShipment.protocol || quote.sandboxShipment.id || 'Registrado'} · {quote.sandboxShipment.paymentStatus === 'paid' ? 'Pagamento de teste confirmado' : 'Pagamento de teste não confirmado'}</li>}
+              </ul>
+            </details>
+          )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
           {workflowSteps.map((step) => (
             <div
@@ -475,12 +501,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
       <div className="px-5 sm:px-6 space-y-6">
         {/* Section 1: Client Overview Card (Clean & Compact) */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30 p-4">
+        <div id="quote-client" className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-slate-500" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Dados do Cliente & Faturamento NF-e
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                Cliente e faturamento
               </h3>
             </div>
 
@@ -666,13 +692,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
         </div>
 
         {/* Section 3: CNC Router Bits & Tooling Table */}
-        <div>
+        <div id="quote-items">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-slate-500" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Fresas & Ferramentas Router CNC (NCM confirmado por item)
-              </h3>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Fresas e ferramentas</h3>
+                <p className="text-[11px] text-slate-500">Router CNC · SKU e NCM disponíveis por item</p>
+              </div>
             </div>
 
             {/* Quick Add Presets and Bling Catalog button */}

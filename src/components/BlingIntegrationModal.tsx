@@ -3,7 +3,8 @@ import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
-import { cadastralWarnings, readCadastralDocument } from '../cadastralDocument';
+import { readCadastralDocument } from '../cadastralDocument';
+import { CadastralReadingReview, readingReview, type ReadingReview } from './CadastralReadingReview';
 import { NfeReviewModal } from './NfeReviewModal';
 import { NfeSuccessBanner } from './NfeSuccessBanner';
 import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
@@ -117,6 +118,12 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const [blingJson, setBlingJson] = useState<any>(null);
   const [payloadError, setPayloadError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [cadastralError, setCadastralError] = useState<string | null>(null);
+  const [cadastralReview, setCadastralReview] = useState<ReadingReview | null>(null);
+  useEffect(() => {
+    setCadastralError(null);
+    setCadastralReview(null);
+  }, [quote.id]);
   const blingFileInputRef = React.useRef<HTMLInputElement>(null);
   const readinessIssues = blingReadinessIssues({ ...quote, client: clientData }, { checkFiscalReview: true });
   const orderChanged = blingOrderChanged({ ...quote, client: clientData });
@@ -490,10 +497,12 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   const handleCadastralFileUpload = async (file: File) => {
     setAttachedDoc(null);
     setStatusMessage(null);
+    setCadastralError(null);
+    setCadastralReview(null);
     try {
       setAttachedDoc(await readCadastralDocument(file));
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Não foi possível ler o arquivo.');
+      setCadastralError(error instanceof Error ? error.message : 'Não foi possível ler o arquivo.');
     }
   };
 
@@ -503,6 +512,8 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
 
     setIsProcessing(true);
     setStatusMessage(null);
+    setCadastralError(null);
+    setCadastralReview(null);
 
     try {
       const payload = {
@@ -524,23 +535,23 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
         const completed = await completeMissingIe(data.client, apiFetch);
         setClientData(completed.client);
         onUpdateClient(completed.client);
-        setStatusMessage(
-          (data.summary || 'Dados cadastrais lidos. Confira antes de faturar.') + ' ' +
-          [...cadastralWarnings(data.warnings), ...completed.warnings].join(' ')
-        );
+        setCadastralReview(readingReview(data, completed.warnings));
+        setStatusMessage(null);
         setAttachedDoc(null);
       } else {
-        setStatusMessage(data.error || 'Não foi possível ler os dados cadastrais.');
+        setCadastralError(data.error || 'Não foi possível ler os dados cadastrais.');
       }
     } catch (err: any) {
       console.error('Erro:', err);
-      setStatusMessage(err instanceof Error ? err.message : 'Falha ao processar dados cadastrais.');
+      setCadastralError(err instanceof Error ? err.message : 'Falha ao processar dados cadastrais.');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleCnpjFound = async (lookupClient: ClientInfo) => {
+    setCadastralError(null);
+    setCadastralReview(null);
     const sameClient = String(clientData.document || '').replace(/\D/g, '') === String(lookupClient.document || '').replace(/\D/g, '');
     const nextClient = sameClient
       ? {
@@ -713,6 +724,10 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs">
+        {cadastralError && (
+          <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">{cadastralError}</div>
+        )}
+        {cadastralReview && activeTab === 'cadastral' && <CadastralReadingReview review={cadastralReview} />}
           {statusMessage && (
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

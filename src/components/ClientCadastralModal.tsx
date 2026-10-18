@@ -3,7 +3,8 @@ import { apiFetch } from '../api';
 import { CnpjLookup } from './CnpjLookup';
 import { ClientFiscalReview } from './ClientFiscalReview';
 import { completeMissingIe } from '../clientLookup';
-import { cadastralWarnings, readCadastralDocument } from '../cadastralDocument';
+import { readCadastralDocument } from '../cadastralDocument';
+import { CadastralReadingReview, readingReview, type ReadingReview } from './CadastralReadingReview';
 import { 
   Sparkles, 
   X, 
@@ -50,6 +51,7 @@ export const ClientCadastralModal: React.FC<ClientCadastralModalProps> = ({
   const [extractedPreview, setExtractedPreview] = useState<ClientInfo | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [review, setReview] = useState<ReadingReview | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [textFromAi, setTextFromAi] = useState(false);
   const [applyState, setApplyState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -72,6 +74,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
     setErrorMessage(null);
     setAttachedDoc(null);
     setExtractedPreview(null);
+    setReview(null);
     setApplyState('idle');
     setStatusMessage(null);
     if (textFromAi) setInputText('');
@@ -109,6 +112,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
     setIsProcessing(true);
     setErrorMessage(null);
     setStatusMessage(null);
+    setExtractedPreview(null);
+    setReview(null);
 
     try {
       const payload = {
@@ -131,10 +136,8 @@ Telefone/WhatsApp: (41) 98888-5544`;
         setExtractedPreview(completed.client);
         setInputText(clientToText(completed.client));
         setTextFromAi(true);
-        setStatusMessage(
-          (data.summary || 'Dados cadastrais lidos. Confira antes de aplicar.') + ' ' +
-          [...cadastralWarnings(data.warnings), ...completed.warnings].join(' ')
-        );
+        setReview(readingReview(data, completed.warnings));
+        setStatusMessage(null);
       } else {
         setErrorMessage(data.error || 'Não foi possível extrair os dados cadastrais.');
       }
@@ -174,11 +177,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
         }
       : client;
     setAttachedDoc(null);
+    setReview(null);
     setExtractedPreview(nextClient);
     setInputText(clientToText(nextClient));
     setTextFromAi(true);
     setStatusMessage(null);
     setErrorMessage(null);
+    setReview(null);
   };
 
   const updateField = (key: keyof ClientInfo, value: string) => {
@@ -207,7 +212,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-label="Leitor de dados cadastrais" style={{ maxHeight: 'min(92dvh, calc(100dvh - var(--fm-nav-h, 0px) - 2rem))' }} className="bg-white rounded-2xl max-w-3xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 text-white shrink-0">
           <div className="flex items-center gap-3">
@@ -231,6 +236,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
           <button
             type="button"
             onClick={onClose}
+            aria-label="Fechar leitor cadastral"
             className="h-8 w-8 rounded-lg bg-black/20 hover:bg-black/30 flex items-center justify-center text-white transition cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -431,11 +437,12 @@ E-mail fiscal: fiscal@cliente.com.br"
           )}
 
           {statusMessage && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl flex items-center gap-2 text-xs font-medium">
-              <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+            <div role="status" className="bg-slate-50 border border-slate-200 text-slate-700 p-3 rounded-xl flex items-center gap-2 text-xs font-medium">
+              <Info className="w-4 h-4 shrink-0" />
               <span>{statusMessage}</span>
             </div>
           )}
+          {review && <CadastralReadingReview review={review} />}
 
           {/* Extracted Preview Card */}
           {extractedPreview && (
@@ -443,10 +450,10 @@ E-mail fiscal: fiscal@cliente.com.br"
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
                   <UserCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Dados Cadastrais Identificados com Sucesso:</span>
+                  <span>Cadastro lido — confira os campos</span>
                 </span>
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                  Pronto para aplicar no orçamento
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                  Revisão antes de aplicar
                 </span>
               </div>
 
@@ -466,12 +473,13 @@ E-mail fiscal: fiscal@cliente.com.br"
                   ['email', 'E-mail para NF-e', 'sm:col-span-2'],
                   ['phone', 'Telefone / WhatsApp', ''],
                 ] as Array<[keyof ClientInfo, string, string]>).map(([key, label, span]) => (
-                  <label key={key} className={`bg-white p-2 rounded-lg border border-slate-200 block ${span}`}>
+                  <label key={key} className={`bg-white p-2 rounded-lg border block ${!extractedPreview[key] && ['name', 'document', 'address', 'number', 'neighborhood', 'cep', 'city', 'state'].includes(key) ? 'border-amber-400' : 'border-slate-200'} ${span}`}>
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">{label}:</span>
                     <input
                       value={(extractedPreview[key] as string) || ''}
                       onChange={(e) => updateField(key, e.target.value)}
-                      className="w-full text-xs font-semibold text-slate-800 outline-none bg-transparent focus:bg-amber-50 rounded"
+                      placeholder="Não informado"
+                      className="w-full text-sm font-medium text-slate-800 outline-none bg-transparent focus:bg-amber-50 rounded"
                     />
                   </label>
                 ))}

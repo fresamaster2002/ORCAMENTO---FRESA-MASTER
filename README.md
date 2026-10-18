@@ -8,6 +8,14 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 - Supabase Edge Function para APIs de IA, Bling e Melhor Envio
 - GitHub Pages para hospedar a interface
 
+## Publicação automática do backend
+
+O workflow [Deploy Fresa Master API to Supabase](.github/workflows/deploy-supabase.yml) publica a função `api` no projeto `jnakhctoigbepxwbaygk` quando mudanças do backend, suas dependências ou testes chegam à `main`. Também pode ser executado manualmente em **GitHub > Actions > Deploy Fresa Master API to Supabase > Run workflow**. A publicação exige tipagem e testes aprovados e mantém a configuração de autenticação de `supabase/config.toml`.
+
+Configure uma única vez o secret de repositório **SUPABASE_ACCESS_TOKEN**, em **Settings > Secrets and variables > Actions**, com um token pessoal do Supabase de uma conta com permissão de publicação no projeto. Se já possui esse token, reutilize-o; o Supabase não permite recuperar o valor de um token antigo após sua criação. Não use a chave pública, `service_role`, senha do banco ou token do Melhor Envio. Nunca coloque a credencial no código, no frontend ou no chat.
+
+O GitHub guarda o secret criptografado e o fornece apenas às etapas de publicação; não é necessário login local nem criar outro token a cada atualização. Se expirar ou for revogado, atualize o mesmo secret. As chaves Gemini, Bling e Melhor Envio continuam nos secrets do Supabase, sem substituição pelo workflow. O deploy não executa migrações de banco nem cria pedidos, etiquetas ou notas fiscais. A interface continua sendo publicada pelo workflow separado do GitHub Pages; confira o sucesso dos dois workflows ao alterar frontend e backend.
+
 ## Retomar o trabalho ao reabrir
 
 Cada alteração do orçamento é gravada imediatamente neste navegador, separada por conta, antes da sincronização com o Supabase. Ao reabrir, o app retoma o orçamento ativo (não apenas o último da lista), o texto do comando rápido, a edição do cliente, a janela aberta, a aba e o texto cadastral do Bling, a chave de NF-e digitada para o Sandbox e a posição da página. Orçamentos alterados antes de trocar para outro ficam na fila de sincronização; falhas na nuvem não apagam os rascunhos locais nem os substituem por um orçamento vazio. A renovação do login não recarrega o orçamento nem descarta edições.

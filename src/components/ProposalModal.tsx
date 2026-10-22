@@ -25,6 +25,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { QuoteData } from '../types';
 import { FresaMasterLogo } from './FresaMasterLogo';
+import { ProposalDeliveryAddress } from './ProposalDeliveryAddress';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -498,22 +499,8 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                       <div className="font-black text-lg text-[#0f172a]">
                         {quote.shipping.selectedOption?.name || 'A combinar'}
                       </div>
-                      <div className="text-[13px] text-[#334155]">
-                        Destino: CEP {quote.shipping.deliveryAddress?.enabled
-                          ? quote.shipping.destinationCep || 'A confirmar'
-                          : quote.client.cep || quote.shipping.destinationCep || 'A confirmar'}
-                      </div>
-                      {quote.shipping.deliveryAddress?.enabled && (
-                        <div className="text-[13px] text-[#334155]">
-                          {[
-                            quote.shipping.deliveryAddress.address,
-                            quote.shipping.deliveryAddress.number,
-                            quote.shipping.deliveryAddress.neighborhood,
-                          ].filter(Boolean).join(', ')}
-                          {quote.shipping.deliveryAddress.city ? ` - ${quote.shipping.deliveryAddress.city}` : ''}
-                          {quote.shipping.deliveryAddress.state ? `/${quote.shipping.deliveryAddress.state}` : ''}
-                        </div>
-                      )}
+                      <ProposalDeliveryAddress client={quote.client} shipping={quote.shipping} />
+                      {quote.shipping.selectedOption?.service !== 'RETIRADA' && <>
                       <div className="text-[13px] text-[#334155]">
                         Peso estimado: <strong className="font-mono text-[#0f172a]">{quote.shipping.weightKg || 0.5} kg</strong>
                       </div>
@@ -533,6 +520,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           </span>
                         )}
                       </div>
+                      </>}
                     </div>
                   </div>
 

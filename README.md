@@ -10,6 +10,12 @@ Aplicativo completo de orçamento da Fresa Master para pedidos por voz ou texto,
 
 ## Refinamento da área de trabalho
 
+### Endereço na proposta e no PDF
+
+A prévia, a impressão e o PDF baixado usam a mesma folha e mostram o endereço de entrega completo: logradouro, número, complemento (quando informado), bairro, cidade/UF e CEP. Isso vale para Correios, Jadlog, motoboy, frete próprio e cortesia, mesmo antes de escolher a modalidade. Quando **Entregar em outro endereço** está ativado, são usados exclusivamente esse endereço e seu destinatário, sem completar lacunas com o cadastro fiscal. Campos ausentes são indicados na proposta como pendentes de confirmação antes do envio; divergência entre o CEP do cadastro e o do frete também é avisada. Não são inventados número ou complemento.
+
+Para **Retirada no Local**, a proposta informa **Retirada no estoque Fresa Master — Salto/SP**, orienta combinar local/horário e não apresenta endereço do cliente como destino, peso, seguro ou prazo de transporte. Orçamentos antigos também usam essa apresentação ao gerar um novo PDF; arquivos já baixados não são alterados.
+
 O ponto de retorno anterior a esta etapa é a tag Git **`checkpoint-antes-refino-2026-10-18`**, no commit `f08aee4`, publicada no GitHub. Ela preserva o código anterior para comparação/retorno controlado; não é um backup do banco de dados ou dos orçamentos.
 
 O resumo do orçamento acompanha a rolagem abaixo da navegação, mostrando cliente, situação e total, com acesso à proposta. A tela indica uma próxima ação sem executar aprovação, faturamento ou envio automaticamente. Os vínculos existentes de pedido Bling, NF-e e envio Sandbox ficam disponíveis para consulta; “autorizada” e pagamento de teste confirmado dependem dos estados já registrados, não apenas da existência de um ID.

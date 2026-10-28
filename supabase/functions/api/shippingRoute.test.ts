@@ -36,7 +36,11 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     if (url === 'https://melhorenvio.com.br/oauth/token') return Response.json({ access_token: 'oauth-access', refresh_token: 'oauth-refresh', expires_in: 3600 });
     if (url.includes('generativelanguage.googleapis.com')) throw new Error('IA indisponível neste teste');
     if (url.endsWith('/api/v2/me')) return Response.json({ firstname: 'Teste', email: 'fresamaster0@gmail.com' });
-    if (url.endsWith('/shipment/calculate')) return Response.json([{ id: 2, name: 'SEDEX', price: '27.07', delivery_time: 2, company: { name: 'Correios' } }]);
+    if (url.endsWith('/shipment/calculate')) return Response.json([
+      { id: 2, name: 'SEDEX', price: '27.07', delivery_time: 2, company: { name: 'Correios' } },
+      { id: 1, name: 'PAC', price: '23.50', delivery_time: 5, company: { name: 'Correios' } },
+      { id: 3, name: '.Package', price: '20.24', delivery_time: 4, company: { name: 'Jadlog' } },
+    ]);
     throw new Error(`Requisição inesperada: ${url}`);
   });
   await import('./index.ts');
@@ -70,6 +74,8 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     assert.equal(response.status, 200);
     const result = await response.json();
     assert.deepEqual(result.packageDimensions, { height: 7, width: 12, length: 17 });
+    assert.equal(result.options.find((option: { melhorEnvioServiceId: number }) => option.melhorEnvioServiceId === 1)?.service, 'PAC');
+    assert.equal(result.options.find((option: { melhorEnvioServiceId: number }) => option.melhorEnvioServiceId === 3)?.service, 'JADLOG_PACKAGE');
     const rate = calls.find((call) => call.url.endsWith('/shipment/calculate'));
     assert.ok(rate);
     assert.equal(rate.url, 'https://melhorenvio.com.br/api/v2/me/shipment/calculate');

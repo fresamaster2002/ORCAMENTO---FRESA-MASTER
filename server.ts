@@ -511,7 +511,7 @@ async function fetchMelhorEnvioLiveRates(
       let serviceCode: "SEDEX" | "PAC" | "JADLOG_PACKAGE" = "SEDEX";
       const nameLower = (item.name || "").toLowerCase();
       if (nameLower.includes("sedex")) serviceCode = "SEDEX";
-      else if (nameLower.includes("pac")) serviceCode = "PAC";
+      else if (/\bpac\b/.test(nameLower)) serviceCode = "PAC";
       else serviceCode = "JADLOG_PACKAGE";
 
       const deliveryDays = Number(item.custom_delivery_time || item.delivery_time || 2);

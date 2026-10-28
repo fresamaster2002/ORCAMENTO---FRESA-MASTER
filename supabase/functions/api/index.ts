@@ -504,7 +504,7 @@ async function liveShippingRates(destinationCep: string, originCep: string, weig
       const price = Number(item.custom_price || item.price || 0);
       if (!price) return [];
       const label = String(item.name || '').toLowerCase();
-      const service = label.includes('sedex') ? 'SEDEX' : label.includes('pac') ? 'PAC' : 'JADLOG_PACKAGE';
+      const service = label.includes('sedex') ? 'SEDEX' : /\bpac\b/.test(label) ? 'PAC' : 'JADLOG_PACKAGE';
       const insurance = insuranceEnabled ? Number(Math.max(2.5, declaredValue * (service === 'SEDEX' ? 0.009 : 0.012)).toFixed(2)) : insuranceFallback;
       const base = insuranceEnabled ? Number(Math.max(0, price - insurance).toFixed(2)) : price;
       const insured = insuranceEnabled ? price : Number((price + insurance).toFixed(2));

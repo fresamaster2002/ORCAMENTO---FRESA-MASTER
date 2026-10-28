@@ -60,7 +60,7 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     const authUrl = new URL((await authorization.json()).authorizationUrl);
     assert.equal(authUrl.origin, 'https://melhorenvio.com.br');
     assert.equal(authUrl.searchParams.get('redirect_uri'), 'https://jnakhctoigbepxwbaygk.supabase.co/functions/v1/api/shipping/melhor-envio/callback');
-    assert.equal(authUrl.searchParams.get('scope'), 'shipping-calculate users-read');
+    assert.equal(authUrl.searchParams.get('scope'), 'shipping-calculate users-read cart-write');
     const callback = await handler(new Request(`https://supabase.test/functions/v1/api/shipping/melhor-envio/callback?code=one-time&state=${authUrl.searchParams.get('state')}`));
     const page = await callback.text();
     assert.equal(callback.status, 200);

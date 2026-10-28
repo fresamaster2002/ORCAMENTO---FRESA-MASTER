@@ -78,7 +78,7 @@ export async function beginProductionOAuth(config: OAuthConfig): Promise<string>
     redirect_uri: config.redirectUri,
     response_type: 'code',
     state,
-    scope: 'shipping-calculate users-read',
+    scope: 'shipping-calculate users-read cart-write',
   }).toString();
   return authorize.toString();
 }

@@ -29,9 +29,25 @@ test('OAuth cria URL de consentimento de produção com redirect e state aleató
   assert.equal(url.searchParams.get('client_id'), 'client-id');
   assert.equal(url.searchParams.get('redirect_uri'), 'https://project.supabase.co/functions/v1/api/shipping/melhor-envio/callback');
   assert.equal(url.searchParams.get('response_type'), 'code');
-  assert.equal(url.searchParams.get('scope'), 'shipping-calculate users-read');
+  assert.equal(url.searchParams.get('scope'), 'shipping-calculate users-read cart-write');
   assert.ok(url.searchParams.get('state'));
   assert.equal(memory.read()?.pendingState, url.searchParams.get('state'));
+});
+
+test('nova autorização preserva a conexão atual até o consentimento ser concluído', async () => {
+  const now = () => Date.parse('2026-10-25T12:00:00.000Z');
+  const initial = {
+    accessToken: 'current-access', refreshToken: 'current-refresh',
+    expiresAt: '2026-10-25T13:00:00.000Z',
+  };
+  const memory = tokenStore(initial);
+  const cfg = config(memory.store, now, async () => {
+    throw new Error('Não deveria acessar a rede');
+  });
+  await beginProductionOAuth(cfg);
+  assert.equal(await productionAccessToken(cfg), initial.accessToken);
+  assert.equal(memory.read()?.refreshToken, initial.refreshToken);
+  assert.equal(memory.read()?.expiresAt, initial.expiresAt);
 });
 
 test('callback confere state, troca code e persiste tokens somente no servidor', async () => {

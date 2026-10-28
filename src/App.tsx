@@ -9,13 +9,13 @@ import { QuoteForm } from './components/QuoteForm';
 import { ApiDocsModal } from './components/ApiDocsModal';
 import { ProposalModal } from './components/ProposalModal';
 import { BlingIntegrationModal } from './components/BlingIntegrationModal';
-import { SandboxShipmentModal } from './components/SandboxShipmentModal';
+import { ProductionShipmentModal } from './components/ProductionShipmentModal';
 import { SavedQuotesModal } from './components/SavedQuotesModal';
 import { QuoteSummaryBar } from './components/QuoteSummaryBar';
 import { duplicateQuote } from './quoteWorkspaceTools';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
-import { AlertTriangle, KeyRound, Sparkles, Building, CheckCircle2, Truck } from 'lucide-react';
+import { AlertTriangle, KeyRound, Sparkles, Building, Truck } from 'lucide-react';
 import { allowedAdminEmail, isSupabaseConfigured, supabase } from './supabase';
 import { extractCepFromText, extractDiscountAmountFromText, extractUnitPricesFromText, extractMotoboyPriceFromText, extractQuantityFromText } from './quoteParsing';
 import { useWorkspaceSession } from './useWorkspaceSession';
@@ -64,7 +64,7 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
     },
   ],
   shipping: {
-    originCep: '13329-350',
+    originCep: '13321-472',
     destinationCep: '80010-000',
     weightKg: 0.5,
     weightDescription: '0,5 kg (padrão até 0,5 kg c/ embalagem)',
@@ -388,7 +388,7 @@ export default function App() {
   const isApiDocsOpen = view.modal === 'api';
   const isProposalOpen = view.modal === 'proposal';
   const isBlingOpen = view.modal === 'bling';
-  const isSandboxShipmentOpen = view.modal === 'sandbox';
+  const isProductionShipmentOpen = view.modal === 'production';
   const isSavedQuotesOpen = view.modal === 'saved';
   const toggleModal = (modal: WorkspaceView['modal'], open: boolean) => {
     if (open || view.modal === modal) setView({ modal: open ? modal : 'home' });
@@ -396,7 +396,6 @@ export default function App() {
   const setIsApiDocsOpen = (open: boolean) => toggleModal('api', open);
   const setIsProposalOpen = (open: boolean) => toggleModal('proposal', open);
   const setIsBlingOpen = (open: boolean) => toggleModal('bling', open);
-  const setIsSandboxShipmentOpen = (open: boolean) => toggleModal('sandbox', open);
   const setIsSavedQuotesOpen = (open: boolean) => toggleModal('saved', open);
 
   // Dark mode theme state (default: true for dark background)
@@ -585,7 +584,7 @@ export default function App() {
   };
   const barBtn = 'cursor-pointer rounded-md border border-slate-300 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_10px_rgba(255,106,0,0.55)] active:border-[#ff6a00] dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500';
 
-  const openOnly = (target: 'proposal' | 'bling' | 'sandbox') => {
+  const openOnly = (target: 'proposal' | 'bling' | 'production') => {
     setView({ modal: target });
   };
 
@@ -686,25 +685,6 @@ export default function App() {
     }));
   };
 
-  const invoiceRequired = ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(
-    quote.shipping.selectedOption?.service || ''
-  );
-  const isEligibleSandboxService = Boolean(
-    quote.shipping.selectedOption &&
-    ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(quote.shipping.selectedOption.service)
-  );
-  const canCreateSandboxShipment = Boolean(
-    quote.status === 'approved' && isEligibleSandboxService
-  );
-
-  const sandboxMissing: string[] = [];
-  if (quote.status !== 'approved') sandboxMissing.push('Marcar o pedido como aprovado (botão "Pedido aprovado").');
-  if (!quote.shipping.selectedOption) {
-    sandboxMissing.push('Escolher uma opção de frete (Sedex, PAC ou Jadlog .Package).');
-  } else if (!isEligibleSandboxService) {
-    sandboxMissing.push('Selecionar uma modalidade compatível com o Melhor Envio (Sedex, PAC ou Jadlog .Package).');
-  }
-
   if (!isSupabaseConfigured && import.meta.env.PROD) {
     return (
       <AuthGate
@@ -745,14 +725,14 @@ export default function App() {
           onGoHome={handleGoHome}
           onPreviewProposal={() => openOnly('proposal')}
           onOpenBlingModal={() => openOnly('bling')}
-          activeTab={isSandboxShipmentOpen ? 'sandbox' : isBlingOpen ? 'bling' : isProposalOpen ? 'proposal' : isApiDocsOpen || isSavedQuotesOpen ? null : 'home'}
+          activeTab={isProductionShipmentOpen ? 'production' : isBlingOpen ? 'bling' : isProposalOpen ? 'proposal' : isApiDocsOpen || isSavedQuotesOpen ? null : 'home'}
           hasItems={quote.items.length > 0}
           isApproved={quote.status === 'approved'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={toggleDarkMode}
           userEmail={supabaseUser?.email ?? undefined}
           onSignOut={supabaseUser ? handleSignOut : undefined}
-          onOpenSandbox={() => openOnly('sandbox')}
+          onOpenProduction={() => openOnly('production')}
         />
 
         {supabaseUser && (
@@ -842,27 +822,10 @@ export default function App() {
             <span>Melhor Envio & Bling ERP NF-e Integration</span>
           </div>
           <div className="flex items-center gap-4">
-            {(quote.sandboxShipment || (quote.status === 'approved' && quote.items.length > 0)) && (
-              <div className="flex flex-col items-center gap-1 sm:items-end">
-                <button
-                  type="button"
-                  onClick={() => setIsSandboxShipmentOpen(true)}
-                  disabled={!quote.sandboxShipment && !isEligibleSandboxService}
-                  className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2.5 font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Truck className="h-4 w-4" />
-                  {quote.sandboxShipment ? 'Acompanhar / pagar no Sandbox' : 'Criar envio no Sandbox'}
-                </button>
-                {!quote.sandboxShipment && !isEligibleSandboxService && (
-                  <span className="text-[10px] text-slate-500">Selecione Sedex, PAC ou Jadlog primeiro</span>
-                )}
-              </div>
-            )}
-            {quote.sandboxShipment && (
-              <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
-                <CheckCircle2 className="h-4 w-4" />
-                {quote.sandboxShipment.paymentStatus === 'paid' ? 'Pagamento de teste confirmado' : 'Envio de teste criado'}{quote.sandboxShipment.protocol ? ` • ${quote.sandboxShipment.protocol}` : ''}
-              </span>
+            {(quote.productionShipment || (quote.status === 'approved' && quote.items.length > 0)) && (
+              <button type="button" onClick={() => openOnly('production')} className="inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2.5 font-bold text-slate-950 hover:bg-amber-400">
+                <Truck className="h-4 w-4" />{quote.productionShipment ? 'Acompanhar Melhor Envio' : 'Criar envio no Melhor Envio'}
+              </button>
             )}
             <button
               type="button"
@@ -913,7 +876,7 @@ export default function App() {
         onUpdateClient={handleUpdateClientFromBling}
         onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
-        onContinueShipping={() => { handleGoHome(); window.setTimeout(() => document.getElementById('shipping-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }}
+        onContinueShipping={() => openOnly('production')}
       />
 
       <SavedQuotesModal
@@ -926,32 +889,21 @@ export default function App() {
         onDuplicate={handleDuplicateQuote}
       />
 
-      {isSandboxShipmentOpen && (
-        <SandboxShipmentModal
+      {isProductionShipmentOpen && (
+        <ProductionShipmentModal
+          key={quote.id}
           quote={quote}
-          invoiceKey={view.invoiceDraft?.quoteId === quote.id
-            ? view.invoiceDraft.key
-            : quote.bling?.nfe?.serie === 2 ? quote.bling.nfe.chaveAcesso || '' : ''}
-          onInvoiceKeyChange={(key) => setView({ invoiceDraft: { quoteId: quote.id, key } })}
-          missing={sandboxMissing}
-          onClose={() => setIsSandboxShipmentOpen(false)}
-          onQuoted={(originCep, option) => {
-            setQuote((current) => ({
-              ...current,
-              shipping: { ...current.shipping, originCep, options: [option], selectedOption: option, insuranceAmount: 0 },
-              financials: {
-                ...current.financials, shippingAmount: option.price, insuranceAmount: 0,
-                totalAmount: Number(Math.max(0, current.financials.totalAmount - current.financials.shippingAmount - (current.financials.insuranceAmount || 0) + option.price).toFixed(2)),
-              },
-            }));
+          onClose={() => toggleModal('production', false)}
+          onPrepare={async () => {
+            if (!supabase || !supabaseUser) throw new Error('Entre na conta para salvar o orçamento e criar envios reais com segurança.');
+            await persistQuote(quote);
           }}
-          onUpdateShipment={async (shipment) => {
-            const updated = { ...quote, sandboxShipment: shipment };
-            await persistQuote(updated);
-            if (!supabase || !supabaseUser) throw new Error('O envio foi salvo neste navegador. Entre na conta para salvar o estado do Sandbox na nuvem antes de pagar.');
+          onUpdate={async (shipment) => {
+            await persistQuote({ ...quote, productionShipment: shipment });
           }}
         />
       )}
+
     </div>
   );
 }

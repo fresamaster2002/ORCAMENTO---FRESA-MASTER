@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-test('rotas de frete preservam medidas e isolam credenciais Sandbox', async (t) => {
+test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) => {
   let handler: (request: Request) => Response | Promise<Response> = () => { throw new Error('Handler não registrado'); };
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'Deno');
   const settings: Record<string, string> = {
-    SUPABASE_URL: 'https://supabase.test', SUPABASE_ANON_KEY: 'public-test',
-    MELHOR_ENVIO_TOKEN: 'production-test', MELHOR_ENVIO_SANDBOX_TOKEN: 'sandbox-test',
+    SUPABASE_URL: 'https://supabase.test',
+    SUPABASE_ANON_KEY: 'public-test',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-test',
+    MELHOR_ENVIO_CLIENT_ID: 'client-test',
+    MELHOR_ENVIO_CLIENT_SECRET: 'secret-test',
+    MELHOR_ENVIO_PRODUCTION_TOKEN: 'production-test',
   };
+  let oauthRecord: Record<string, unknown> | null = null;
   Object.defineProperty(globalThis, 'Deno', { configurable: true, value: {
     env: { get: (name: string) => settings[name] },
     serve: (route: typeof handler) => { handler = route; },
@@ -21,37 +26,132 @@ test('rotas de frete preservam medidas e isolam credenciais Sandbox', async (t) 
     const url = String(input);
     calls.push({ url, authorization: new Headers(init?.headers).get('Authorization'), body: init?.body ? JSON.parse(String(init.body)) : {} });
     if (url.endsWith('/auth/v1/user')) return Response.json({ email: 'fresamaster0@gmail.com', email_confirmed_at: '2026-01-01' });
-    if (url.includes('viacep.com.br')) return Response.json({ localidade: 'Salto', uf: 'SP' });
-    if (url.endsWith('/api/v2/me')) return Response.json({ firstname: 'Teste' });
+    if (url.includes('/rest/v1/melhor_envio_oauth')) {
+      if (init?.method === 'POST') {
+        oauthRecord = JSON.parse(String(init.body));
+        return new Response(null, { status: 201 });
+      }
+      return Response.json(oauthRecord ? [oauthRecord] : []);
+    }
+    if (url === 'https://melhorenvio.com.br/oauth/token') return Response.json({ access_token: 'oauth-access', refresh_token: 'oauth-refresh', expires_in: 3600 });
+    if (url.includes('generativelanguage.googleapis.com')) throw new Error('IA indisponível neste teste');
+    if (url.endsWith('/api/v2/me')) return Response.json({ firstname: 'Teste', email: 'fresamaster0@gmail.com' });
     if (url.endsWith('/shipment/calculate')) return Response.json([{ id: 2, name: 'SEDEX', price: '27.07', delivery_time: 2, company: { name: 'Correios' } }]);
     throw new Error(`Requisição inesperada: ${url}`);
   });
   await import('./index.ts');
   const post = (path: string, body: object) => handler(new Request(`https://supabase.test/functions/v1/api/shipping/${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-session' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: ['Bearer', 'public-test'].join(' ') },
+    body: JSON.stringify(body),
   }));
-  await t.test('cotação usa padrão exato 7 × 12 × 17 e mantém medidas manuais', async () => {
-    for (const dimensions of [undefined, { height: 8, width: 16, length: 24 }]) {
-      calls.length = 0;
-      const r = await post('calculate', { destinationCep: '13322000', originCep: '13321472', weightKg: 0.5, packageDimensions: dimensions });
-      assert.equal(r.status, 200);
-      const expected = dimensions || { height: 7, width: 12, length: 17 };
-      assert.deepEqual((await r.json()).packageDimensions, expected);
-      const rate = calls.find((call) => call.url.endsWith('/shipment/calculate'));
-      assert.ok(rate);
-      assert.deepEqual(rate.body.package, { ...expected, weight: 0.5 });
+
+  await t.test('OAuth autenticado persiste tokens no servidor e valida callback', async () => {
+    const authorization = await post('melhor-envio/authorize', {});
+    assert.equal(authorization.status, 200);
+    const authUrl = new URL((await authorization.json()).authorizationUrl);
+    assert.equal(authUrl.origin, 'https://melhorenvio.com.br');
+    assert.equal(authUrl.searchParams.get('redirect_uri'), 'https://jnakhctoigbepxwbaygk.supabase.co/functions/v1/api/shipping/melhor-envio/callback');
+    assert.equal(authUrl.searchParams.get('scope'), 'shipping-calculate users-read');
+    const callback = await handler(new Request(`https://supabase.test/functions/v1/api/shipping/melhor-envio/callback?code=one-time&state=${authUrl.searchParams.get('state')}`));
+    const page = await callback.text();
+    assert.equal(callback.status, 200);
+    assert.match(page, /Conexão concluída/);
+    assert.equal(page.includes('oauth-access'), false);
+    assert.equal(page.includes('oauth-refresh'), false);
+    assert.equal(oauthRecord?.access_token, 'oauth-access');
+    assert.equal(oauthRecord?.refresh_token, 'oauth-refresh');
+    assert.equal(oauthRecord?.pending_state, null);
+  });
+
+  await t.test('cotação usa as medidas padrão e sempre chama produção', async () => {
+    calls.length = 0;
+    const response = await post('calculate', { destinationCep: '13322000', originCep: '13321472', weightKg: 0.5 });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.packageDimensions, { height: 7, width: 12, length: 17 });
+    const rate = calls.find((call) => call.url.endsWith('/shipment/calculate'));
+    assert.ok(rate);
+    assert.equal(rate.url, 'https://melhorenvio.com.br/api/v2/me/shipment/calculate');
+    assert.deepEqual(rate.body.package, { height: 7, width: 12, length: 17, weight: 0.5 });
+    assert.equal(calls.some((call) => call.url.includes('sandbox.melhorenvio.com.br')), false);
+  });
+
+  await t.test('status confere a credencial OAuth de producao', async () => {
+    calls.length = 0;
+    const response = await post('test-production', {});
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.success, true);
+    assert.equal(result.environment, 'production');
+    assert.equal(result.email, 'fresamaster0@gmail.com');
+    assert.equal(calls.find((call) => call.url.endsWith('/api/v2/me'))?.authorization, 'Bearer oauth-access');
+  });
+
+  await t.test('cotacoes e operacoes Sandbox estao desativadas', async () => {
+    calls.length = 0;
+    for (const [path, body, expectedStatus] of [
+      ['test-melhor-envio', { isSandbox: true }, 410],
+      ['quote-sandbox', { sandboxToken: 'must-not-be-used' }, 404],
+      ['create-sandbox-shipment', { sandboxToken: 'must-not-be-used' }, 404],
+      ['checkout-sandbox', { sandboxToken: 'must-not-be-used' }, 404],
+      ['sandbox-shipment-status', { sandboxToken: 'must-not-be-used' }, 404],
+    ] as const) {
+      const response = await post(path, body);
+      assert.equal(response.status, expectedStatus, `${path} deve estar desativada`);
+    }
+    assert.equal(calls.some((call) => call.url.includes('melhorenvio.com.br')), false);
+  });
+
+  await t.test('conta desconectada informa como autorizar sem simular falha de comunicacao', async () => {
+    const previousRecord = oauthRecord;
+    const previousToken = settings.MELHOR_ENVIO_PRODUCTION_TOKEN;
+    oauthRecord = null;
+    delete settings.MELHOR_ENVIO_PRODUCTION_TOKEN;
+    calls.length = 0;
+    try {
+      for (const path of ['test-production', 'quote-production']) {
+        const response = await post(path, {});
+        assert.equal(response.status, 401);
+        const result = await response.json();
+        assert.equal(result.success, false);
+        assert.match(result.error, /Conecte a conta de produção do Melhor Envio/);
+      }
+      assert.equal(calls.some((call) => call.url.includes('melhorenvio.com.br')), false);
+    } finally {
+      oauthRecord = previousRecord;
+      settings.MELHOR_ENVIO_PRODUCTION_TOKEN = previousToken;
     }
   });
-  await t.test('verifica Sandbox com token separado sem fallback para produção', async () => {
-    calls.length = 0;
-    const response = await post('test-melhor-envio', { isSandbox: true });
-    assert.equal((await response.json()).connected, true);
-    const request = calls.find((call) => call.url.endsWith('/api/v2/me'));
-    assert.equal(request?.url, 'https://sandbox.melhorenvio.com.br/api/v2/me');
-    assert.equal(request?.authorization, 'Bearer sandbox-test');
-    delete settings.MELHOR_ENVIO_SANDBOX_TOKEN;
-    calls.length = 0;
-    assert.equal((await post('test-melhor-envio', { isSandbox: true })).status, 400);
-    assert.equal(calls.some((call) => call.url.includes('melhorenvio.com.br')), false);
+
+  await t.test('Melhor Envio desconectado nao bloqueia produtos Bling na extracao', async () => {
+    const previousRecord = oauthRecord;
+    const previousToken = settings.MELHOR_ENVIO_PRODUCTION_TOKEN;
+    oauthRecord = null;
+    delete settings.MELHOR_ENVIO_PRODUCTION_TOKEN;
+    try {
+      for (const cep of ['', '13321472']) {
+        const response = await handler(new Request('https://supabase.test/functions/v1/api/quote/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: ['Bearer', 'public-test'].join(' ') },
+          body: JSON.stringify({
+            text: '2 fresas de 3 cortes TCT por 140 cada',
+            currentQuote: { client: { cep } },
+            blingCatalogAvailable: true,
+            blingProducts: [{ id: '12345', nome: 'Fresa 3 Cortes TCT 6x22mm', codigo: 'FM-TCT-6X22', preco: 140, unidade: 'UN', ncm: '8207.70.00' }],
+          }),
+        }));
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.success, true);
+        assert.equal(result.quote.items[0].sku, 'FM-TCT-6X22');
+        assert.equal(result.quote.items[0].quantity, 2);
+        assert.equal(result.quote.items[0].unitPrice, 140);
+        assert.equal(result.quote.shipping.options.some((option: { isRealTimeMelhorEnvio?: boolean }) => option.isRealTimeMelhorEnvio), false);
+      }
+    } finally {
+      oauthRecord = previousRecord;
+      settings.MELHOR_ENVIO_PRODUCTION_TOKEN = previousToken;
+    }
   });
 });

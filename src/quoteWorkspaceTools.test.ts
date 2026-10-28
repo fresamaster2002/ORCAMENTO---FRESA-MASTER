@@ -27,6 +27,7 @@ test('duplicação cria rascunho sem vínculos, frete antigo ou confirmação fi
   source.status = 'approved';
   source.bling = { orderId: 33, nfe: { id: 44, situacao: 5 } };
   source.sandboxShipment = { id: 'old', protocol: 'old', createdAt: source.createdAt, paymentStatus: 'paid' };
+  source.productionShipment = { environment: 'production', status: 'created', id: 'real-old', protocol: null, requestedAt: source.createdAt, price: 30 };
   source.shipping.selectedOption = { service: 'SEDEX', carrier: 'Correios', name: 'Sedex', price: 30, deliveryDays: 2, isRealTimeMelhorEnvio: true };
   source.shipping.options = [source.shipping.selectedOption];
   source.financials.shippingAmount = 30;
@@ -43,6 +44,7 @@ test('duplicação cria rascunho sem vínculos, frete antigo ou confirmação fi
   assert.equal(copy.project.date, empty.project.date);
   assert.equal(copy.bling, undefined);
   assert.equal(copy.sandboxShipment, undefined);
+  assert.equal(copy.productionShipment, undefined);
   assert.equal(copy.client.fiscalReviewKey, undefined);
   assert.equal(copy.shipping.selectedOption, undefined);
   assert.deepEqual(copy.shipping.options, []);

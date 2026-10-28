@@ -83,7 +83,7 @@ export function useWorkspaceSession(
       try {
         if (supabase && ownerId) {
           const { data, error: readError } = await supabase.from('quotes').select('quote')
-            .eq('owner_id', ownerId).order('updated_at', { ascending: false }).limit(500)
+            .eq('owner_id', ownerId).not('id', 'like', 'ME-PRODUCTION:%').order('updated_at', { ascending: false }).limit(500)
             .abortSignal(AbortSignal.timeout(15000));
           if (readError) throw readError;
           cloud = (data || []).map((row) => normalize(row.quote)).filter((saved): saved is QuoteData => saved !== null);

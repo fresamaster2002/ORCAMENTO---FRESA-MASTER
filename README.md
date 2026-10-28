@@ -18,11 +18,37 @@ Para **Retirada no Local**, a proposta informa **Retirada no estoque Fresa Maste
 
 O ponto de retorno anterior a esta etapa é a tag Git **`checkpoint-antes-refino-2026-10-18`**, no commit `f08aee4`, publicada no GitHub. Ela preserva o código anterior para comparação/retorno controlado; não é um backup do banco de dados ou dos orçamentos.
 
-O resumo do orçamento acompanha a rolagem abaixo da navegação, mostrando cliente, situação e total, com acesso à proposta. A tela indica uma próxima ação sem executar aprovação, faturamento ou envio automaticamente. Os vínculos existentes de pedido Bling, NF-e e envio Sandbox ficam disponíveis para consulta; “autorizada” e pagamento de teste confirmado dependem dos estados já registrados, não apenas da existência de um ID.
+O resumo do orçamento acompanha a rolagem abaixo da navegação, mostrando cliente, situação e total, com acesso à proposta. A tela indica uma próxima ação sem executar aprovação, faturamento ou envio automaticamente. Vínculos históricos de pedido Bling, NF-e e envio de teste ficam disponíveis para consulta; “autorizada” e pagamento de teste confirmado dependem dos estados já registrados, não apenas da existência de um ID.
 
 Em **Orçamentos**, busque por nome (com ou sem acentos), CPF/CNPJ ou número e filtre pela situação. **Duplicar** inicia um rascunho com nova identificação/data, mantém produtos, preços e condições comerciais, mas remove vínculos de pedido/NF-e/envio, a confirmação fiscal e a cotação anterior. O frete e o seguro voltam a zero até nova seleção; confira os preços e o cadastro antes de continuar. O orçamento original não é alterado.
 
 ## Publicação automática do backend
+
+### Melhor Envio em produção
+
+A área operacional **Melhor Envio** usa exclusivamente `https://melhorenvio.com.br`; não há fluxo Sandbox disponível no app nem nas rotas de envio. Registros antigos de teste são mantidos apenas como histórico. **Continuar para envio**, após a NF-e autorizada, abre o fluxo de produção; isso não cria envio automaticamente.
+
+1. Aprove o orçamento e consulte a NF-e autorizada da série 2 no Bling.
+2. Em **Melhor Envio**, confira o remetente (CEP de origem padrão `13321-472`, editável), destinatário, pacote e produtos.
+3. **Testar conexão Melhor Envio** faz apenas leitura da conta. **Cotar no Melhor Envio** obtém preço oficial sem estimativa; não altera o valor cobrado do cliente nem a NF-e.
+4. Confira o custo, marque a confirmação e clique em **Adicionar ao carrinho do Melhor Envio (sem pagar)**.
+5. Abra o carrinho no painel oficial para pagar, emitir e imprimir a etiqueta. O app não faz checkout, debita saldo, gera etiqueta ou confirma postagem no ambiente real.
+
+O backend Supabase usa os tokens OAuth persistidos da conta de produção. Opcionalmente, aceita `MELHOR_ENVIO_PRODUCTION_TOKEN` como credencial estática de produção. Tokens genéricos ou marcados como Sandbox não são usados; sem credencial OAuth/produção válida, não há cotação oficial nem criação de envio. O Express de desenvolvimento também não usa credenciais fornecidas pelo navegador e só pode cotar com `MELHOR_ENVIO_PRODUCTION_TOKEN` configurado no servidor.
+
+Para conectar sem inserir tokens no navegador, cadastre um aplicativo na Área Dev do Melhor Envio, habilite as permissões `shipping-calculate` (cotação) e `users-read` (identificar a conta na verificação de conexão) e configure `MELHOR_ENVIO_CLIENT_ID` e `MELHOR_ENVIO_CLIENT_SECRET` como secrets da Edge Function `api`. Cadastre como redirect URI `https://jnakhctoigbepxwbaygk.supabase.co/functions/v1/api/shipping/melhor-envio/callback`. Aplique a migration `supabase/migrations/202610250001_melhor_envio_oauth.sql` no banco antes de iniciar OAuth. O botão **Conectar conta real (OAuth)** solicita apenas essas permissões; access/refresh tokens são mantidos numa tabela com RLS habilitada e sem acesso para `anon`/`authenticated`, e o backend renova o access token quando está a menos de cinco minutos do vencimento.
+
+Quando a API de produção não disponibiliza uma cotação, as opções locais de Sedex/PAC/Jadlog recebem o rótulo **Estimativa (sem cotação oficial)**; não use esses valores como preço confirmado ao cliente. A inclusão no carrinho exige nova cotação em produção dentro do modal.
+
+A ausência de autorização OAuth do Melhor Envio não bloqueia a extração do pedido nem a identificação dos produtos do catálogo real do Bling. Nesse caso, apenas a cotação oficial fica indisponível; as estimativas continuam identificadas e as operações de envio real permanecem bloqueadas até conectar a conta.
+
+Antes do carrinho real, a API relê a NF-e atual no Bling, compara chave, série, destinatário e itens e confere no XML o ambiente `tpAmb=1` e protocolo autorizado. Notas de homologação (`tpAmb=2`), canceladas, divergentes ou sem XML disponível bloqueiam o envio. A transportadora é recotada e qualquer diferença de preço exige nova conferência.
+
+O vínculo real fica em `productionShipment`, separado de `sandboxShipment`, e é removido ao duplicar o orçamento. A operação é reservada antes do POST ao Melhor Envio em um registro de controle com chave única `ME-PRODUCTION:<orçamento>` na tabela `quotes`, sob o mesmo proprietário/RLS. Esse registro não é um orçamento e não aparece na lista; é independente das gravações automáticas da venda, inclusive se ela for removida. Não exige migração de banco. Concorrência, recarga e falhas de comunicação não disparam nova criação automaticamente. Em resultado incerto, **Conferir solicitação salva / recuperar envio** recupera o controle; confira o painel oficial antes de qualquer reenvio. O controle incerto não é liberado automaticamente.
+
+As rotas de produção Supabase são `POST /shipping/test-production`, `/shipping/quote-production`, `/shipping/production-shipment` e `/shipping/create-production-shipment` (com prefixo `/api` no Express de desenvolvimento). As rotas antigas de Sandbox e troca de token no Express estão desativadas. As cotações de frete padrão também apontam para produção. Publique interface e função `api`. Os testes simulam o Melhor Envio e o Bling para validar isolamento, preço, NF-e e reserva/recuperação sem criar, pagar ou emitir um envio real.
+
+Recusas explícitas do carrinho (HTTP 400/401/403/404/422) ficam como `rejected`, exibem o motivo e permitem corrigir os dados/credencial após conferir o registro e recotar. Timeout, resposta sem ID, conflito ou falha de servidor continuam bloqueados como situação incerta. Registros antigos de Sandbox, inclusive os que indiquem pagamento, nunca liberam nem representam um envio de produção.
 
 O workflow [Deploy Fresa Master API to Supabase](.github/workflows/deploy-supabase.yml) publica a função `api` no projeto `jnakhctoigbepxwbaygk` quando mudanças do backend, suas dependências ou testes chegam à `main`. Também pode ser executado manualmente em **GitHub > Actions > Deploy Fresa Master API to Supabase > Run workflow**. A publicação exige tipagem e testes aprovados e mantém a configuração de autenticação de `supabase/config.toml`.
 
@@ -94,7 +120,7 @@ A conferência prioriza destinatário, natureza, ferramentas, valores, pagamento
 
 Antes de transmitir, o app salva no vínculo da nota o horário da solicitação. Com resultado ainda indefinido, bloqueia uma nova transmissão, inclusive após recarregar. Depois de um envio aceito com situação pendente, faz no máximo seis consultas, espaçadas em cinco segundos, interrompendo em autorização, rejeição ou outra situação final. Parar o acompanhamento não cancela o envio; falha ou demora exige consulta, nunca reenvio automático. Uma rejeição confirmada permite corrigir e conferir antes de tentar novamente. A API nem sempre retorna o motivo detalhado da SEFAZ; o app conserva os erros recebidos e oferece acesso à rejeição no Bling, sem inventar diagnóstico.
 
-Após autorização, os dados reais da nota permanecem somente leitura e aparecem atalhos para DANFE, XML, compartilhamento (ou cópia da mensagem) e retorno à logística. Os links do Bling podem expirar; recarregar obtém links atuais. **Continuar para envio** abre o painel de logística, não compra frete nem gera etiqueta automaticamente. O Sandbox continua sendo somente teste.
+Após autorização, os dados reais da nota permanecem somente leitura e aparecem atalhos para DANFE, XML, compartilhamento (ou cópia da mensagem) e Melhor Envio. Os links do Bling podem expirar; recarregar obtém links atuais. **Continuar para envio** abre a conferência do Melhor Envio, não cria carrinho, compra frete nem gera etiqueta automaticamente. Registros Sandbox antigos são somente históricos.
 
 A autorização confirmada (situação 5 do Bling) mostra um destaque verde **NF-e emitida com sucesso!**, com número e série, tanto na conferência quanto no painel da nota. O destaque também aparece ao reabrir uma nota autorizada. Rascunho, processamento e rejeição não exibem essa mensagem.
 
@@ -152,7 +178,7 @@ NCM ausente, zerado ou `8207.70.00` bloqueia venda/exportação/emissão; não h
 
 A transmissão faz uma nova conferência no backend e fica bloqueada na interface enquanto houver pendências ou situação incompatível. Essas verificações não substituem a revisão de tributos e demais dados fiscais pelo responsável contábil. O teste controlado de 10/10/2026 acima validou o XML do fluxo corrigido para uma ferramenta com NCM cadastrado.
 
-### Série 2 e carrinho Sandbox
+### Série 2 e integração de envio
 
 Na tela do orçamento, **Emitir NF-e** abre sempre a aba de emissão do Bling. A seção **Nota Fiscal (NF-e)** aparece primeiro, antes das configurações de conexão, inclusive no celular. Sem venda vinculada, mostra **1. Criar pedido para emitir NF-e** e as pendências cadastrais/fiscais; após criar a venda, libera **Gerar NF-e a partir do pedido**. Depois, abra **Conferir e editar NF-e no app**. Não há transmissão automática. Notas autorizadas mostram **Autorizada** e acesso ao DANFE, sem oferecer uma nova transmissão. O indicador do orçamento considera a situação da NF-e, não a modalidade de frete.
 
@@ -184,15 +210,7 @@ Em 10/10/2026, a natureza padrão de venda usada pela integração, **Venda de m
 
 O app continua bloqueando notas de outra série, dados fiscais inconsistentes e duplicação de pedido/nota; não presume aceitação de campos não documentados nem altera a sequência global. Produtos sem NCM no cadastro precisam de classificação confirmada, não de um código inventado.
 
-O endpoint `POST /api/shipping/create-sandbox-shipment` valida orçamento aprovado, chave NF-e modelo 55/série 2 (incluindo dígito verificador e CNPJ emissor), remetente/destino, rota cotada, produtos e pacote. Reconsulta a disponibilidade do serviço no Sandbox e adiciona ao carrinho `/api/v2/me/cart`. **Não faz checkout, compra, pagamento nem impressão de etiqueta.** A chave ainda deve ser colada no modal; confira se corresponde à venda testada.
-
-A recotação aceita tanto a lista de serviços quanto o objeto único retornado pelo Melhor Envio quando se solicita apenas um serviço. O ID deve corresponder ao serviço selecionado e erros da transportadora são apresentados antes de criar o carrinho.
-
-No modal, **Cotar [modalidade selecionada] no Sandbox** consulta diretamente o ambiente de teste com o token separado, sem fallback para valores estimados ou produção. Respeita a modalidade escolhida (Sedex, PAC ou Jadlog), usa o ID oficial da opção quando disponível e atualiza origem/frete somente no orçamento atual. O CEP padrão do remetente é `13329-350`, editável no modal; o CEP padrão antigo `13321-472` salvo pelo app é migrado, mas outros CEPs personalizados são preservados. A cotação fica bloqueada em orçamentos já vinculados a um pedido Bling ou envio criado. Use um orçamento separado de teste. A cotação não exige chave NF-e e não cria carrinho; a inclusão no carrinho continua exigindo uma chave válida. CPF é enviado em `to.document`; CNPJ em `to.company_document`.
-
-Validação em 12/10/2026: dois orçamentos separados, identificados nos produtos como teste Sandbox, criaram carrinhos reais no ambiente de testes: CPF `ORD-202610301542` e CNPJ `ORD-202610301541`. Foram usadas chaves de notas existentes, cujo XML confirmou homologação; nenhuma nova NF-e foi emitida. O endereço de entrega foi explicitamente fictício e separado do fiscal, pois o Sandbox rejeitou endereço igual ao remetente e um CEP antigo do cadastro. A consulta dos dois carrinhos confirmou documentos no campo correto, situação `pending`, `paid_at=null` e `generated_at=null`; recarregar o app confirmou os vínculos persistidos. Cotação Sedex de R$ 36,07 por teste. Nenhum checkout, pagamento, geração de etiqueta ou postagem real foi realizado; o orçamento original permaneceu intacto.
-
-Configure `MELHOR_ENVIO_SANDBOX_TOKEN` no backend ou informe um token Sandbox no campo protegido do modal, sem salvá-lo no navegador. Para compatibilidade, `MELHOR_ENVIO_TOKEN` só é usado quando `MELHOR_ENVIO_SANDBOX=true`; nunca há fallback para o host de produção. Confira o cadastro real do remetente, especialmente IE e CEP: os dados salvos anteriormente não são confirmação fiscal. Se houver falha de comunicação, confira o carrinho antes de repetir para evitar duplicação.
+> Os relatos de Sandbox abaixo são registros históricos de validação. O fluxo Sandbox foi removido da interface e não deve ser usado para operações atuais.
 
 #### Resultado da investigação em 09/10/2026
 
@@ -202,8 +220,6 @@ Configure `MELHOR_ENVIO_SANDBOX_TOKEN` no backend ou informe um token Sandbox no
 - Naquela investigação, a seleção automática de série 2 permanecia pendente. Foi resolvida em 10/10/2026 pela configuração da natureza de operação e validada no FM-012 acima. O contrato consultado não oferece `serie` como entrada na geração por pedido nem nos DTOs de escrita de NF-e. Não há garantia de ambiente do rascunho pela resposta resumida da API; antes de testes, confirme também o ambiente da própria nota no Bling, não apenas a preferência da conta.
 - A verificação de conexão do Melhor Envio em produção retornou conectado; a consulta ao host Sandbox com o token usado no teste retornou token não autorizado ou expirado. Isso não valida eventual token Sandbox separado da rota de carrinho. Nenhum carrinho Sandbox real foi criado. O fluxo NF-e autorizada na série 2 → carrinho Sandbox ainda não foi validado de ponta a ponta.
 - Após login no painel Sandbox, uma cotação real de `13321-472` para `13322-000`, pacote 7 × 12 × 17 cm e 0,5 kg, retornou Sedex R$ 13,38 (1 dia útil), Jadlog .Com R$ 15,10 (5 dias úteis) e .Package R$ 16,33 (6 dias úteis). Essa consulta foi pelo painel do Melhor Envio, não pela rota de carrinho do app. O backend atualizado informou ausência de token Sandbox configurado; os campos de token e chave da NF-e no modal compartilhado continuaram vazios. Não houve criação de envio, compra ou pagamento.
-
-O pagamento de um envio Sandbox é uma ação separada e exige confirmação explícita na tela. O backend consulta primeiro o ID selecionado no carrinho e somente faz `POST /me/shipment/checkout` no host fixo do Sandbox, com esse único envio; não há fallback para produção nem compra automática de etiqueta. Antes da chamada, o app salva o estado `processing` no orçamento para bloquear repetição após falha ou fechamento da página. Em caso de resultado ambíguo, use **Verificar situação no Sandbox**; o app não reenvia o checkout automaticamente. O teste utiliza saldo fictício da conta Sandbox. O fluxo não inicia pagamento de produção, não gera etiqueta e não autoriza postagem real.
 
 O teste usou um pedido separado identificado por `TESTE-HOMOLOGACAO-1791342197496`; pedidos de venda não são isolados pela troca do ambiente de NF-e. Esse pedido de teste permanece no Bling e não deve ser faturado em produção.
 
@@ -245,6 +261,8 @@ Antes da primeira publicação:
 6. Faça push das alterações para `main` e acompanhe a execução em **Actions**.
 
 O endereço do app é `https://fresamaster2002.github.io/ORCAMENTO---FRESA-MASTER/`. O Pages hospeda a interface; os recursos que consultam IA, Bling e Melhor Envio dependem da Edge Function ativa no Supabase.
+
+Para publicar localmente a Edge Function no Windows com verificação de tipos e testes antes do deploy, execute `.\scripts\deploy-supabase-api.ps1` no PowerShell. O script solicita o Personal Access Token do Supabase em uma entrada oculta, usa-o somente durante o deploy e não o grava no projeto. Nunca cole esse token no chat, no código ou em arquivos `.env`.
 
 ## Acesso e dados
 

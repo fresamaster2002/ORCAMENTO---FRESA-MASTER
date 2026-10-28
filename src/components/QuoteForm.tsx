@@ -470,13 +470,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               else document.getElementById(nextAction.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }} className="min-h-9 cursor-pointer rounded-lg border border-slate-300 px-3 font-semibold text-slate-700 hover:border-amber-500 dark:border-slate-700 dark:text-slate-200">{nextAction.label}</button>
           </div>
-          {(quote.bling?.orderId || quote.bling?.nfe?.id || quote.sandboxShipment) && (
+          {(quote.bling?.orderId || quote.bling?.nfe?.id || quote.sandboxShipment || quote.productionShipment) && (
             <details className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
               <summary className="cursor-pointer">Vínculos registrados neste orçamento</summary>
               <ul className="mt-2 space-y-1 break-words">
                 {quote.bling?.orderId && <li>Pedido Bling: {quote.bling.orderNumber || quote.bling.orderId}</li>}
                 {quote.bling?.nfe?.id && <li>NF-e: {quote.bling.nfe.numero || `ID ${quote.bling.nfe.id}`} · {Number(quote.bling.nfe.situacao) === 5 ? 'Autorizada' : 'Consulte a situação no Bling'}</li>}
-                {quote.sandboxShipment && <li>Envio Sandbox (teste): {quote.sandboxShipment.protocol || quote.sandboxShipment.id || 'Registrado'} · {quote.sandboxShipment.paymentStatus === 'paid' ? 'Pagamento de teste confirmado' : 'Pagamento de teste não confirmado'}</li>}
+                {quote.sandboxShipment && <li>Registro de envio de teste antigo (não representa envio de produção): {quote.sandboxShipment.protocol || quote.sandboxShipment.id || 'Registrado'} · {quote.sandboxShipment.paymentStatus === 'paid' ? 'Pagamento de teste confirmado' : 'Pagamento de teste não confirmado'}</li>}
+                {quote.productionShipment && <li>Envio REAL: {quote.productionShipment.protocol || quote.productionShipment.id || 'Solicitação a conferir'} · Pagamento e etiqueta: consulte o painel oficial do Melhor Envio.</li>}
               </ul>
             </details>
           )}

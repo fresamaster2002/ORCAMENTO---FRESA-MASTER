@@ -4,7 +4,10 @@ import { formatBlingError } from '../_shared/blingErrors.ts';
 import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from '../_shared/blingFiscal.ts';
 import { resolveBlingProducts } from '../_shared/blingProducts.ts';
 import { fetchBlingApi } from '../_shared/blingTransport.ts';
-import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
+import { quoteMelhorEnvioShipment, SandboxShipmentError } from '../_shared/sandboxShipment.ts';
+import { createProductionShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection } from '../_shared/productionShipment.ts';
+import { beginProductionOAuth, completeProductionOAuth, MelhorEnvioOAuthError, productionAccessToken, type MelhorEnvioTokenRecord, type MelhorEnvioTokenStore } from '../_shared/productionOAuth.ts';
+import { verifyProductionShipmentInvoice } from '../_shared/productionInvoice.ts';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
@@ -38,6 +41,68 @@ type CatalogProduct = {
 };
 
 const normalizeText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+const ME_OAUTH_REDIRECT_URI = 'https://jnakhctoigbepxwbaygk.supabase.co/functions/v1/api/shipping/melhor-envio/callback';
+
+function melhorEnvioTokenStore(): MelhorEnvioTokenStore {
+  const base = env('SUPABASE_URL').replace(/\/+$/, '');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY');
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  const configured = Boolean(base && key);
+  return {
+    async load(): Promise<MelhorEnvioTokenRecord | null> {
+      if (!configured) return null;
+      const response = await fetch(`${base}/rest/v1/melhor_envio_oauth?id=eq.1&select=access_token,refresh_token,expires_at,pending_state,pending_created_at&limit=1`, {
+        headers, signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new MelhorEnvioOAuthError('Não foi possível ler a conexão OAuth salva no Supabase.', 503);
+      const rows: unknown = await response.json();
+      const row = Array.isArray(rows) && rows[0] && typeof rows[0] === 'object' ? rows[0] as Record<string, unknown> : null;
+      if (!row) return null;
+      return {
+        accessToken: typeof row.access_token === 'string' ? row.access_token : '',
+        refreshToken: typeof row.refresh_token === 'string' ? row.refresh_token : '',
+        expiresAt: typeof row.expires_at === 'string' ? row.expires_at : '',
+        ...(typeof row.pending_state === 'string' ? { pendingState: row.pending_state } : {}),
+        ...(typeof row.pending_created_at === 'string' ? { pendingCreatedAt: row.pending_created_at } : {}),
+      };
+    },
+    async save(record) {
+      if (!configured) throw new MelhorEnvioOAuthError('Configure as credenciais de acesso ao Supabase na função api para armazenar tokens OAuth com segurança.', 503);
+      const response = await fetch(`${base}/rest/v1/melhor_envio_oauth?on_conflict=id`, {
+        method: 'POST',
+        headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          id: 1,
+          access_token: record.accessToken,
+          refresh_token: record.refreshToken,
+          expires_at: record.expiresAt,
+          pending_state: record.pendingState || null,
+          pending_created_at: record.pendingCreatedAt || null,
+          updated_at: new Date().toISOString(),
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new MelhorEnvioOAuthError('Não foi possível persistir a conexão OAuth no Supabase.', 503);
+    },
+  };
+}
+
+function melhorEnvioOAuthConfig() {
+  return {
+    clientId: env('MELHOR_ENVIO_CLIENT_ID'),
+    clientSecret: env('MELHOR_ENVIO_CLIENT_SECRET'),
+    redirectUri: ME_OAUTH_REDIRECT_URI,
+    store: melhorEnvioTokenStore(),
+  };
+}
+
+async function getProductionMelhorEnvioToken(): Promise<string> {
+  return productionAccessToken(
+    melhorEnvioOAuthConfig(),
+    productionToken(env('MELHOR_ENVIO_PRODUCTION_TOKEN')),
+  );
+}
 
 function normalizeBlingCatalogProducts(records: unknown[]): CatalogProduct[] {
   return records.flatMap((record, index) => {
@@ -346,7 +411,7 @@ function calculatePackageWeight(items: Array<{ description?: string; quantity?: 
 
 function calculateShippingRates(
   destinationCep: string,
-  originCep = '13329-350',
+  originCep = '13321-472',
   weightKg = 0.5,
   dimensions: JsonObject = { ...DEFAULT_PACKAGE_DIMENSIONS },
   customShipping?: JsonObject,
@@ -354,7 +419,7 @@ function calculateShippingRates(
   declaredValue = 280,
 ) {
   const destination = destinationCep.replace(/\D/g, '');
-  const origin = originCep.replace(/\D/g, '') || '13329350';
+  const origin = originCep.replace(/\D/g, '') || '13321472';
   const destDigit = destination ? Number(destination[0]) : 1;
   const originDigit = origin ? Number(origin[0]) : 1;
   const sameState = destDigit === originDigit;
@@ -406,18 +471,24 @@ async function lookupViaCep(cep: string): Promise<JsonObject | null> {
   }
 }
 
-async function liveShippingRates(destinationCep: string, originCep: string, weightKg: number, dimensions: JsonObject, insuranceEnabled: boolean, declaredValue: number, token?: string, sandbox?: boolean): Promise<JsonObject[] | null> {
-  const accessToken = token || env('MELHOR_ENVIO_TOKEN');
+async function liveShippingRates(destinationCep: string, originCep: string, weightKg: number, dimensions: JsonObject, insuranceEnabled: boolean, declaredValue: number): Promise<JsonObject[] | null> {
   const destination = (destinationCep || '').replace(/\D/g, '');
-  if (!accessToken || destination.length !== 8) return null;
-  const isSandbox = sandbox ?? env('MELHOR_ENVIO_SANDBOX') === 'true';
-  const host = isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
+  if (destination.length !== 8) return null;
+  let accessToken: string;
   try {
-    const response = await fetch(`${host}/api/v2/me/shipment/calculate`, {
+    accessToken = await getProductionMelhorEnvioToken();
+  } catch (error) {
+    if (!(error instanceof MelhorEnvioOAuthError)) throw error;
+    console.warn('Cotação oficial indisponível; fretes serão identificados como estimativas:', error.message);
+    return null;
+  }
+  if (!accessToken) return null;
+  try {
+    const response = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/calculate', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken.trim()}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' },
       body: JSON.stringify({
-        from: { postal_code: (originCep || '13329-350').replace(/\D/g, '') },
+        from: { postal_code: (originCep || '13321-472').replace(/\D/g, '') },
         to: { postal_code: destination },
         package: { height: Math.max(2, Number(dimensions.height) || DEFAULT_PACKAGE_DIMENSIONS.height), width: Math.max(11, Number(dimensions.width) || DEFAULT_PACKAGE_DIMENSIONS.width), length: Math.max(16, Number(dimensions.length) || DEFAULT_PACKAGE_DIMENSIONS.length), weight: Math.max(0.1, weightKg || 0.5) },
         options: { insurance_value: insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
@@ -437,11 +508,17 @@ async function liveShippingRates(destinationCep: string, originCep: string, weig
       const insurance = insuranceEnabled ? Number(Math.max(2.5, declaredValue * (service === 'SEDEX' ? 0.009 : 0.012)).toFixed(2)) : insuranceFallback;
       const base = insuranceEnabled ? Number(Math.max(0, price - insurance).toFixed(2)) : price;
       const insured = insuranceEnabled ? price : Number((price + insurance).toFixed(2));
-      return [{ service, melhorEnvioServiceId: Number(item.id), name: `${item.name} (Melhor Envio Oficial)`, carrier: item.company?.name || (label.includes('jadlog') ? 'Jadlog' : 'Correios'), price: insuranceEnabled ? insured : base, deliveryDays: Number(item.custom_delivery_time || item.delivery_time || 2), selected: false, insuranceIncluded: insuranceEnabled, insuranceCost: insurance, withInsurancePrice: insured, withoutInsurancePrice: base, isRealTimeMelhorEnvio: true }];
+      return [{ service, melhorEnvioServiceId: Number(item.id), melhorEnvioEnvironment: 'production', name: `${item.name} (Melhor Envio)`, carrier: item.company?.name || (label.includes('jadlog') ? 'Jadlog' : 'Correios'), price: insuranceEnabled ? insured : base, deliveryDays: Number(item.custom_delivery_time || item.delivery_time || 2), selected: false, insuranceIncluded: insuranceEnabled, insuranceCost: insurance, withInsurancePrice: insured, withoutInsurancePrice: base, isRealTimeMelhorEnvio: true }];
     });
   } catch {
     return null;
   }
+}
+
+function labelEstimatedCarrierRates(options: JsonObject[]): JsonObject[] {
+  return options.map((option) => ['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(String(option.service))
+    ? { ...option, name: `Estimativa (sem cotação oficial) — ${option.name}` }
+    : option);
 }
 
 function chooseRequestedCarrier(text: string, options: JsonObject[], price?: number | null): JsonObject {
@@ -546,7 +623,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const insuranceEnabled = Boolean(shipping.insuranceEnabled);
   const liveOptions = await liveShippingRates(
     cep,
-    shipping.originCep || '13329-350',
+    shipping.originCep || '13321-472',
     weight.weightKg,
     dimensions,
     insuranceEnabled,
@@ -554,7 +631,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   );
   const options = liveOptions?.length
     ? liveOptions
-    : calculateShippingRates(cep || '00000000', shipping.originCep || '13329-350', weight.weightKg, dimensions, customShipping, insuranceEnabled, subtotal);
+    : labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shipping.originCep || '13321-472', weight.weightKg, dimensions, customShipping, insuranceEnabled, subtotal));
   for (const option of [
     { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
     { service: 'MOTOBOY', name: 'Envio por Motoboy / Aplicativo', carrier: 'Motoboy / App', price: 0, deliveryDays: 1, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
@@ -575,7 +652,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
     client: { ...previousClient, name: clientName, tradeName: previousClient.tradeName || '', company: previousClient.company || clientName, email: previousClient.email || '', phone: previousClient.phone || '', document: previousClient.document || '', ie: previousClient.ie || '', cep: cep || previousClient.cep || '', address: address?.logradouro || previousClient.address || '', number: previousClient.number || '', neighborhood: address?.bairro || previousClient.neighborhood || '', city: address?.cidade || previousClient.city || '', state: address?.uf || previousClient.state || '' },
     project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
     items: [item],
-    shipping: { ...shipping, originCep: shipping.originCep || '13329-350', destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
+    shipping: { ...shipping, originCep: shipping.originCep || '13321-472', destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
     financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage, discountAmount, taxPercentage: 0, taxAmount: 0, totalAmount: Math.max(0, subtotal - discountAmount + Number(selected.price || 0)), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
     observations: ['Envio pelo Melhor Envio com seguro total.', 'Garantia contra defeitos de fabricação e balanceamento.'],
     notesForClient: 'Fresa Master - Sua router CNC trabalhando com máxima precisão.',
@@ -613,7 +690,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const cep = extractCepFromText(text) || parsed.detectedCep || parsed.client?.cep || current.client?.cep || '';
   const weight = calculatePackageWeight(items);
   const shippingState = current.shipping || {};
-  const shippingOptions = calculateShippingRates(cep || '00000000', shippingState.originCep || '13329-350', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0));
+  const shippingOptions = labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0)));
   const selected = chooseRequestedCarrier(`${text} ${parsed.detectedCarrier || ''}`, shippingOptions, extractMotoboyPriceFromText(text));
   if (!shippingOptions.some((option) => option.service === selected.service)) shippingOptions.push(selected);
   else shippingOptions[shippingOptions.findIndex((option) => option.service === selected.service)] = selected;
@@ -681,11 +758,11 @@ async function shippingCalculate(body: JsonObject): Promise<Response> {
   const weightDescription = Number(body.weightKg) > 0 ? `${weight.toFixed(1).replace('.', ',')} kg (definido manualmente)` : calculatePackageWeight(items).description;
   let declaredValue = Number(body.declaredValue) || items.reduce((sum: number, item: JsonObject) => sum + (Number(item.totalPrice) || 0), 0) || 280;
   const dimensions = body.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
-  const originCep = body.originCep || '13329-350';
+  const originCep = body.originCep || '13321-472';
   const insuranceEnabled = Boolean(body.insuranceEnabled);
-  let options = await liveShippingRates(destinationCep, originCep, weight, dimensions, insuranceEnabled, declaredValue, body.melhorEnvioToken);
+  let options = await liveShippingRates(destinationCep, originCep, weight, dimensions, insuranceEnabled, declaredValue);
   const isLiveApi = Boolean(options?.length);
-  if (!options?.length) options = calculateShippingRates(destinationCep, originCep, weight, dimensions, body.customShipping, insuranceEnabled, declaredValue);
+  if (!options?.length) options = labelEstimatedCarrierRates(calculateShippingRates(destinationCep, originCep, weight, dimensions, body.customShipping, insuranceEnabled, declaredValue));
   else {
     options.push(
       { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
@@ -804,17 +881,28 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, messageText: messageText || fallback });
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
-    if (['/shipping/create-sandbox-shipment', '/shipping/quote-sandbox', '/shipping/checkout-sandbox', '/shipping/sandbox-shipment-status'].includes(path) && request.method === 'POST') {
+    if (['/shipping/quote-production', '/shipping/create-production-shipment', '/shipping/production-shipment', '/shipping/test-production'].includes(path) && request.method === 'POST') {
       try {
-        const token = body.sandboxToken || env('MELHOR_ENVIO_SANDBOX_TOKEN') || (env('MELHOR_ENVIO_SANDBOX') === 'true' ? env('MELHOR_ENVIO_TOKEN') : '');
-        if (path === '/shipping/quote-sandbox') return json(await quoteSandboxShipment(body, token));
-        if (path === '/shipping/checkout-sandbox') return json(await checkoutSandboxShipment(body, token));
-        if (path === '/shipping/sandbox-shipment-status') return json(await getSandboxShipmentStatus(body, token));
-        return json(await createSandboxShipment(body, token));
+        const token = typeof body.productionToken === 'string' && body.productionToken.trim()
+          ? body.productionToken.trim()
+          : await getProductionMelhorEnvioToken();
+        if (path === '/shipping/test-production') return json(await testProductionConnection(token));
+        if (path === '/shipping/quote-production') return json(await quoteMelhorEnvioShipment(body, token, 'production'));
+        const store = createShipmentQuoteStore(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY') || env('SUPABASE_PUBLISHABLE_KEY'), request.headers.get('authorization') || '');
+        if (path === '/shipping/production-shipment') {
+          if (typeof body.quoteId !== 'string' || !body.quoteId || body.quoteId.length > 100) return json({ success: false, error: 'Orçamento inválido.' }, 400);
+          const saved = await store.load(body.quoteId);
+          return json({ success: true, environment: 'production', shipment: saved.quote.productionShipment || null });
+        }
+        return json(await createProductionShipment(body, token, store, async (quote) => {
+          await verifyProductionShipmentInvoice(quote, request.headers.get('x-bling-token') || await getBlingToken());
+        }));
       } catch (error) {
-        if (error instanceof SandboxShipmentError) return json({ success: false, error: error.message }, error.status);
-        console.error('Falha de comunicação com o Melhor Envio Sandbox:', error);
-        return json({ success: false, error: 'Falha de comunicação com o Sandbox. Confira o carrinho antes de repetir, pois o envio pode ter sido criado.' }, 502);
+        if (error instanceof MelhorEnvioOAuthError) return json({ success: false, error: error.message }, error.status);
+        if (error instanceof SandboxShipmentError) return json({ success: false, error: error.message, ...(error instanceof ProductionShipmentError && error.shipment ? { shipment: error.shipment } : {}) }, error.status);
+        if (error instanceof BlingFiscalError) return json({ success: false, error: error.message }, error.status);
+        console.error('Falha na integração de envio real:', error);
+        return json({ success: false, error: 'Falha na comunicação. Reabra a tela de envio real para recuperar a solicitação e confira o painel oficial antes de repetir.' }, 502);
       }
     }
     if (path === '/bling/status' && request.method === 'GET') return json({ connected: Boolean(await getBlingToken()), hasToken: Boolean(await getBlingToken()), authorizeUrl: `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${env('BLING_CLIENT_ID')}&state=fresa_master` });
@@ -950,35 +1038,43 @@ async function route(request: Request): Promise<Response> {
       return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Bling - Fresa Master</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><p>${escape(error || 'O Bling autorizou a integração Fresa Master.')}</p><code id="code">${escape(code)}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'BLING_AUTH_CODE',code},'*');</script></body></html>`);
     }
     if (path === '/shipping/test-melhor-envio' && request.method === 'POST') {
-      const token = body.token || (body.isSandbox
-        ? env('MELHOR_ENVIO_SANDBOX_TOKEN') || (env('MELHOR_ENVIO_SANDBOX') === 'true' ? env('MELHOR_ENVIO_TOKEN') : '')
-        : env('MELHOR_ENVIO_TOKEN'));
+      if (body.isSandbox) return json({ success: false, connected: false, error: 'O ambiente Sandbox foi desativado. Use a conexão de produção do Melhor Envio.' }, 410);
+      const token = await getProductionMelhorEnvioToken();
       if (!token) return json({ success: false, connected: false, message: 'Nenhum token do Melhor Envio fornecido.' }, 400);
-      const host = body.isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
+      const host = 'https://melhorenvio.com.br';
       const response = await fetch(`${host}/api/v2/me`, { headers: { Authorization: `Bearer ${String(token).trim()}`, Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' } });
       if (!response.ok) return json({ success: false, connected: false, message: response.status === 401 ? 'Token não autorizado ou expirado.' : `Melhor Envio retornou HTTP ${response.status}.` });
       const user = await response.json();
-      return json({ success: true, connected: true, user: { name: user.firstname ? `${user.firstname} ${user.lastname || ''}`.trim() : user.name || 'Usuário', email: user.email, company: user.company_name, environment: body.isSandbox ? 'Sandbox (Testes)' : 'Produção (Oficial)' }, calculationActive: true, message: `Conectado à conta de ${user.firstname || 'Melhor Envio'} (${user.email}).` });
+      return json({ success: true, connected: true, user: { name: user.firstname ? `${user.firstname} ${user.lastname || ''}`.trim() : user.name || 'Usuário', email: user.email, company: user.company_name, environment: 'Produção (Oficial)' }, calculationActive: true, message: `Conectado à conta de produção do Melhor Envio (${user.email}).` });
+    }
+    if (path === '/shipping/melhor-envio/authorize' && request.method === 'POST') {
+      const authorizationUrl = await beginProductionOAuth(melhorEnvioOAuthConfig());
+      return json({ success: true, authorizationUrl });
     }
     if (path === '/shipping/melhor-envio/exchange-code' && request.method === 'POST') {
-      const { code, redirectUri, isSandbox } = body;
-      const clientId = body.clientId || env('MELHOR_ENVIO_CLIENT_ID');
-      const clientSecret = body.clientSecret || env('MELHOR_ENVIO_CLIENT_SECRET');
-      if (!code) return json({ success: false, error: "Código de autorização 'code' não fornecido." }, 400);
-      if (!clientId || !clientSecret) return json({ success: false, error: 'Client ID e Client Secret do Melhor Envio não configurados.' }, 400);
-      const host = isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
-      const response = await fetch(`${host}/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' }, body: JSON.stringify({ grant_type: 'authorization_code', client_id: String(clientId).trim(), client_secret: String(clientSecret).trim(), redirect_uri: redirectUri, code: String(code).trim() }) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) return json({ success: false, error: data.message || data.error_description || data.error || 'Falha na troca do token.', details: data }, response.status);
-      return json({ success: true, accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in });
+      return json({ success: false, error: 'Use o fluxo autenticado /shipping/melhor-envio/authorize e o callback validado; tokens não são retornados ao navegador.' }, 410);
     }
     if (path === '/shipping/melhor-envio/callback' && request.method === 'GET') {
       const code = url.searchParams.get('code') || '';
-      const error = url.searchParams.get('error') || '';
-      return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorização Melhor Envio</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155"><h1>${error ? 'Erro na autorização' : 'Autorização recebida'}</h1><code id="code">${String(code).replace(/[&<>]/g, '')}</code></main><script>const code=${JSON.stringify(code)};if(code&&window.opener)window.opener.postMessage({type:'MELHOR_ENVIO_AUTH_CODE',code},'*');</script></body></html>`);
+      const state = url.searchParams.get('state') || '';
+      const providerError = url.searchParams.get('error') || '';
+      let message = providerError ? 'O Melhor Envio não autorizou a conexão. Volte ao app e tente novamente.' : 'A conta foi conectada. Os tokens ficaram armazenados no servidor.';
+      let title = providerError ? 'Autorização não concluída' : 'Conexão concluída';
+      let status = 200;
+      if (!providerError) {
+        try { await completeProductionOAuth(melhorEnvioOAuthConfig(), code, state); }
+        catch (error) {
+          status = error instanceof MelhorEnvioOAuthError ? error.status : 500;
+          message = error instanceof Error ? error.message : 'Falha ao concluir a conexão OAuth.';
+          title = 'Não foi possível conectar';
+        }
+      }
+      const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
+      return html(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · Fresa Master</title><body style="font:16px system-ui;background:#0f172a;color:#f8fafc;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:560px;padding:32px;background:#1e293b;border:1px solid #334155;border-radius:16px"><h1>${escape(title)}</h1><p>${escape(message)}</p><p>Feche esta aba e volte ao Fresa Master para testar a conexão.</p></main></body></html>`, status);
     }
     return json({ success: false, error: 'Rota não encontrada.' }, 404);
   } catch (error) {
+    if (error instanceof MelhorEnvioOAuthError) return json({ success: false, error: error.message }, error.status);
     if (error instanceof BlingFiscalError) return json({ success: false, error: error.message, blingDetails: error.details }, error.status);
     return json({ success: false, error: error instanceof Error ? error.message : 'Erro interno da função.' }, 500);
   }

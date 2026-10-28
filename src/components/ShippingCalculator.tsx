@@ -32,7 +32,7 @@ interface ShippingCalculatorProps {
   onUpdateShipping?: (updatedShipping: ShippingInfo, selectedOption?: ShippingOption) => void;
 }
 
-const DEFAULT_ORIGIN_CEP = '13329-350'; // Salto / SP (Expedição Oficial Fresa Master)
+const DEFAULT_ORIGIN_CEP = '13321-472'; // Salto / SP (Expedição Oficial Fresa Master)
 
 export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   shipping,
@@ -53,16 +53,16 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   const checkMelhorEnvio = async () => {
     setMeStatus({ state: 'checking' });
     try {
-      const res = await apiFetch('/api/shipping/test-melhor-envio', {
+      const res = await apiFetch('/api/shipping/test-production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
       });
       const data = await res.json();
-      if (res.ok && data.connected) {
-        setMeStatus({ state: 'connected', detail: `${data.message} (${data.user?.environment || ''})` });
+      if (res.ok && data.success && data.environment === 'production' && data.email) {
+        setMeStatus({ state: 'connected', detail: `Conta de produção conectada: ${data.email}.` });
       } else {
-        setMeStatus({ state: 'disconnected', detail: data.message || data.error || 'Token do Melhor Envio inválido ou ausente.' });
+        setMeStatus({ state: 'disconnected', detail: data.error || 'Conecte a conta de produção do Melhor Envio pelo botão Melhor Envio.' });
       }
     } catch {
       setMeStatus({ state: 'disconnected', detail: 'Não foi possível contatar o servidor.' });
@@ -229,6 +229,11 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
       if (!res.ok || !data.success || !data.options?.length) {
         throw new Error(data.error || 'Não foi possível recalcular o frete com essas medidas.');
       }
+      if (!data.isLiveApi) {
+        setMeStatus({ state: 'disconnected', detail: 'Sem cotação oficial do Melhor Envio. Valores de Correios/Jadlog exibidos como estimativa; configure a credencial real e recalcule.' });
+      } else {
+        setMeStatus({ state: 'connected', detail: 'Cotações oficiais obtidas em produção no Melhor Envio.' });
+      }
       if (data.success && data.options) {
         let selected =
           data.options.find((o: ShippingOption) => o.service === shipping.selectedOption?.service) ||
@@ -315,9 +320,12 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                 }`}
               >
                 <span className={`h-1.5 w-1.5 rounded-full ${meStatus.state === 'connected' ? 'bg-emerald-500' : meStatus.state === 'checking' ? 'bg-slate-400 animate-pulse' : 'bg-red-500'}`} />
-                {meStatus.state === 'connected' ? 'Melhor Envio conectado' : meStatus.state === 'checking' ? 'Verificando...' : 'Melhor Envio desconectado'}
+                {meStatus.state === 'connected' ? 'Melhor Envio conectado' : meStatus.state === 'checking' ? 'Verificando Melhor Envio...' : 'Melhor Envio desconectado'}
               </button>
             </div>
+            {meStatus.state === 'disconnected' && meStatus.detail && (
+              <p role="status" className="mt-1 max-w-xl text-[10px] text-amber-700 dark:text-amber-300">{meStatus.detail}</p>
+            )}
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Despacho direto de <span className="font-semibold text-slate-700 dark:text-slate-300">Salto/SP ({originCep})</span>
             </p>

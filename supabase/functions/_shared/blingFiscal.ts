@@ -128,7 +128,7 @@ function summarize(n: Data) {
   return { id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, chaveAcesso: n.chaveAcesso, linkDanfe: n.linkDanfe || n.linkPDF, xml: n.xml, linkXml: n.xml, tipo: n.tipo, naturezaOperacao: n.naturezaOperacao };
 }
 
-async function readNfe(token: string, id: string): Promise<Data> {
+export async function readNfe(token: string, id: string): Promise<Data> {
   const response = await requestBling(token, `/nfe/${id}`);
   const nfe = object(response.data);
   if (!validId(nfe.id) || String(nfe.id) !== id) throw new BlingFiscalError('O Bling não retornou os dados da NF-e solicitada.', 502);

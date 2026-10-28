@@ -1,3 +1,5 @@
+import type { ProductionShipment } from '../supabase/functions/_shared/productionShipment';
+
 export interface ClientInfo {
   name: string; // Razão Social ou Nome Completo
   tradeName?: string; // Nome Fantasia
@@ -29,6 +31,7 @@ export interface ClientInfo {
 }
 
 export interface ShippingOption {
+  melhorEnvioEnvironment?: 'sandbox' | 'production';
   service: 'SEDEX' | 'PAC' | 'JADLOG_PACKAGE' | 'RETIRADA' | 'PROPRIO' | 'MOTOBOY' | 'CONTA_FRESA';
   name: string;
   carrier: string;
@@ -129,6 +132,7 @@ export interface Financials {
 }
 
 export interface QuoteData {
+  productionShipment?: ProductionShipment;
   id: string;
   status: 'draft' | 'sent' | 'approved' | 'rejected';
   client: ClientInfo;

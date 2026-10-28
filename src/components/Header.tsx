@@ -13,8 +13,8 @@ interface HeaderProps {
   onToggleDarkMode?: () => void;
   userEmail?: string;
   onSignOut?: () => void;
-  onOpenSandbox?: () => void;
-  activeTab?: 'home' | 'proposal' | 'bling' | 'sandbox' | null;
+  onOpenProduction?: () => void;
+  activeTab?: 'home' | 'proposal' | 'bling' | 'production' | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDarkMode,
   userEmail,
   onSignOut,
-  onOpenSandbox,
+  onOpenProduction,
   activeTab = 'home',
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
       <nav ref={navRef} className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800">
-        <div className="max-w-2xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
+        <div className="max-w-3xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>
@@ -166,9 +166,9 @@ export const Header: React.FC<HeaderProps> = ({
             <Building className="w-4 h-4" />
             <span>Bling</span>
           </button>
-          <button id="btn-open-sandbox" type="button" onClick={onOpenSandbox} title="Enviar no sandbox do Melhor Envio" className={cls('sandbox')}>
+          <button id="btn-open-production" type="button" onClick={onOpenProduction} title="Conectar e gerenciar envios da conta de produção do Melhor Envio" className={cls('production')}>
             <Truck className="w-4 h-4" />
-            <span>Sandbox</span>
+            <span>Melhor Envio</span>
           </button>
         </div>
       </nav>

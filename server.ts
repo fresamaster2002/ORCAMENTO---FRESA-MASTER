@@ -20,7 +20,9 @@ import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handl
 import { listBlingNatures, selectedBlingNature } from "./supabase/functions/_shared/blingNature";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
-import { checkoutSandboxShipment, createSandboxShipment, getSandboxShipmentStatus, quoteSandboxShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
+import { quoteMelhorEnvioShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
+import { createProductionShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection } from "./supabase/functions/_shared/productionShipment";
+import { verifyProductionShipmentInvoice } from "./supabase/functions/_shared/productionInvoice";
 import { DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
 import { blingReadinessIssues } from "./supabase/functions/_shared/blingReadiness";
 import { CadastralExtractionError, extractCadastralDocument } from "./supabase/functions/_shared/cadastralExtraction";
@@ -197,7 +199,7 @@ function calculatePackageWeightKg(items: Array<{ description?: string; quantity?
 // Shipping simulator simulating Melhor Envio rates (Sedex, PAC, Jadlog) com peso dinâmico, dimensões do pacote e seguro opcional
 function calculateMelhorEnvioRates(
   destCep: string,
-  originCep = "13329-350",
+  originCep = "13321-472",
   weightKg = 0.5,
   dimensions?: { height?: number; width?: number; length?: number },
   customShipping?: { amount?: number; name?: string },
@@ -205,7 +207,7 @@ function calculateMelhorEnvioRates(
   declaredValue = 280
 ) {
   const cleanDest = destCep.replace(/\D/g, "");
-  const cleanOrigin = originCep.replace(/\D/g, "") || "13329350";
+  const cleanOrigin = originCep.replace(/\D/g, "") || "13321472";
 
   // Dígito de estado/região de destino e origem
   const firstDestDigit = cleanDest ? parseInt(cleanDest[0], 10) : 1;
@@ -215,7 +217,7 @@ function calculateMelhorEnvioRates(
   const isSameState = firstDestDigit === firstOriginDigit;
   const isCloseRegion = Math.abs(firstDestDigit - firstOriginDigit) <= 1;
 
-  // Fator de distância regional (13329-350 Salto/SP como centro logístico)
+  // Fator de distância regional (13321-472 Salto/SP como centro logístico)
   let zoneFactor = 1.0;
   if (isSameState) {
     zoneFactor = 0.95;
@@ -434,34 +436,23 @@ app.get("/api/public-config", (_req, res) => {
     allowedAdminEmail: process.env.FIREBASE_ALLOWED_EMAIL || "fresamaster0@gmail.com",
   });
 });
-// Token Sandbox do Melhor Envio da Fresa Master (Conta fresamaster0@gmail.com - Salto/SP)
-const DEFAULT_MELHOR_ENVIO_TOKEN = "";
-
-// Helper: Call official Melhor Envio API v2 in real-time if token is configured
+// Calls only the official production API when a production token is configured.
 async function fetchMelhorEnvioLiveRates(
   destCep: string,
   originCep: string,
   weightKg: number,
   dimensions: { height?: number; width?: number; length?: number },
   insuranceEnabled: boolean,
-  declaredValue: number,
-  token?: string,
-  isSandboxParam?: boolean
+  declaredValue: number
 ) {
-  const effectiveToken = token || process.env.MELHOR_ENVIO_TOKEN || DEFAULT_MELHOR_ENVIO_TOKEN;
+  const effectiveToken = productionToken(process.env.MELHOR_ENVIO_PRODUCTION_TOKEN || "");
   if (!effectiveToken || effectiveToken.trim() === "") return null;
 
   const cleanDest = destCep.replace(/\D/g, "");
-  const cleanOrigin = originCep.replace(/\D/g, "") || "13329350";
+  const cleanOrigin = originCep.replace(/\D/g, "") || "13321472";
   if (cleanDest.length !== 8) return null;
 
-  const isSandbox = isSandboxParam ?? (
-    process.env.MELHOR_ENVIO_SANDBOX === "true" ||
-    effectiveToken.includes("eyJhdWQiOiI5NTYi")
-  );
-  const apiUrl = isSandbox
-    ? "https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate"
-    : "https://melhorenvio.com.br/api/v2/me/shipment/calculate";
+  const apiUrl = "https://melhorenvio.com.br/api/v2/me/shipment/calculate";
 
   const height = Math.max(2, dimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height);
   const width = Math.max(11, dimensions?.width || DEFAULT_PACKAGE_DIMENSIONS.width);
@@ -546,7 +537,8 @@ async function fetchMelhorEnvioLiveRates(
       mappedOptions.push({
         service: serviceCode,
         melhorEnvioServiceId: Number(item.id),
-        name: `${item.name} (Melhor Envio Oficial)`,
+        name: `${item.name} (Melhor Envio)`,
+        melhorEnvioEnvironment: "production",
         carrier: item.company?.name || (nameLower.includes("jadlog") ? "Jadlog" : "Correios"),
         price: activePrice,
         deliveryDays,
@@ -567,32 +559,43 @@ async function fetchMelhorEnvioLiveRates(
 }
 
 // Shipping calculation endpoint
-app.post(["/api/shipping/create-sandbox-shipment", "/api/shipping/quote-sandbox", "/api/shipping/checkout-sandbox", "/api/shipping/sandbox-shipment-status"], async (req, res) => {
+app.post(["/api/shipping/quote-production", "/api/shipping/create-production-shipment", "/api/shipping/production-shipment", "/api/shipping/test-production"], async (req, res) => {
   try {
-    const token = req.body.sandboxToken || process.env.MELHOR_ENVIO_SANDBOX_TOKEN || (process.env.MELHOR_ENVIO_SANDBOX === "true" ? process.env.MELHOR_ENVIO_TOKEN : "") || "";
-    if (req.path === "/api/shipping/quote-sandbox") return res.json(await quoteSandboxShipment(req.body, token));
-    if (req.path === "/api/shipping/checkout-sandbox") return res.json(await checkoutSandboxShipment(req.body, token));
-    if (req.path === "/api/shipping/sandbox-shipment-status") return res.json(await getSandboxShipmentStatus(req.body, token));
-    res.json(await createSandboxShipment(req.body, token));
+    const token = productionToken(process.env.MELHOR_ENVIO_PRODUCTION_TOKEN || "");
+    if (req.path === "/api/shipping/test-production") return res.json(await testProductionConnection(token));
+    if (req.path === "/api/shipping/quote-production") return res.json(await quoteMelhorEnvioShipment(req.body, token, "production"));
+    const store = createShipmentQuoteStore(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "", process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "", req.headers.authorization || "");
+    if (req.path === "/api/shipping/production-shipment") {
+      if (typeof req.body.quoteId !== "string" || !req.body.quoteId || req.body.quoteId.length > 100) return res.status(400).json({ success: false, error: "Orçamento inválido." });
+      const saved = await store.load(req.body.quoteId);
+      return res.json({ success: true, environment: "production", shipment: saved.quote.productionShipment || null });
+    }
+    return res.json(await createProductionShipment(req.body, token, store, async (quote) => {
+      await verifyProductionShipmentInvoice(quote, req.get("x-bling-token") || persistedBlingToken || process.env.BLING_API_TOKEN || "");
+    }));
   } catch (error) {
-    if (error instanceof SandboxShipmentError) return res.status(error.status).json({ success: false, error: error.message });
-    console.error("Falha de comunicação com o Melhor Envio Sandbox:", error);
-    res.status(502).json({ success: false, error: "Falha de comunicação com o Sandbox. Confira o carrinho antes de repetir, pois o envio pode ter sido criado." });
+    if (error instanceof SandboxShipmentError) return res.status(error.status).json({ success: false, error: error.message, ...(error instanceof ProductionShipmentError && error.shipment ? { shipment: error.shipment } : {}) });
+    if (error instanceof BlingFiscalError) return res.status(error.status).json({ success: false, error: error.message });
+    console.error("Falha na integração de envio real:", error);
+    return res.status(502).json({ success: false, error: "Falha na comunicação. Reabra a tela de envio real para recuperar a solicitação e confira o painel oficial antes de repetir." });
   }
+});
+
+app.post(["/api/shipping/create-sandbox-shipment", "/api/shipping/quote-sandbox", "/api/shipping/checkout-sandbox", "/api/shipping/sandbox-shipment-status"], (_req, res) => {
+  res.status(410).json({ success: false, error: "As rotas Sandbox foram desativadas. Use o fluxo de produção do Melhor Envio." });
 });
 
 app.post("/api/shipping/calculate", async (req, res) => {
   try {
     const {
       destinationCep,
-      originCep = "13329-350",
+      originCep = "13321-472",
       weightKg: customWeightKg,
       items,
       packageDimensions,
       customShipping,
       insuranceEnabled = false,
       declaredValue,
-      melhorEnvioToken,
     } = req.body;
 
     if (!destinationCep) {
@@ -628,8 +631,7 @@ app.post("/api/shipping/calculate", async (req, res) => {
       calculatedWeight,
       dims,
       Boolean(insuranceEnabled),
-      effectiveDeclaredValue,
-      melhorEnvioToken
+      effectiveDeclaredValue
     );
 
     if (liveOptions && liveOptions.length > 0) {
@@ -730,11 +732,11 @@ app.post("/api/shipping/calculate", async (req, res) => {
 
 // Endpoint: Test Melhor Envio Token directly
 app.post("/api/shipping/test-melhor-envio", async (req, res) => {
+  if (req.body.isSandbox) {
+    return res.status(410).json({ success: false, connected: false, error: "O ambiente Sandbox foi desativado. Use a conexão de produção do Melhor Envio." });
+  }
   try {
-    const { token, isSandbox } = req.body;
-    const effectiveToken = token || (isSandbox
-      ? process.env.MELHOR_ENVIO_SANDBOX_TOKEN || (process.env.MELHOR_ENVIO_SANDBOX === "true" ? process.env.MELHOR_ENVIO_TOKEN : "")
-      : process.env.MELHOR_ENVIO_TOKEN);
+    const effectiveToken = productionToken(process.env.MELHOR_ENVIO_PRODUCTION_TOKEN || "");
 
     if (!effectiveToken || effectiveToken.trim() === "") {
       return res.status(400).json({
@@ -744,9 +746,7 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
       });
     }
 
-    const baseUrl = isSandbox
-      ? "https://sandbox.melhorenvio.com.br"
-      : "https://melhorenvio.com.br";
+    const baseUrl = "https://melhorenvio.com.br";
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 7000);
@@ -794,7 +794,7 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
           "User-Agent": "FresaMaster (fresamaster0@gmail.com)",
         },
         body: JSON.stringify({
-          from: { postal_code: "13329350" },
+          from: { postal_code: "13321472" },
           to: { postal_code: "01001000" },
           package: { ...DEFAULT_PACKAGE_DIMENSIONS, weight: 0.5 },
           services: "1,2",
@@ -812,7 +812,7 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
         name: userData.firstname ? `${userData.firstname} ${userData.lastname || ""}`.trim() : (userData.name || "Usuário"),
         email: userData.email,
         company: userData.company_name,
-        environment: isSandbox ? "Sandbox (Testes)" : "Produção (Oficial)",
+        environment: "Produção (Oficial)",
       },
       calculationActive,
       message: `Conectado com sucesso à conta de ${userData.firstname || "Melhor Envio"} (${userData.email})! Cotações oficiais ativas em tempo real.`,
@@ -828,8 +828,9 @@ app.post("/api/shipping/test-melhor-envio", async (req, res) => {
 
 // Endpoint: Melhor Envio OAuth Token Exchange (Supports App 30304)
 app.post("/api/shipping/melhor-envio/exchange-code", async (req, res) => {
+  return res.status(410).json({ success: false, error: "Use o fluxo OAuth autenticado do Melhor Envio; a troca de tokens por esta rota foi desativada." });
   try {
-    const { code, clientId, clientSecret, redirectUri, isSandbox } = req.body;
+    const { code, clientId, clientSecret, redirectUri } = req.body;
     const effClientId = clientId || process.env.MELHOR_ENVIO_CLIENT_ID || "";
     const effClientSecret = clientSecret || process.env.MELHOR_ENVIO_CLIENT_SECRET || "";
 
@@ -840,9 +841,7 @@ app.post("/api/shipping/melhor-envio/exchange-code", async (req, res) => {
       });
     }
 
-    const baseUrl = isSandbox
-      ? "https://sandbox.melhorenvio.com.br"
-      : "https://melhorenvio.com.br";
+    const baseUrl = "https://melhorenvio.com.br";
 
     const response = await fetch(`${baseUrl}/oauth/token`, {
       method: "POST",
@@ -886,6 +885,7 @@ app.post("/api/shipping/melhor-envio/exchange-code", async (req, res) => {
 
 // Endpoint: Melhor Envio OAuth Callback Page
 app.get("/api/shipping/melhor-envio/callback", async (req, res) => {
+  return res.status(410).send("Callback legado desativado. Use o callback OAuth do backend Supabase.");
   const { code, error, error_description } = req.query;
 
   const html = `<!DOCTYPE html>
@@ -961,7 +961,7 @@ app.post("/api/quote/extract", async (req, res) => {
     const ai = getGeminiClient();
 
     // Default origin CEP for Fresa Master (Salto/SP)
-    const originCep = currentQuote?.shipping?.originCep || "13329-350";
+    const originCep = currentQuote?.shipping?.originCep || "13321-472";
     const liveCatalog = blingCatalogAvailable === true
       ? normalizeBlingCatalogProducts(Array.isArray(blingProducts) ? blingProducts : [])
       : null;
@@ -2176,7 +2176,7 @@ app.get(["/manual", "/bling-manual"], (req, res) => {
     <ul>
       <li><strong>E-mail de Contato:</strong> fresamaster0@gmail.com</li>
       <li><strong>Empresa:</strong> Fresa Master CNC</li>
-      <li><strong>Origem Operacional:</strong> Salto / SP (CEP 13329-350)</li>
+      <li><strong>Origem Operacional:</strong> Salto / SP (CEP 13321-472)</li>
     </ul>
 
     <div class="footer">
@@ -2388,7 +2388,7 @@ function parseFresaMasterFallback(
       }
     : undefined;
 
-  const originCep = currentQuote?.shipping?.originCep || "13329-350";
+  const originCep = currentQuote?.shipping?.originCep || "13321-472";
 
   const shippingOptions = calculateMelhorEnvioRates(
     cep || "00000000",

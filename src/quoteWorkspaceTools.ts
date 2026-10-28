@@ -53,5 +53,6 @@ export function duplicateQuote(source: QuoteData, empty: QuoteData): QuoteData {
     notesForClient: source.notesForClient,
     bling: undefined,
     sandboxShipment: undefined,
+    productionShipment: undefined,
   };
 }

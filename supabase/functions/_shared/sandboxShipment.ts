@@ -2,7 +2,9 @@ type Data = Record<string, unknown>;
 const object = (v: unknown): Data => v !== null && typeof v === 'object' ? v as Data : {};
 const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
 const text = (v: unknown) => String(v || '').trim();
-const host = 'https://sandbox.melhorenvio.com.br';
+export type ShipmentEnvironment = 'sandbox' | 'production';
+const shipmentHost = (environment: ShipmentEnvironment) => environment === 'production'
+  ? 'https://melhorenvio.com.br' : 'https://sandbox.melhorenvio.com.br';
 
 function errorMessages(value: unknown): string[] {
   if (typeof value === 'string') return value.trim() ? [value.trim()] : [];
@@ -31,9 +33,14 @@ function address(input: Data, label: string) {
 }
 
 export function buildSandboxShipment(input: Data) {
+  return buildShipmentPayload(input, 'sandbox');
+}
+
+export function buildShipmentPayload(input: Data, environment: ShipmentEnvironment) {
   const quote = object(input.quote);
-  if (quote.status !== 'approved') throw new SandboxShipmentError('Aprove o orçamento antes de criar o envio de teste.');
-  if (object(quote.sandboxShipment).id) throw new SandboxShipmentError('Este orçamento já possui envio de teste. Confira o carrinho Sandbox antes de repetir.', 409);
+  if (quote.status !== 'approved') throw new SandboxShipmentError('Aprove o orçamento antes de criar o envio.');
+  const existing = object(environment === 'production' ? quote.productionShipment : quote.sandboxShipment);
+  if (existing.id || environment === 'production' && existing.requestedAt && existing.status !== 'rejected') throw new SandboxShipmentError('Este orçamento já possui uma solicitação neste ambiente. Confira o carrinho antes de repetir.', 409);
   const shipping = object(quote.shipping);
   const option = object(shipping.selectedOption);
   const service = text(option.service);
@@ -42,6 +49,10 @@ export function buildSandboxShipment(input: Data) {
   }
   const defaultServiceId = service === 'SEDEX' ? 2 : service === 'PAC' ? 1 : 3;
   const rawServiceId = Number(option.melhorEnvioServiceId);
+  if (environment === 'production' && Number.isFinite(rawServiceId) && rawServiceId !== 0
+    && !(service === 'SEDEX' ? rawServiceId === 2 : service === 'PAC' ? rawServiceId === 1 : [3, 4, 17].includes(rawServiceId))) {
+    throw new SandboxShipmentError('O código da transportadora não corresponde à modalidade selecionada. Cote novamente em produção.');
+  }
   const serviceId = [1, 2, 3, 4, 17].includes(rawServiceId) ? rawServiceId : defaultServiceId;
   const key = digits(input.invoiceKey);
   if (key.length !== 44 || key.slice(20, 22) !== '55' || Number(key.slice(22, 25)) !== 2) throw new SandboxShipmentError('Informe a chave de 44 dígitos de uma NF-e modelo 55, série 2.');
@@ -56,7 +67,9 @@ export function buildSandboxShipment(input: Data) {
   const delivery = object(shipping.deliveryAddress);
   const client = object(quote.client);
   const recipient = delivery.enabled ? {
-    ...client, ...delivery, name: delivery.recipient || client.name, cep: shipping.destinationCep,
+    ...client, address: delivery.address, number: delivery.number, complement: delivery.complement,
+    neighborhood: delivery.neighborhood, city: delivery.city, state: delivery.state,
+    name: delivery.recipient || client.name, cep: shipping.destinationCep,
   } : client;
   const from = address(sender, 'remetente');
   const to = address(recipient, 'destinatário');
@@ -80,8 +93,8 @@ export function buildSandboxShipment(input: Data) {
   };
 }
 
-async function request(token: string, path: string, method = 'GET', payload?: unknown) {
-  const response = await fetch(`${host}/api/v2${path}`, {
+export async function requestShipmentApi(token: string, path: string, method = 'GET', payload?: unknown, environment: ShipmentEnvironment = 'sandbox') {
+  const response = await fetch(`${shipmentHost(environment)}/api/v2${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' },
     ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: AbortSignal.timeout(20000),
   });
@@ -89,10 +102,14 @@ async function request(token: string, path: string, method = 'GET', payload?: un
   if (!response.ok) {
     const details = object(data);
     const errors = [...new Set(errorMessages([details.message, details.error, details.errors, Array.isArray(data) ? data : undefined]))].join(' ');
-    throw new SandboxShipmentError(errors || `Melhor Envio Sandbox retornou HTTP ${response.status}.`, response.status);
+    throw new SandboxShipmentError(errors || `Melhor Envio ${environment === 'sandbox' ? 'Sandbox' : 'Produção'} retornou HTTP ${response.status}.`, response.status);
   }
+
   return data;
 }
+
+const request = (token: string, path: string, method = 'GET', payload?: unknown) =>
+  requestShipmentApi(token, path, method, payload, 'sandbox');
 
 function shipmentRecord(value: unknown, shipmentId: string): Data {
   const response = object(value);
@@ -156,16 +173,27 @@ export async function createSandboxShipment(input: Data, token: string) {
 }
 
 export async function quoteSandboxShipment(input: Data, token: string) {
-  if (!token) throw new SandboxShipmentError('Informe o token Sandbox ou configure MELHOR_ENVIO_SANDBOX_TOKEN no backend.', 401);
+  return quoteMelhorEnvioShipment(input, token, 'sandbox');
+}
+
+export async function quoteMelhorEnvioShipment(input: Data, token: string, environment: ShipmentEnvironment) {
+  const label = environment === 'production' ? 'Produção' : 'Sandbox';
+  if (!token) throw new SandboxShipmentError(environment === 'sandbox'
+    ? 'Informe o token Sandbox ou configure MELHOR_ENVIO_SANDBOX_TOKEN no backend.'
+    : 'Configure MELHOR_ENVIO_PRODUCTION_TOKEN no servidor ou informe o token da conta real no campo protegido.', 401);
   const quote = object(input.quote);
   const shipping = object(quote.shipping);
   const selectedOption = object(shipping.selectedOption);
   const service = text(selectedOption.service);
   if (!['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(service)) {
-    throw new SandboxShipmentError('Selecione Sedex, PAC ou Jadlog antes de cotar no Sandbox.');
+    throw new SandboxShipmentError(`Selecione Sedex, PAC ou Jadlog antes de cotar em ${label}.`);
   }
   const selectedServiceId = Number(selectedOption.melhorEnvioServiceId);
   const hasSelectedServiceId = Number.isInteger(selectedServiceId) && [1, 2, 3, 4, 17].includes(selectedServiceId);
+  if (environment === 'production' && hasSelectedServiceId
+    && !(service === 'SEDEX' ? selectedServiceId === 2 : service === 'PAC' ? selectedServiceId === 1 : [3, 4, 17].includes(selectedServiceId))) {
+    throw new SandboxShipmentError('O código da transportadora não corresponde à modalidade selecionada. Selecione o frete novamente.');
+  }
   const fallbackServiceId = service === 'SEDEX' ? 2 : service === 'PAC' ? 1 : 3;
   const originCep = digits(object(input.sender).cep);
   const destinationCep = digits(shipping.destinationCep);
@@ -177,11 +205,11 @@ export async function quoteSandboxShipment(input: Data, token: string) {
   if (items.some((item) => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0)) throw new SandboxShipmentError('Confira quantidade e valor dos produtos antes de cotar.');
   const declaredValue = items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
   if (!items.length || !Number.isFinite(declaredValue) || declaredValue <= 0) throw new SandboxShipmentError('Inclua produtos com quantidade e valor válidos antes de cotar.');
-  const rates = await request(token, '/me/shipment/calculate', 'POST', {
+  const rates = await requestShipmentApi(token, '/me/shipment/calculate', 'POST', {
     from: { postal_code: originCep }, to: { postal_code: destinationCep }, package: volume,
     options: { insurance_value: shipping.insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
     services: hasSelectedServiceId ? String(selectedServiceId) : '1,2,3,4,17',
-  });
+  }, environment);
   const rate = (Array.isArray(rates) ? rates : [rates]).map(object).find((candidate) => {
     if (hasSelectedServiceId) return Number(candidate.id) === selectedServiceId;
     if (Number(candidate.id) === fallbackServiceId) return true;
@@ -190,14 +218,14 @@ export async function quoteSandboxShipment(input: Data, token: string) {
       : service === 'PAC' ? label.includes('pac')
         : label.includes('jadlog') && label.includes('package');
   });
-  if (!rate || rate.error) throw new SandboxShipmentError(text(rate?.error) || `${service} indisponível para essa rota no Sandbox.`, 422);
+  if (!rate || rate.error) throw new SandboxShipmentError(text(rate?.error) || `${service} indisponível para essa rota em ${label}.`, 422);
   const price = Number(rate.custom_price ?? rate.price);
   const deliveryDays = Number(rate.custom_delivery_time ?? rate.delivery_time);
-  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(deliveryDays) || deliveryDays < 0) throw new SandboxShipmentError('A cotação Sandbox retornou preço ou prazo inválido.', 502);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(deliveryDays) || deliveryDays < 0) throw new SandboxShipmentError(`A cotação ${label} retornou preço ou prazo inválido.`, 502);
   return {
-    success: true, environment: 'sandbox', originCep, destinationCep,
-    option: { service, melhorEnvioServiceId: Number(rate.id), name: `${text(rate.name) || service} (Melhor Envio Sandbox)`, carrier: service === 'JADLOG_PACKAGE' ? 'Jadlog' : 'Correios',
+    success: true, environment, originCep, destinationCep,
+    option: { service, melhorEnvioServiceId: Number(rate.id), name: `${text(rate.name) || service} (Melhor Envio ${label})`, carrier: service === 'JADLOG_PACKAGE' ? 'Jadlog' : 'Correios',
       price, deliveryDays, selected: true, insuranceIncluded: Boolean(shipping.insuranceEnabled),
-      insuranceCost: 0, isRealTimeMelhorEnvio: true },
+      insuranceCost: 0, isRealTimeMelhorEnvio: true, melhorEnvioEnvironment: environment },
   };
 }

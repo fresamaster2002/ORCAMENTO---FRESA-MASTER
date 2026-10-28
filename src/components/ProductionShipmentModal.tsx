@@ -22,6 +22,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
   const [shipment, setShipment] = useState(quote.productionShipment);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [rate, setRate] = useState<{ price: number; serviceId: number; fingerprint: string } | null>(null);
   const operation = useRef(false);
@@ -113,31 +114,19 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
     setMessage(`Conta real conectada: ${data.email}. Nenhum envio foi criado, pago ou emitido neste teste.`);
   });
 
-  const connectAccount = () => {
-    const popup = window.open('about:blank', '_blank');
-    if (!popup) {
-      setError('O navegador bloqueou a janela de autorização. Permita pop-ups para este site e tente novamente.');
-      return;
-    }
-    popup.opener = null;
-    void execute(async () => {
-      try {
-        const response = await apiFetch('/api/shipping/melhor-envio/authorize', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success || typeof data.authorizationUrl !== 'string'
-          || !data.authorizationUrl.startsWith('https://melhorenvio.com.br/oauth/authorize?')) {
-          throw new Error(data.error || 'Não foi possível iniciar a autorização oficial.');
-        }
-        popup.location.href = data.authorizationUrl;
-        setMessage('Autorize a conexão na janela do Melhor Envio. Depois volte ao app e teste a conta real.');
-      } catch (cause) {
-        popup.close();
-        throw cause;
-      }
+  const connectAccount = () => execute(async () => {
+    setAuthorizationUrl(null);
+    const response = await apiFetch('/api/shipping/melhor-envio/authorize', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
     });
-  };
+    const data = await response.json();
+    if (!response.ok || !data.success || typeof data.authorizationUrl !== 'string'
+      || !data.authorizationUrl.startsWith('https://melhorenvio.com.br/oauth/authorize?')) {
+      throw new Error(data.error || 'Não foi possível iniciar a autorização oficial.');
+    }
+    setAuthorizationUrl(data.authorizationUrl);
+    setMessage('Abra o link de autorização abaixo. Depois de autorizar no Melhor Envio, volte ao app e teste a conta real. Se o link expirar, clique em Conectar novamente.');
+  });
 
   const calculate = () => execute(async () => {
     setRate(null);
@@ -226,6 +215,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
                 <button type="button" disabled={busy} onClick={() => void testConnection()} className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold">Testar conexão Melhor Envio</button>
                 <button type="button" disabled={busy || !checked || !quote.shipping.selectedOption} onClick={() => void calculate()} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Cotar no Melhor Envio</button>
               </div>
+              {authorizationUrl && <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 underline">Autorizar cotação e carrinho no Melhor Envio (sem pagamento automático)</a>}
               {rateCurrent && rate && <p className="text-sm font-bold">Custo real cotado: {money(rate.price)} • Frete no orçamento do cliente: {money(quote.financials.shippingAmount)} (não alterado).</p>}
               <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={busy || !rateCurrent || !checked} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" /><span>Conferi remetente, destinatário, NF-e e pacote. Autorizo adicionar este envio ao carrinho REAL, sem pagamento ou emissão automática.</span></label>
               <button type="submit" disabled={busy || !checked || !confirmed || !rateCurrent || missing.length > 0} className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-40">Adicionar ao carrinho do Melhor Envio (sem pagar)</button>

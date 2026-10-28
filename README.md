@@ -40,6 +40,8 @@ Para conectar sem inserir tokens no navegador, cadastre um aplicativo na Área D
 
 Contas autorizadas antes da inclusão de `cart-write` precisam usar **Conectar Melhor Envio (OAuth)** novamente e consentir a permissão de carrinho. O teste de conexão somente identifica a conta, não comprova permissão de escrita no carrinho. Iniciar a nova autorização preserva a credencial atual até a conclusão; atualizar ou renovar o token antigo não concede permissões adicionais automaticamente.
 
+Após clicar em **Conectar Melhor Envio (OAuth)**, abra o link **Autorizar cotação e carrinho no Melhor Envio (sem pagamento automático)** exibido no próprio modal. Ele abre o site oficial em uma nova aba sem depender de um pop-up assíncrono. Depois do consentimento, volte ao app e teste a conexão. Se o link expirar, inicie uma nova conexão.
+
 Quando a API de produção não disponibiliza uma cotação, as opções locais de Sedex/PAC/Jadlog recebem o rótulo **Estimativa (sem cotação oficial)**; não use esses valores como preço confirmado ao cliente. A inclusão no carrinho exige nova cotação em produção dentro do modal.
 
 A ausência de autorização OAuth do Melhor Envio não bloqueia a extração do pedido nem a identificação dos produtos do catálogo real do Bling. Nesse caso, apenas a cotação oficial fica indisponível; as estimativas continuam identificadas e as operações de envio real permanecem bloqueadas até conectar a conta.

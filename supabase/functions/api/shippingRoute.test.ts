@@ -13,6 +13,7 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     MELHOR_ENVIO_PRODUCTION_TOKEN: 'production-test',
   };
   let oauthRecord: Record<string, unknown> | null = null;
+  let aiResult: Record<string, unknown> | null = null;
   Object.defineProperty(globalThis, 'Deno', { configurable: true, value: {
     env: { get: (name: string) => settings[name] },
     serve: (route: typeof handler) => { handler = route; },
@@ -34,7 +35,10 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
       return Response.json(oauthRecord ? [oauthRecord] : []);
     }
     if (url === 'https://melhorenvio.com.br/oauth/token') return Response.json({ access_token: 'oauth-access', refresh_token: 'oauth-refresh', expires_in: 3600 });
-    if (url.includes('generativelanguage.googleapis.com')) throw new Error('IA indisponível neste teste');
+    if (url.includes('generativelanguage.googleapis.com')) {
+      if (!aiResult) throw new Error('IA indisponível neste teste');
+      return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(aiResult) }] } }] });
+    }
     if (url.endsWith('/api/v2/me')) return Response.json({ firstname: 'Teste', email: 'fresamaster0@gmail.com' });
     if (url.endsWith('/shipment/calculate')) return Response.json([
       { id: 2, name: 'SEDEX', price: '27.07', delivery_time: 2, company: { name: 'Correios' } },
@@ -92,6 +96,36 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     assert.equal(result.environment, 'production');
     assert.equal(result.email, 'fresamaster0@gmail.com');
     assert.equal(calls.find((call) => call.url.endsWith('/api/v2/me'))?.authorization, 'Bearer oauth-access');
+  });
+
+  await t.test('pedido interpretado pela IA mantem catalogo Bling e cotacao oficial', async () => {
+    settings.GEMINI_API_KEY = 'test-key';
+    aiResult = {
+      summary: 'Duas fresas com PAC',
+      client: { name: 'Cliente teste' },
+      items: [{ description: 'Fresa 3 Cortes TCT 6x22mm', quantity: 2 }],
+    };
+    try {
+      const response = await handler(new Request('https://supabase.test/functions/v1/api/quote/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: ['Bearer', 'public-test'].join(' ') },
+        body: JSON.stringify({
+          text: '2 fresas de 3 cortes TCT por 140 cada, CEP 80010-000, frete PAC',
+          blingProducts: [{ id: '12345', nome: 'Fresa 3 Cortes TCT 6x22mm', codigo: 'FM-TCT-6X22', preco: 140, ncm: '8207.70.00' }],
+        }),
+      }));
+      assert.equal(response.status, 200);
+      const result = await response.json();
+      assert.equal(result.quote.items[0].blingProductId, '12345');
+      assert.equal(result.quote.shipping.selectedOption.service, 'PAC');
+      assert.equal(result.quote.shipping.selectedOption.price, 23.50);
+      assert.equal(result.quote.shipping.selectedOption.isRealTimeMelhorEnvio, true);
+      assert.equal(result.quote.shipping.selectedOption.melhorEnvioEnvironment, 'production');
+      assert.equal(result.quote.shipping.options.filter((option: { selected: boolean }) => option.selected).length, 1);
+    } finally {
+      delete settings.GEMINI_API_KEY;
+      aiResult = null;
+    }
   });
 
   await t.test('cotacoes e operacoes Sandbox estao desativadas', async () => {

@@ -690,7 +690,12 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const cep = extractCepFromText(text) || parsed.detectedCep || parsed.client?.cep || current.client?.cep || '';
   const weight = calculatePackageWeight(items);
   const shippingState = current.shipping || {};
-  const shippingOptions = labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0)));
+  const declaredValue = items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0);
+  const localOptions = labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), declaredValue));
+  const liveOptions = await liveShippingRates(cep, shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, Boolean(shippingState.insuranceEnabled), declaredValue);
+  const shippingOptions = liveOptions?.length
+    ? [...liveOptions, ...localOptions.filter((option) => !['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(String(option.service)))]
+    : localOptions;
   const selected = chooseRequestedCarrier(`${text} ${parsed.detectedCarrier || ''}`, shippingOptions, extractMotoboyPriceFromText(text));
   if (!shippingOptions.some((option) => option.service === selected.service)) shippingOptions.push(selected);
   else shippingOptions[shippingOptions.findIndex((option) => option.service === selected.service)] = selected;
@@ -703,7 +708,7 @@ async function extractQuote(body: JsonObject): Promise<Response> {
     subtotal,
     spokenDiscount ?? 0,
   ).toFixed(2));
-  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, selectedOption: selected, options: shippingOptions }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
+  const quote = { ...fallback, client, items, shipping: { ...fallback.shipping, destinationCep: cep, weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, selectedOption: selected, options: shippingOptions.map((option) => ({ ...option, selected: option === selected })) }, financials: { ...fallback.financials, subtotal, shippingAmount: Number(selected.price || 0), discountPercentage, discountAmount, totalAmount: Number(Math.max(0, subtotal - discountAmount + Number(selected.price || 0)).toFixed(2)), paymentTerms: parsed.financials?.paymentTerms || 'À vista via Pix ou Boleto', paymentMethod: parsed.financials?.paymentMethod || 'Pix' }, observations: parsed.observations || fallback.observations };
   return json({ success: true, summary: parsed.summary || 'Orçamento Fresa Master gerado com sucesso.', confidence: parsed.confidence || 0.95, missingInfo: parsed.missingInfo || [], quote });
 }
 

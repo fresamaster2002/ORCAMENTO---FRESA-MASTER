@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from './blingOrderSnapshot.ts';
+import { adoptBlingRecipient, blingOrderChanged, blingOrderDifferences, blingOrderSnapshot } from './blingOrderSnapshot.ts';
 import type { QuoteData } from './types';
 
 function savedQuote(): QuoteData {
@@ -43,6 +43,24 @@ test('alterações reais continuam bloqueadas e snapshot inválido não libera e
   const quote = savedQuote();
   quote.bling!.orderSnapshot = '{';
   assert.equal(blingOrderChanged(quote), true);
+});
+
+test('formatação do mesmo NCM não muda a venda; código diferente continua bloqueado', () => {
+  const quote = savedQuote();
+  quote.items[0].ncm = '8207.70.10';
+  assert.equal(blingOrderChanged(quote), false);
+  quote.items[0].ncm = '8207.70.00';
+  assert.deepEqual(blingOrderDifferences(quote), ['items.0.ncm']);
+});
+
+test('entrega diferente do fiscal não bloqueia por si só, mas alteração posterior é identificada', () => {
+  const quote = savedQuote();
+  quote.client.cep = '13321-472';
+  quote.shipping.deliveryAddress = { enabled: true, address: 'Rua de entrega', number: '20' };
+  quote.bling!.orderSnapshot = blingOrderSnapshot(quote);
+  assert.deepEqual(blingOrderDifferences(quote), []);
+  quote.shipping.deliveryAddress.number = '30';
+  assert.deepEqual(blingOrderDifferences(quote), ['shipping.deliveryAddress.number']);
 });
 
 test('adoção explícita altera somente destinatário do mesmo documento, sem ocultar mudanças comerciais', () => {

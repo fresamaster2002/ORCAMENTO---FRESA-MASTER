@@ -23,6 +23,7 @@ export function blingOrderSnapshot(quote: QuoteData): string {
 
 function canonicalSnapshot(value: unknown, path = ''): unknown {
   if (Array.isArray(value)) return value.map((entry) => canonicalSnapshot(entry));
+  if (typeof value === 'string' && path === 'ncm') return value.replace(/\D/g, '');
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
     .filter(([key, entry]) => !(path === 'shipping' && key === 'options')
@@ -32,13 +33,30 @@ function canonicalSnapshot(value: unknown, path = ''): unknown {
 }
 
 export function blingOrderChanged(quote: QuoteData): boolean {
+  return blingOrderDifferences(quote).length > 0;
+}
+
+export function blingOrderDifferences(quote: QuoteData): string[] {
   const saved = quote.bling?.orderSnapshot;
-  if (!saved) return false;
+  if (!saved) return [];
   try {
-    return JSON.stringify(canonicalSnapshot(JSON.parse(saved)))
-      !== JSON.stringify(canonicalSnapshot(JSON.parse(blingOrderSnapshot(quote))));
+    const differences: string[] = [];
+    const compare = (before: unknown, after: unknown, path: string) => {
+      if (JSON.stringify(before) === JSON.stringify(after)) return;
+      if (before && after && typeof before === 'object' && typeof after === 'object') {
+        const left = Object.fromEntries(Object.entries(before));
+        const right = Object.fromEntries(Object.entries(after));
+        for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+          compare(left[key], right[key], path ? `${path}.${key}` : key);
+        }
+      } else {
+        differences.push(path);
+      }
+    };
+    compare(canonicalSnapshot(JSON.parse(saved)), canonicalSnapshot(JSON.parse(blingOrderSnapshot(quote))), '');
+    return differences;
   } catch (error) {
-    if (error instanceof SyntaxError) return true;
+    if (error instanceof SyntaxError) return ['invalidSnapshot'];
     throw error;
   }
 }

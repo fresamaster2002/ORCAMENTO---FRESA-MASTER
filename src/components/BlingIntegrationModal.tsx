@@ -11,6 +11,7 @@ import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWo
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
+import { BlingOrderDifferences } from './BlingOrderDifferences';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -404,7 +405,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
         });
         const usedItems: QuoteData['items'] = Array.isArray(data.items) ? data.items : quote.items;
         const saved: QuoteData = { ...quote, items: usedItems, client: clientData, bling: { orderId: data.blingOrderId, orderNumber: data.blingOrderNumber, orderUrl: data.blingOrderUrl, orderSnapshot: blingOrderSnapshot({ ...quote, items: usedItems, client: clientData }) } };
-        await onUpdateBling(quote.id, saved.bling!, usedItems);
+        await onUpdateBling(quote.id, saved.bling!, usedItems, clientData);
         setStatusMessage(`Pedido #${data.blingOrderNumber} criado com sucesso diretamente no Bling ERP!`);
         return saved;
       } else {
@@ -979,6 +980,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       </div>
                     ) : <>
                     {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{Number(nfe?.situacao) === 5 ? 'O orçamento atual difere da venda desta NF-e já autorizada. A nota emitida permanece inalterada e não deve ser transmitida novamente.' : 'O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.'}</p>}
+                    {orderChanged && <BlingOrderDifferences quote={{ ...quote, client: clientData }} />}
                     {!nfe?.id ? (
                       <button
                         type="button"

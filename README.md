@@ -138,6 +138,8 @@ O app exibe a mensagem geral e os detalhes de validação retornados pelo Bling.
 
 ### Conferência antes de criar a venda
 
+Se o orçamento mudar após criar o pedido, as telas do Bling e de revisão da NF-e mostram os campos divergentes da referência salva. Endereço de entrega diferente do fiscal é permitido; mudar a entrega depois de salvar a venda exige revisar o pedido vinculado. Pontuação do mesmo NCM não representa alteração fiscal, mas troca de código continua bloqueando. Não remova o vínculo nem duplique a venda para liberar uma nota; confira o pedido e o rascunho existentes no Bling.
+
 O modal apresenta de uma vez as pendências de cadastro fiscal, documento (incluindo dígitos verificadores), endereço, IE de pessoa jurídica, NCM, quantidade, preço, frete/desconto e pagamento. **SKU é opcional para faturar**: o código comercial não é a classificação fiscal nem o ID interno do produto. A mesma conferência é aplicada no backend antes de criar contato ou venda, sem completar endereço com dados fictícios. IE ausente não é convertida automaticamente em isenção.
 
 A listagem resumida de produtos da API do Bling não garante NCM. Ao selecionar uma ferramenta, o app consulta `/bling/products/:id` para ler o cadastro completo e salva `blingProductId`, inclusive para produtos sem SKU. **Usar NCM e produtos do Bling** consulta o cadastro e atualiza os itens no orçamento, preservando quantidade e preço negociado. A mesma resolução é feita pelo backend antes da venda/exportação e ao gerar a nota: ID explícito (ou ID numérico legado), código exato ou nome exato único. Correspondência ambígua exige seleção manual; falhas de consulta não são ignoradas.

@@ -39,11 +39,11 @@ export function danfeFrameHtml(html: string, css: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; form-action 'none'; base-uri 'none'"><style>${style.replace(/<\/style/gi, '<\\/style')}</style></head><body>${container.outerHTML}</body></html>`;
 }
 
-async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): Promise<Blob> {
+async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>, onProgress: (message: string) => void): Promise<Blob> {
   const frame = window.document.createElement('iframe');
   frame.setAttribute('sandbox', 'allow-same-origin');
   frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1020px;height:1200px;border:0;pointer-events:none';
+  frame.style.cssText = 'position:fixed;left:0;top:0;width:1020px;height:1200px;border:0;pointer-events:none;opacity:0.01;z-index:-1';
   const html = danfeFrameHtml(document.html, document.css);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -55,6 +55,7 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
     const doc = frame.contentDocument;
     const sheet = doc?.querySelector<HTMLElement>('#container');
     if (!doc || !sheet) throw new Error('Não foi possível preparar o DANFE para PDF.');
+    onProgress('Carregando logotipo da nota...');
     await Promise.all([...doc.images].map(image => new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error('Uma imagem do DANFE demorou para carregar. Tente novamente.')), 10000);
       image.onload = () => { window.clearTimeout(timeout); resolve(); };
@@ -68,6 +69,19 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
         image.src = source;
       }
     })));
+    // Safari waits again for images in html2canvas's cloned iframe; copy decoded logos first.
+    for (const image of [...doc.images]) {
+      const canvas = doc.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('O navegador não conseguiu preparar o logotipo da nota.');
+      context.drawImage(image, 0, 0);
+      canvas.style.cssText = image.style.cssText;
+      canvas.style.width = `${image.width}px`;
+      canvas.style.height = `${image.height}px`;
+      image.replaceWith(canvas);
+    }
     await withDeadline(doc.fonts.ready, 'O carregamento das fontes demorou demais. Tente novamente.');
     const rect = sheet.getBoundingClientRect();
     const width = Math.ceil(Math.max(rect.width, sheet.scrollWidth));
@@ -79,10 +93,15 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
     });
     const breaks = rows.map(row => Math.ceil(row.bottom) + 1).filter(y => !rows.some(row => row.top < y && row.bottom > y));
     const pages = danfePdfPages(width, height, breaks);
+    onProgress('Renderizando página A4...');
     const canvas = await withDeadline(
-      html2canvas(sheet, { scale: 2, width, height, backgroundColor: '#ffffff', logging: false, imageTimeout: 10000 }),
+      html2canvas(sheet, {
+        scale: 2, width, height, windowWidth: 1020, windowHeight: 1200, scrollX: 0, scrollY: 0,
+        backgroundColor: '#ffffff', logging: false, imageTimeout: 10000,
+      }),
       'A conversão do DANFE demorou demais neste navegador. Tente novamente com o app aberto em primeiro plano.',
     );
+    onProgress('Finalizando arquivo PDF...');
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
     for (const [index, page] of pages.entries()) {
       const slice = window.document.createElement('canvas');
@@ -118,7 +137,7 @@ export async function prepareDanfePdf(nfeId: string | number, orderId: string | 
     blob = new Blob([bytes], { type: 'application/pdf' });
   } else if (data.document.kind === 'html') {
     onProgress('Ajustando documento para A4...');
-    blob = await renderDanfe(data.document);
+    blob = await renderDanfe(data.document, onProgress);
   } else {
     throw new Error('O Bling retornou um formato de documento não reconhecido.');
   }

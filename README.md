@@ -138,6 +138,8 @@ O app exibe a mensagem geral e os detalhes de validação retornados pelo Bling.
 
 ### Conferência antes de criar a venda
 
+A tela do Bling consulta a situação da NF-e ao abrir um orçamento com pedido vinculado e ao voltar à janela do app. A consulta também localiza a nota pelo pedido quando ela foi gerada diretamente no Bling e o app ainda não tem seu ID. Situação, chave e links são salvos no orçamento; não há geração, ajuste ou transmissão nessa sincronização. A revisão da NF-e também persiste o resultado consultado e atualiza ao retornar à janela, desde que não haja edições pendentes ou operação em andamento. Falhas e vínculos divergentes são exibidos sem substituir os dados salvos. Sem pedido vinculado, a nota não é associada por nome do cliente; confira o vínculo existente, sem duplicar venda ou nota.
+
 Se o orçamento mudar após criar o pedido, as telas do Bling e de revisão da NF-e mostram os campos divergentes da referência salva. Endereço de entrega diferente do fiscal é permitido; mudar a entrega depois de salvar a venda exige revisar o pedido vinculado. Pontuação do mesmo NCM não representa alteração fiscal, mas troca de código continua bloqueando. Não remova o vínculo nem duplique a venda para liberar uma nota; confira o pedido e o rascunho existentes no Bling.
 
 O modal apresenta de uma vez as pendências de cadastro fiscal, documento (incluindo dígitos verificadores), endereço, IE de pessoa jurídica, NCM, quantidade, preço, frete/desconto e pagamento. **SKU é opcional para faturar**: o código comercial não é a classificação fiscal nem o ID interno do produto. A mesma conferência é aplicada no backend antes de criar contato ou venda, sem completar endereço com dados fictícios. IE ausente não é convertida automaticamente em isenção.

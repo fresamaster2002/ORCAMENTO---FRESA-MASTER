@@ -342,6 +342,24 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
   let nfeId = String(input.nfeId || '');
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
+    if (action === 'status') {
+      if (input.orderId != null) {
+        const orderId = String(input.orderId);
+        if (!validId(orderId)) throw new BlingFiscalError('Informe o ID do pedido de venda do Bling.');
+        const order = object((await requestBling(token, `/pedidos/vendas/${orderId}`)).data);
+        if (String(order.id) !== orderId) throw new BlingFiscalError('O Bling não retornou o pedido solicitado.', 502);
+        const linkedId = object(order.notaFiscal).id;
+        if (!validId(linkedId)) {
+          if (nfeId) throw new BlingFiscalError('A nota salva no app não está vinculada ao pedido no Bling. Confira os vínculos sem gerar outra nota.', 409);
+          return { status: 200, body: { success: true, nfe: null, readyToSend: false, fiscalIssues: [], message: 'O pedido ainda não possui NF-e vinculada no Bling.' } };
+        }
+        if (nfeId && nfeId !== String(linkedId)) throw new BlingFiscalError('A NF-e salva difere da nota vinculada ao pedido no Bling. Confira os vínculos antes de continuar.', 409);
+        nfeId = String(linkedId);
+      }
+      if (!validId(nfeId)) throw new BlingFiscalError('Informe o ID da NF-e ou do pedido vinculado.');
+      const current = await readNfe(token, nfeId);
+      return { status: 200, body: { success: true, nfeId: Number(nfeId), nfe: summarize(current), fiscalIssues: [], readyToSend: false } };
+    }
     if (['review', 'update-draft', 'send-reviewed', 'adopt-recipient'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId) };
     let nfe: Data;
     if (action === 'generate') {

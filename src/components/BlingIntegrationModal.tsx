@@ -7,7 +7,7 @@ import { readCadastralDocument } from '../cadastralDocument';
 import { CadastralReadingReview, readingReview, type ReadingReview } from './CadastralReadingReview';
 import { NfeReviewModal } from './NfeReviewModal';
 import { NfeSuccessBanner } from './NfeSuccessBanner';
-import { prepareNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
+import { prepareNfe, synchronizeNfe, nfeSituationLabel, type NfePreparationStep } from '../nfeWorkflow';
 import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions/_shared/blingErrors';
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
@@ -134,6 +134,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     const saved = quote.bling;
     setOrderResult(saved?.orderId ? { orderId: saved.orderId, orderNumber: saved.orderNumber || saved.orderId, orderUrl: saved.orderUrl } : null);
     setNfe(saved?.nfe || null);
+    setNfeBusy(null);
     setNfeReadyToSend(false);
     setNfeFiscalIssues([]);
     setNfeError(null);
@@ -141,6 +142,49 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setDuplicateOrder(false);
     setProductWarnings([]);
   }, [quote.id, isOpen]);
+
+  const latestSync = React.useRef({ quote, onUpdateBling, nfeBusy, showNfeReview, preparationStep, isSubmittingOrder });
+  latestSync.current = { quote, onUpdateBling, nfeBusy, showNfeReview, preparationStep, isSubmittingOrder };
+
+  useEffect(() => {
+    if (!isOpen || !quote.bling?.orderId) return;
+    let active = true;
+    let running = false;
+    const refresh = async () => {
+      const current = latestSync.current;
+      if (!active || running || current.nfeBusy || current.showNfeReview || current.preparationStep || current.isSubmittingOrder) return;
+      running = true;
+      setNfeBusy('status');
+      setNfeError(null);
+      setNfeReadyToSend(false);
+      try {
+        const previous = current.quote.bling?.nfe;
+        const updated = await synchronizeNfe(async () => {
+          const response = await apiFetch('/api/bling/nfe/status', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: current.quote.bling?.orderId, nfeId: previous?.id, token: blingToken.trim() || undefined }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Falha ao consultar a nota no Bling.');
+          return data;
+        }, previous, async (next) => {
+          if (!active) return;
+          const latest = latestSync.current;
+          await latest.onUpdateBling(latest.quote.id, { ...latest.quote.bling, nfe: next });
+        });
+        if (active && updated) setNfe(updated);
+      } catch (failure) {
+        if (active) setNfeError(failure instanceof Error ? failure.message : 'Falha ao sincronizar a NF-e.');
+      } finally {
+        running = false;
+        if (active) setNfeBusy(null);
+      }
+    };
+    const onFocus = () => { void refresh(); };
+    void refresh();
+    window.addEventListener('focus', onFocus);
+    return () => { active = false; window.removeEventListener('focus', onFocus); };
+  }, [isOpen, quote.id, quote.bling?.orderId, blingToken]);
 
   // OAuth 2.0 App credentials
   const [authMethod, setAuthMethod] = useState<'token' | 'oauth'>('token');
@@ -346,6 +390,22 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
     setNfeError(null);
     setNfeReadyToSend(false);
     try {
+      if (action === 'status') {
+        const updated = await synchronizeNfe(async () => {
+          const response = await apiFetch('/api/bling/nfe/status', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: saved.bling?.orderId, nfeId: nfe?.id, ...payload, token: blingToken.trim() || undefined }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Não foi possível consultar a NF-e.');
+          return data;
+        }, nfe || undefined, async (next) => {
+          await onUpdateBling(saved.id, { ...saved.bling, ...(orderResult || {}), nfe: next });
+        });
+        if (updated) setNfe(updated);
+        else setStatusMessage('O pedido ainda não possui NF-e vinculada no Bling. Nenhuma nota foi gerada por esta consulta.');
+        return updated || undefined;
+      }
       const res = await apiFetch(`/api/bling/nfe/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -982,14 +1042,14 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     {orderChanged && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{Number(nfe?.situacao) === 5 ? 'O orçamento atual difere da venda desta NF-e já autorizada. A nota emitida permanece inalterada e não deve ser transmitida novamente.' : 'O orçamento mudou após criar o pedido. Restaure no orçamento os dados da venda já salva ou conclua a revisão e emissão no Bling. Geração e transmissão ficam bloqueadas aqui para não faturar dados diferentes.'}</p>}
                     {orderChanged && <BlingOrderDifferences quote={{ ...quote, client: clientData }} />}
                     {!nfe?.id ? (
-                      <button
+                      <div className="space-y-2"><button type="button" onClick={() => callNfe('status', { orderId: orderResult.orderId })} disabled={nfeBusy !== null || preparationStep !== null} className="px-3 py-2 rounded-lg border border-slate-300 text-xs disabled:opacity-50">Consultar nota emitida no Bling (não gera nem transmite)</button><button
                         type="button"
                         onClick={handlePrepareNfe}
                         disabled={preparationStep !== null || nfeBusy !== null || readinessIssues.length > 0 || orderChanged || isResolvingProducts}
                         className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                       >
                         {nfeBusy === 'generate' ? 'Preparando rascunho...' : 'Preparar NF-e'}
-                      </button>
+                      </button></div>
                     ) : (
                       <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
                         <p>
@@ -1006,7 +1066,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                         <div className="flex flex-wrap gap-2">
                           <a href={`https://www.bling.com.br/notas.fiscais.php#edit/${nfe.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 font-bold">Revisar no Bling</a>
                           <button type="button" onClick={() => setShowNfeReview(true)} disabled={nfeBusy !== null || isResolvingProducts} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-50 cursor-pointer">{Number(nfe.situacao) === 5 ? 'Conferir NF-e emitida no app' : 'Conferir e emitir NF-e no app'}</button>
-                          <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
+                          <button type="button" onClick={() => callNfe('status', { nfeId: nfe.id, orderId: orderResult.orderId })} disabled={nfeBusy !== null} className="px-3 py-2 rounded-lg border border-slate-300 font-bold disabled:opacity-50 cursor-pointer">
                             {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar situação (não transmite)'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}

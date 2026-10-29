@@ -6,6 +6,24 @@ export function nfeWithTransmissionRequest(nfe: BlingNfe, requestedAt?: string):
   return { ...nfe, transmissionRequestedAt: [2, 4, 5, 6, 7, 9, 11].includes(nfe.situacao ?? 0) ? undefined : requestedAt };
 }
 
+export async function synchronizeNfe(
+  read: () => Promise<{ success: boolean; error?: string; nfe?: BlingNfe | null }>,
+  previous: BlingNfe | undefined,
+  persist: (nfe: BlingNfe) => Promise<void>,
+): Promise<BlingNfe | null> {
+  const data = await read();
+  if (!data.success) throw new Error(data.error || 'Não foi possível consultar a NF-e no Bling.');
+  if (data.nfe === null) {
+    if (previous?.id) throw new Error('O Bling não retornou a nota já vinculada. Confira os vínculos antes de continuar.');
+    return null;
+  }
+  if (!data.nfe?.id || data.nfe.situacao == null) throw new Error('O Bling retornou a nota sem identificação ou situação. O estado salvo foi preservado.');
+  if (previous?.id && String(previous.id) !== String(data.nfe.id)) throw new Error('A consulta retornou outra NF-e. O vínculo salvo foi preservado.');
+  const next = nfeWithTransmissionRequest({ ...previous, ...data.nfe }, previous?.transmissionRequestedAt);
+  await persist(next);
+  return next;
+}
+
 export async function prepareNfe(
   quote: QuoteData,
   operations: {

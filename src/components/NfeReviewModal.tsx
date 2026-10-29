@@ -98,7 +98,10 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
         });
         const data: ReviewResponse = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Não foi possível conferir a NF-e.');
-        if (!cancelled) apply(data);
+        if (!cancelled) {
+          apply(data);
+          await onPersist(persistedNfe(data));
+        }
       } catch (failure) {
         if (!cancelled) setError(failure instanceof Error ? failure.message : 'Falha ao conferir a NF-e.');
       } finally {
@@ -171,6 +174,16 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
       monitoring.current = null;
     }
   };
+
+  const focusRefresh = useRef<() => void>(() => {});
+  focusRefresh.current = () => {
+    if (!busy && !dirty && !operationLock.current) void execute('review');
+  };
+  useEffect(() => {
+    const onFocus = () => focusRefresh.current();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
 
   const shareInvoice = async () => {
     if (!review || review.situacao !== 5 || !links?.linkDanfe) return;

@@ -12,6 +12,7 @@ import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
 import { BlingOrderDifferences } from './BlingOrderDifferences';
+import { DanfeDownloadButton } from './DanfeDownloadButton';
 import { supabaseUrl } from '../supabase';
 import { 
   X, 
@@ -1070,6 +1071,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                             {nfeBusy === 'status' ? 'Consultando...' : 'Atualizar situação (não transmite)'}
                           </button>
                           {nfe.linkDanfe && <a href={nfe.linkDanfe} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">DANFE</a>}
+                          {nfe.situacao === 5 && quote.bling?.orderId && <DanfeDownloadButton nfeId={nfe.id} orderId={quote.bling.orderId} token={blingToken} disabled={nfeBusy !== null} />}
                           {nfe.linkXml && <a href={nfe.linkXml} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-700 font-bold">Baixar XML</a>}
                           {Number(nfe.situacao) === 5 && <button type="button" onClick={onContinueShipping} className="px-3 py-2 rounded-lg border border-indigo-300 font-bold">Continuar para envio</button>}
                         </div>

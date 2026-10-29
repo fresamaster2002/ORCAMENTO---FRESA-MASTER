@@ -4,6 +4,7 @@ import { blingFetch } from './blingTransport.ts';
 import { buildNfeReview, invoiceWritePayload, nfeRevision } from './blingNfeReview.ts';
 import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
 import { selectedBlingNature } from './blingNature.ts';
+import { DanfeDocumentError, fetchBlingDanfe } from './blingDanfe.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
@@ -342,6 +343,17 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
   let nfeId = String(input.nfeId || '');
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
+    if (action === 'danfe-document') {
+      if (!validId(nfeId) || !validId(input.orderId)) throw new BlingFiscalError('Informe a NF-e e o pedido vinculado para baixar o DANFE.');
+      const order = object((await requestBling(token, `/pedidos/vendas/${input.orderId}`)).data);
+      if (String(order.id) !== String(input.orderId) || String(object(order.notaFiscal).id) !== nfeId) {
+        throw new BlingFiscalError('A NF-e não corresponde ao pedido vinculado. Recarregue a nota antes de baixar.', 409);
+      }
+      const current = await readNfe(token, nfeId);
+      if (Number(current.situacao) !== 5) throw new BlingFiscalError('O download está disponível somente para NF-e autorizada.', 409);
+      const document = await fetchBlingDanfe(current.linkDanfe || current.linkPDF);
+      return { status: 200, body: { success: true, nfeId: Number(nfeId), numero: current.numero, serie: current.serie, document } };
+    }
     if (action === 'status') {
       if (input.orderId != null) {
         const orderId = String(input.orderId);
@@ -415,6 +427,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
     const issues = await fiscalIssues(token, nfe, method, input.quote ? object(input.quote) : undefined);
     return { status: 200, body: { success: true, nfeId: Number(nfeId), nfe: summarize(nfe), fiscalIssues: issues, readyToSend: !issues.length && [1, 4].includes(Number(nfe.situacao)), ...(input.debug ? { raw: nfe } : {}) } };
   } catch (error) {
+    if (error instanceof DanfeDocumentError) return { status: error.status, body: { success: false, error: error.message } };
     if (error instanceof BlingFiscalError) return { status: error.status, body: { success: false, error: error.message, details: error.details, ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };
     console.error('Falha no processamento da NF-e:', error);
     return { status: 502, body: { success: false, error: 'Falha de comunicação com o Bling. Confira a nota existente antes de repetir a operação.', ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };

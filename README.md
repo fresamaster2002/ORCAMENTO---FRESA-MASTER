@@ -62,6 +62,12 @@ O GitHub guarda o secret criptografado e o fornece apenas às etapas de publica�
 
 ## Retomar o trabalho ao reabrir
 
+### DANFE em PDF A4 e compartilhamento por link
+
+Nas telas do Bling e de conferência da NF-e autorizada, **Baixar DANFE em PDF A4** salva um arquivo pronto para anexar no WhatsApp. **Abrir DANFE**, **Abrir XML** e **Compartilhar link com cliente** continuam disponíveis. O download consulta novamente a nota e seu vínculo com o pedido, sem emitir, transmitir ou alterar dados fiscais, orçamento ou envio.
+
+O documento HTML oficial do Bling é renderizado em quadro isolado, sem scripts ou acesso à rede, preservando textos, tabelas, logotipo incorporado e código de barras. O PDF usa A4, margens de 8 mm e escala proporcional: notas curtas cabem em uma página; notas extensas usam páginas adicionais sem cortar linhas. Se o Bling já retornar PDF, o arquivo original é preservado. Imagens externas ou documentos não reconhecidos geram aviso explícito para abrir o original, em vez de salvar um DANFE incompleto. O endpoint autenticado `POST /bling/nfe/danfe-document` é compartilhado pelo Express e Supabase e aceita apenas o link obtido diretamente da consulta ao Bling.
+
 Cada alteração do orçamento é gravada imediatamente neste navegador, separada por conta, antes da sincronização com o Supabase. Ao reabrir, o app retoma o orçamento ativo (não apenas o último da lista), o texto do comando rápido, a edição do cliente, a janela aberta, a aba e o texto cadastral do Bling, a chave de NF-e digitada para o Sandbox e a posição da página. Orçamentos alterados antes de trocar para outro ficam na fila de sincronização; falhas na nuvem não apagam os rascunhos locais nem os substituem por um orçamento vazio. A renovação do login não recarrega o orçamento nem descarta edições.
 
 O salvamento na nuvem continua automático e também pode ser solicitado em **Salvar**. Falhas de armazenamento/sincronização aparecem na tela. Se a leitura inicial da nuvem falhar, a sincronização fica pausada para evitar sobrescrever dados; reabra com conexão. Entre dispositivos, apenas dados já sincronizados na nuvem estão disponíveis. O ponto da tela e rascunhos pendentes são próprios do navegador; limpar seus dados ou usar navegação privada pode removê-los.

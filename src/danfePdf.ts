@@ -1,7 +1,7 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { apiFetch } from './api';
-import { danfePdfPages } from './danfePdfLayout';
+import { danfeFilename, danfePdfPages } from './danfePdfLayout';
 import type { DanfeDocument } from '../supabase/functions/_shared/blingDanfe';
 
 export function danfeFrameHtml(html: string, css: string): string {
@@ -42,7 +42,16 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
     const doc = frame.contentDocument;
     const sheet = doc?.querySelector<HTMLElement>('#container');
     if (!doc || !sheet) throw new Error('Não foi possível preparar o DANFE para PDF.');
-    await Promise.all([...doc.images].map(image => image.decode()));
+    await Promise.all([...doc.images].map(image => new Promise<void>((resolve, reject) => {
+      if (image.complete) {
+        if (image.naturalWidth) resolve();
+        else reject(new Error('Uma imagem do DANFE não carregou. Tente novamente.'));
+        return;
+      }
+      const timeout = window.setTimeout(() => reject(new Error('Uma imagem do DANFE demorou para carregar. Tente novamente.')), 10000);
+      image.onload = () => { window.clearTimeout(timeout); resolve(); };
+      image.onerror = () => { window.clearTimeout(timeout); reject(new Error('Não foi possível carregar uma imagem do DANFE.')); };
+    })));
     await doc.fonts.ready;
     const rect = sheet.getBoundingClientRect();
     const width = Math.ceil(Math.max(rect.width, sheet.scrollWidth));
@@ -79,8 +88,9 @@ export async function downloadDanfePdf(nfeId: string | number, orderId: string |
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nfeId, orderId, token: token.trim() || undefined }),
   });
-  const data: { success?: boolean; error?: string; nfeId?: number; numero?: string | number; serie?: string | number; document?: DanfeDocument } = await response.json();
+  const data: { success?: boolean; error?: string; nfeId?: number; clientName?: string; issuedAt?: string; document?: DanfeDocument } = await response.json();
   if (!response.ok || !data.success || String(data.nfeId) !== String(nfeId) || !data.document) throw new Error(data.error || 'Não foi possível obter o DANFE desta nota.');
+  const filename = danfeFilename(data.clientName || '', data.issuedAt || '');
   let blob: Blob;
   if (data.document.kind === 'pdf') {
     const bytes = Uint8Array.from(atob(data.document.base64), char => char.charCodeAt(0));
@@ -93,7 +103,7 @@ export async function downloadDanfePdf(nfeId: string | number, orderId: string |
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement('a');
   link.href = url;
-  link.download = `DANFE-${String(data.numero || nfeId).replace(/\D/g, '')}-serie-${String(data.serie || '').replace(/\D/g, '')}.pdf`;
+  link.download = filename;
   window.document.body.appendChild(link);
   link.click();
   link.remove();

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { danfePdfPages } from './danfePdfLayout';
+import { danfeFilename, danfePdfPages } from './danfePdfLayout';
+
+test('nome usa cliente e data de emissão, sem deslocamento de fuso ou caracteres inválidos', () => {
+  assert.equal(danfeFilename('MARCO ANTONIO', '2026-10-28 23:01:04'), 'NF - MARCO ANTONIO - 28-10-2026.pdf');
+  assert.equal(danfeFilename(' Empresa / Teste ', '2026-10-28T23:01:04-03:00'), 'NF - Empresa Teste - 28-10-2026.pdf');
+  assert.throws(() => danfeFilename('', '2026-10-28'), /nome do cliente/);
+  assert.throws(() => danfeFilename('Marco', ''), /data de emissão/);
+});
 
 test('DANFE curto cabe inteiro no A4 com margens de 8 mm', () => {
   const pages = danfePdfPages(900, 850, []);

@@ -64,7 +64,7 @@ O GitHub guarda o secret criptografado e o fornece apenas às etapas de publica�
 
 ### DANFE em PDF A4 e compartilhamento por link
 
-Nas telas do Bling e de conferência da NF-e autorizada, **Baixar DANFE em PDF A4** salva um arquivo pronto para anexar no WhatsApp. **Abrir DANFE**, **Abrir XML** e **Compartilhar link com cliente** continuam disponíveis. O download consulta novamente a nota e seu vínculo com o pedido, sem emitir, transmitir ou alterar dados fiscais, orçamento ou envio.
+Nas telas do Bling e de conferência da NF-e autorizada, **Baixar DANFE em PDF A4** salva um arquivo pronto para anexar no WhatsApp, com nome **NF - NOME DO CLIENTE - DD-MM-AAAA.pdf**, usando destinatário e data de emissão consultados na própria nota. **Abrir DANFE**, **Abrir XML** e **Compartilhar link com cliente** continuam disponíveis. O download consulta novamente a nota e seu vínculo com o pedido, sem emitir, transmitir ou alterar dados fiscais, orçamento ou envio.
 
 O documento HTML oficial do Bling é renderizado em quadro isolado, sem scripts ou acesso à rede, preservando textos, tabelas, logotipo incorporado e código de barras. O PDF usa A4, margens de 8 mm e escala proporcional: notas curtas cabem em uma página; notas extensas usam páginas adicionais sem cortar linhas. Se o Bling já retornar PDF, o arquivo original é preservado. Imagens externas ou documentos não reconhecidos geram aviso explícito para abrir o original, em vez de salvar um DANFE incompleto. O endpoint autenticado `POST /bling/nfe/danfe-document` é compartilhado pelo Express e Supabase e aceita apenas o link obtido diretamente da consulta ao Bling.
 

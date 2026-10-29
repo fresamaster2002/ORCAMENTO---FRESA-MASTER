@@ -352,7 +352,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       const current = await readNfe(token, nfeId);
       if (Number(current.situacao) !== 5) throw new BlingFiscalError('O download está disponível somente para NF-e autorizada.', 409);
       const document = await fetchBlingDanfe(current.linkDanfe || current.linkPDF);
-      return { status: 200, body: { success: true, nfeId: Number(nfeId), numero: current.numero, serie: current.serie, document } };
+      return { status: 200, body: { success: true, nfeId: Number(nfeId), numero: current.numero, serie: current.serie, clientName: object(current.contato).nome, issuedAt: current.dataEmissao, document } };
     }
     if (action === 'status') {
       if (input.orderId != null) {

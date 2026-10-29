@@ -4,6 +4,17 @@ import { apiFetch } from './api';
 import { danfeFilename, danfePdfPages } from './danfePdfLayout';
 import type { DanfeDocument } from '../supabase/functions/_shared/blingDanfe';
 
+async function withDeadline<T>(operation: Promise<T>, message: string, milliseconds = 20000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([operation, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), milliseconds);
+    })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function danfeFrameHtml(html: string, css: string): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   const container = parsed.querySelector('#container');
@@ -17,7 +28,9 @@ export function danfeFrameHtml(html: string, css: string): string {
   });
   container.querySelectorAll('img').forEach(image => {
     if (/linhaBrancaDANFE\.JPG/i.test(image.getAttribute('src') || '')) {
-      image.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+      const spacer = parsed.createElement('span');
+      spacer.style.cssText = `display:inline-block;padding:0;width:${image.width || 315}px;height:${image.height || 1}px;background:#fff`;
+      image.replaceWith(spacer);
     } else if (!/^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(image.getAttribute('src') || '')) {
       throw new Error('O DANFE contém uma imagem externa. Abra o original no Bling para preservar o documento completo.');
     }
@@ -43,16 +56,19 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
     const sheet = doc?.querySelector<HTMLElement>('#container');
     if (!doc || !sheet) throw new Error('Não foi possível preparar o DANFE para PDF.');
     await Promise.all([...doc.images].map(image => new Promise<void>((resolve, reject) => {
-      if (image.complete) {
-        if (image.naturalWidth) resolve();
-        else reject(new Error('Uma imagem do DANFE não carregou. Tente novamente.'));
-        return;
-      }
       const timeout = window.setTimeout(() => reject(new Error('Uma imagem do DANFE demorou para carregar. Tente novamente.')), 10000);
       image.onload = () => { window.clearTimeout(timeout); resolve(); };
       image.onerror = () => { window.clearTimeout(timeout); reject(new Error('Não foi possível carregar uma imagem do DANFE.')); };
+      if (image.complete && image.naturalWidth > 0) {
+        window.clearTimeout(timeout);
+        resolve();
+      } else if (image.complete) {
+        const source = image.src;
+        image.removeAttribute('src');
+        image.src = source;
+      }
     })));
-    await doc.fonts.ready;
+    await withDeadline(doc.fonts.ready, 'O carregamento das fontes demorou demais. Tente novamente.');
     const rect = sheet.getBoundingClientRect();
     const width = Math.ceil(Math.max(rect.width, sheet.scrollWidth));
     const height = Math.ceil(Math.max(rect.height, sheet.scrollHeight));
@@ -63,7 +79,10 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
     });
     const breaks = rows.map(row => Math.ceil(row.bottom) + 1).filter(y => !rows.some(row => row.top < y && row.bottom > y));
     const pages = danfePdfPages(width, height, breaks);
-    const canvas = await html2canvas(sheet, { scale: 2.5, width, height, backgroundColor: '#ffffff', logging: false });
+    const canvas = await withDeadline(
+      html2canvas(sheet, { scale: 2, width, height, backgroundColor: '#ffffff', logging: false, imageTimeout: 10000 }),
+      'A conversão do DANFE demorou demais neste navegador. Tente novamente com o app aberto em primeiro plano.',
+    );
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
     for (const [index, page] of pages.entries()) {
       const slice = window.document.createElement('canvas');
@@ -83,10 +102,12 @@ async function renderDanfe(document: Extract<DanfeDocument, { kind: 'html' }>): 
   }
 }
 
-export async function downloadDanfePdf(nfeId: string | number, orderId: string | number, token: string): Promise<void> {
+export async function prepareDanfePdf(nfeId: string | number, orderId: string | number, token: string, onProgress: (message: string) => void = () => {}): Promise<File> {
+  onProgress('Consultando DANFE no Bling...');
   const response = await apiFetch('/api/bling/nfe/danfe-document', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nfeId, orderId, token: token.trim() || undefined }),
+    signal: AbortSignal.timeout(30000),
   });
   const data: { success?: boolean; error?: string; nfeId?: number; clientName?: string; issuedAt?: string; document?: DanfeDocument } = await response.json();
   if (!response.ok || !data.success || String(data.nfeId) !== String(nfeId) || !data.document) throw new Error(data.error || 'Não foi possível obter o DANFE desta nota.');
@@ -96,16 +117,10 @@ export async function downloadDanfePdf(nfeId: string | number, orderId: string |
     const bytes = Uint8Array.from(atob(data.document.base64), char => char.charCodeAt(0));
     blob = new Blob([bytes], { type: 'application/pdf' });
   } else if (data.document.kind === 'html') {
+    onProgress('Ajustando documento para A4...');
     blob = await renderDanfe(data.document);
   } else {
     throw new Error('O Bling retornou um formato de documento não reconhecido.');
   }
-  const url = URL.createObjectURL(blob);
-  const link = window.document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  window.document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return new File([blob], filename, { type: 'application/pdf' });
 }

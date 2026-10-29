@@ -19,6 +19,7 @@ import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from "./supabase/functions/_shared/blingFiscal";
 import { listBlingNatures, selectedBlingNature } from "./supabase/functions/_shared/blingNature";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
+import { resolveToolNcm } from "./supabase/functions/_shared/toolNcm";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { quoteMelhorEnvioShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
 import { createProductionShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection } from "./supabase/functions/_shared/productionShipment";
@@ -987,7 +988,7 @@ Regras de negócio da Fresa Master:
 3. Identifique todas as fresas, ferramentas e acessórios citados.
    - Exemplo de descrição: "Fresa 3 Cortes TCT para Router CNC", "Fresa Helicoidal 2 Cortes Metal Duro", "Fresa Reta V-Bit 60°", etc.
    - Unidade padrão: "un".
-   - NCM padrão para fresas de usinagem: "8207.70.00".
+   - NCM padrão para fresas de usinagem: "8207.70.10".
    - Calcule unitPrice, quantity e totalPrice para cada item.
 4. Identificação Inteligente da Modalidade de Frete:
    - Se o usuário falar "melhor envio", "correios", "sedex" ou "pac", detecte 'detectedCarrier' como 'MELHOR_ENVIO' (ou 'SEDEX' / 'PAC' / 'JADLOG').
@@ -1131,7 +1132,7 @@ Regras de negócio da Fresa Master:
             category,
             sku,
             blingProductId: matchedBlingProduct && /^\d+$/.test(matchedBlingProduct.id) ? matchedBlingProduct.id : undefined,
-            ncm,
+            ncm: resolveToolNcm(ncm, description),
             quantity: qty,
             unit: (typeof it.unit === "string" && it.unit.length <= 4) ? it.unit : "un",
             unitPrice: price,
@@ -1493,7 +1494,7 @@ app.post("/api/bling/generate-payload", async (req, res) => {
       <vlr_unit>${it.unitPrice.toFixed(2)}</vlr_unit>
       <tipo>P</tipo>
       <origem>0</origem>
-      <class_fiscal>${it.ncm || "8207.70.00"}</class_fiscal>
+      <class_fiscal>${it.ncm || "8207.70.10"}</class_fiscal>
     </item>`
       )
       .join("");
@@ -2111,7 +2112,7 @@ app.get(["/manual", "/bling-manual"], (req, res) => {
     <p>A integração entre o Fresa Master e o Bling ERP opera através da <strong>API v3 Oficial do Bling</strong>, realizando duas operações fundamentais:</p>
     <ol>
       <li><strong>Leitura Cadastral Fiscal:</strong> Preenchimento automatizado de Razão Social, CNPJ/CPF, Inscrição Estadual e CEP a partir de imagens do Cartão CNPJ ou mensagens de clientes.</li>
-      <li><strong>Criação de Pedidos de Venda (/pedidos/vendas):</strong> Transmissão direta dos itens orçados, com SKU oficial, classificação fiscal NCM <span class="code-tag">8207.70.00</span> (ferramentas de usinagem), transportador e frete selecionado.</li>
+      <li><strong>Criação de Pedidos de Venda (/pedidos/vendas):</strong> Transmissão direta dos itens orçados, com SKU oficial, classificação fiscal NCM <span class="code-tag">8207.70.10</span> (ferramentas de usinagem), transportador e frete selecionado.</li>
     </ol>
 
     <h2>3. Escopos Solicitados e Justificativa de Uso</h2>
@@ -2370,7 +2371,7 @@ function parseFresaMasterFallback(
       category: itemCat,
       sku: itemSku,
       blingProductId: matchedBlingProduct && /^\d+$/.test(matchedBlingProduct.id) ? matchedBlingProduct.id : undefined,
-      ncm: itemNcm,
+      ncm: resolveToolNcm(itemNcm, itemDesc),
       quantity: qty,
       unit: "un",
       unitPrice: finalUnitPrice,

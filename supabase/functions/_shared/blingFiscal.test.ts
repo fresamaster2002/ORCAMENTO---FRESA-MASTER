@@ -92,6 +92,11 @@ test('geração sem SKU usa ID e NCM cadastrado no Bling, antes de criar a nota'
   assert.equal(draft.itens[0].classificacaoFiscal, '8207.70.10');
   calls.length = 0;
   ncm = '8207.70.00';
+  const legacy = await handleBlingNfe('generate', input, 'test-token');
+  assert.equal(legacy.status, 200);
+  assert.equal(draft.itens[0].classificacaoFiscal, '8207.70.10');
+  calls.length = 0;
+  ncm = '00000000';
   const invalid = await handleBlingNfe('generate', input, 'test-token');
   assert.equal(invalid.status, 400);
   assert.equal(calls.some((call) => call.startsWith('POST') || call.startsWith('PUT')), false);

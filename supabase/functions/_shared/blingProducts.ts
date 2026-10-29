@@ -1,4 +1,5 @@
 import { BlingFiscalError, requestBling, type FiscalItem } from './blingFiscal.ts';
+import { resolveToolNcm } from './toolNcm.ts';
 
 type Product = { id?: number; codigo?: string; nome?: string; tributacao?: { ncm?: string } };
 const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
@@ -42,7 +43,7 @@ export async function resolveBlingProducts<T extends FiscalItem>(token: string, 
     if (!id) {
       if (sku) throw new BlingFiscalError(`O SKU "${sku}" não foi encontrado no Bling. Selecione o produto correto ou deixe o SKU vazio para um item avulso.`);
       warnings.push(`${item.description}: não há correspondência exata no catálogo. Item avulso, com NCM informado no orçamento.`);
-      result.push({ ...item, blingProductId: undefined });
+      result.push({ ...item, ncm: resolveToolNcm(item.ncm, item.description), blingProductId: undefined });
       continue;
     }
     let product = cache.get(id);
@@ -53,8 +54,9 @@ export async function resolveBlingProducts<T extends FiscalItem>(token: string, 
       cache.set(id, product);
     }
     const ncm = String(product.tributacao?.ncm || '').trim();
-    if (!ncm) warnings.push(`${item.description}: o NCM está vazio no cadastro do Bling. Foi mantido apenas o NCM já informado no orçamento; confirme-o antes de emitir.`);
-    result.push({ ...item, blingProductId: id, sku: product.codigo || '', ncm: ncm || item.ncm || '' });
+    const resolvedNcm = resolveToolNcm(ncm || item.ncm, item.description);
+    if (!ncm || resolvedNcm !== ncm) warnings.push(`${item.description}: NCM do cadastro Bling ausente ou diferente do utilizado. NCM no orçamento: ${resolvedNcm || 'vazio'}. Confira antes de emitir; o cadastro do ERP não foi alterado.`);
+    result.push({ ...item, blingProductId: id, sku: product.codigo || '', ncm: resolvedNcm });
   }
   return { items: result, warnings };
 }

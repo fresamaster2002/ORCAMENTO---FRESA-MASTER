@@ -76,7 +76,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
   });
   await t.test('NCM inválido em item avulso não cria contato nem venda', async () => {
     calls.length = 0;
-    const r = await post('create-order', { quote: { ...quote, items: [{ ...quote.items[0], sku: '', ncm: '8207.70.00' }] } });
+    const r = await post('create-order', { quote: { ...quote, items: [{ ...quote.items[0], sku: '', ncm: '00000000' }] } });
     assert.equal(r.status, 400);
     assert.equal(calls.some((call) => call.method === 'POST' && call.url.includes('api.bling.com.br')), false);
   });

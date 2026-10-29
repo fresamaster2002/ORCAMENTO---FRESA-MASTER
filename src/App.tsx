@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
 import { DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
+import { resolveToolNcm } from '../supabase/functions/_shared/toolNcm';
 import { Header } from './components/Header';
 import { AuthGate } from './components/AuthGate';
 import { QuickOrderInput } from './components/QuickOrderInput';
@@ -54,7 +55,7 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
       id: 'fresa-1',
       description: 'Fresa 3 Cortes TCT 6x22mm Haste 6mm para MDF e Madeira (Widia)',
       sku: 'FM-TCT-6X22',
-      ncm: '8207.70.00',
+      ncm: '8207.70.10',
       category: 'Fresas 3 Cortes TCT',
       quantity: 2,
       unit: 'un',
@@ -202,7 +203,7 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
       id: String(item.id || `saved-item-${index}`),
       description: String(item.description || ''),
       sku: String(item.sku || ''),
-      ncm: String(item.ncm || ''),
+      ncm: resolveToolNcm(String(item.ncm || ''), String(item.description || '')),
       category: String(item.category || 'Fresas Router CNC'),
       quantity,
       unit: String(item.unit || 'un'),
@@ -327,7 +328,7 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
           id: `fallback-${Date.now()}`,
           description: 'Produto local (fallback sem IA)',
           sku: 'LOCAL-FALLBACK',
-          ncm: '8207.70.00',
+          ncm: '8207.70.10',
           category: 'Fresas / Ferramentas',
           quantity,
           unit: 'un',

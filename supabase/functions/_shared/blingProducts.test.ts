@@ -34,10 +34,26 @@ test('ID explícito e código textual usam detalhe do Bling, sem classificação
 
 test('NCM vazio é avisado e nunca copiado de outro produto', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({ data: { id: 123, codigo: '', tributacao: { ncm: '' } } }));
-  const result = await resolveBlingProducts('test', [{ ...item, blingProductId: '123' }]);
+  const result = await resolveBlingProducts('test', [{ ...item, description: 'Pinça ER20', blingProductId: '123' }]);
   assert.equal(result.items[0].ncm, '');
-  assert.match(result.warnings[0], /vazio/);
+  assert.match(result.warnings[0], /ausente/);
   assert.throws(() => validateFiscalItems(result.items), /NCM/);
+});
+
+test('fresa com NCM vazio ou antigo no ERP usa o padrão sem alterar cadastro', async (t) => {
+  let ncm = '';
+  t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method || 'GET', 'GET');
+    return Response.json({ data: { id: 123, codigo: 'FM-TCT', tributacao: { ncm } } });
+  });
+  for (ncm of ['', '8207.70.00', '82077000']) {
+    const result = await resolveBlingProducts('test', [{ ...item, blingProductId: '123' }]);
+    assert.equal(result.items[0].ncm, '8207.70.10');
+    assert.equal(result.items[0].blingProductId, '123');
+    assert.equal(result.items[0].unitPrice, 170);
+    assert.equal(result.warnings.length, 1);
+    assert.doesNotThrow(() => validateFiscalItems(result.items));
+  }
 });
 
 test('ambiguidade, SKU desconhecido e erro HTTP não viram seleção bem-sucedida', async (t) => {

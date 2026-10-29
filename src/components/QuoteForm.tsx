@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { DEFAULT_FRESA_NCM, resolveToolNcm } from '../../supabase/functions/_shared/toolNcm';
 import { 
   Plus, 
   Trash2, 
@@ -153,7 +154,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     setNewProductName(item.description);
     setNewProductSku(item.sku || `FM-${Date.now().toString().slice(-6)}`);
     setNewProductPrice(item.unitPrice > 0 ? String(item.unitPrice) : '');
-    setNewProductNcm(item.ncm === '8207.70.00' ? '' : item.ncm || '');
+    setNewProductNcm(resolveToolNcm(item.ncm, item.description));
     setShowNewProductForm(false);
     setNewProductError(null);
     setIsBlingCatalogModalOpen(true);
@@ -247,7 +248,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       id: `item-${Date.now()}`,
       description: matchedProduct?.description || description,
       sku: matchedProduct?.sku || '',
-      ncm: matchedProduct?.ncm || '',
+      ncm: resolveToolNcm(matchedProduct?.ncm, description),
       category: matchedProduct?.category || 'Fresas Router CNC',
       quantity: 1,
       unit: matchedProduct?.unit || 'un',
@@ -1085,7 +1086,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                     setNewProductName(catalogSearch.trim());
                     setNewProductSku(`FM-${Date.now().toString().slice(-6)}`);
                     setNewProductPrice('');
-                    setNewProductNcm('8207.70.00');
+                    setNewProductNcm(DEFAULT_FRESA_NCM);
                     setNewProductError(null);
                     setShowNewProductForm(true);
                   }}

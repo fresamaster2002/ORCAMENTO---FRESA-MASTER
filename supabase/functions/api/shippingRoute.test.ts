@@ -185,6 +185,7 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
         const result = await response.json();
         assert.equal(result.success, true);
         assert.equal(result.quote.items[0].sku, 'FM-TCT-6X22');
+        assert.equal(result.quote.items[0].ncm, '8207.70.10');
         assert.equal(result.quote.items[0].quantity, 2);
         assert.equal(result.quote.items[0].unitPrice, 140);
         assert.equal(result.quote.shipping.options.some((option: { isRealTimeMelhorEnvio?: boolean }) => option.isRealTimeMelhorEnvio), false);

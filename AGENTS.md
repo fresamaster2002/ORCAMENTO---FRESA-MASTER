@@ -13,7 +13,7 @@ Este arquivo documenta as regras de negócio, arquitetura e estado atual do apli
   - Fresas Helicoidais de 1 e 2 Cortes em Metal Duro Integral.
   - Fresas V-Bit (60° e 90°) para gravação, chanfro e comunicação visual.
   - Pinças de precisão (ER11, ER16, ER20, ER25, ER32).
-- **Classificação Fiscal Padrão (NCM):** `8207.70.00` (Ferramentas de fresar / usinagem).
+- **Classificação Fiscal Padrão (NCM):** `8207.70.10` (Ferramentas de fresar / usinagem).
 
 ---
 
@@ -82,7 +82,7 @@ Este arquivo documenta as regras de negócio, arquitetura e estado atual do apli
   - Fresas 1 Corte para Acrílico e Alumínio (`FM-HEL-1C-6X22-ACR`).
   - Fresas V-Bit 60° e 90° para ACM e Gravação (`FM-VBIT-60-1/2`, `FM-VBIT-90-1/2`).
   - Pinças ER de precisão ER11, ER20, ER25 (`FM-PINCA-ER20-6MM`, etc.).
-- Ao falar ou digitar qualquer termo relacionado (ex: *"2 fresas de 3 cortes TCT"*), a IA seleciona o produto exato do Bling com o SKU oficial, NCM fiscal (`8207.70.00`) e preço cadastrado.
+- Ao falar ou digitar qualquer termo relacionado (ex: *"2 fresas de 3 cortes TCT"*), a IA seleciona o produto exato do Bling com o SKU oficial, NCM fiscal (`8207.70.10`) e preço cadastrado.
 - Há também o botão visual **"Catálogo do Bling ERP"** na tabela de itens para seleção manual rápida com 1 clique e busca em tempo real.
 
 ---

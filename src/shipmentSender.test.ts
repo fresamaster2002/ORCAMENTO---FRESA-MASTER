@@ -13,8 +13,11 @@ test('remetente usa o CEP oficial e preserva o CEP salvo pelo operador', (t) => 
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
     else Reflect.deleteProperty(globalThis, 'localStorage');
   });
-  assert.equal(initialSender.cep, '13321-472');
-  assert.equal(loadSender().cep, '13321-472');
+  assert.equal(initialSender.cep, '13329-350');
+  assert.equal(loadSender().cep, '13329-350');
+  assert.equal(loadSender().address, 'Rua das Nações Unidas');
+  assert.equal(loadSender().number, '600');
+  assert.equal(loadSender().neighborhood, 'Olaria');
   for (const cep of ['13321-472', '13329-350', '80010-000']) {
     saved = JSON.stringify({ cep });
     assert.equal(loadSender().cep, cep);

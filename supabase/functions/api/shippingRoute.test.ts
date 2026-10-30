@@ -84,7 +84,18 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     assert.ok(rate);
     assert.equal(rate.url, 'https://melhorenvio.com.br/api/v2/me/shipment/calculate');
     assert.deepEqual(rate.body.package, { height: 7, width: 12, length: 17, weight: 0.5 });
+    assert.deepEqual(rate.body.from, { postal_code: '13321472' });
     assert.equal(calls.some((call) => call.url.includes('sandbox.melhorenvio.com.br')), false);
+  });
+
+  await t.test('cotação sem origem usa o novo CEP de despacho sem alterar o destino', async () => {
+    calls.length = 0;
+    const response = await post('calculate', { destinationCep: '80010000', weightKg: 0.5 });
+    assert.equal(response.status, 200);
+    const rate = calls.find((call) => call.url.endsWith('/shipment/calculate'));
+    assert.ok(rate);
+    assert.deepEqual(rate.body.from, { postal_code: '13329350' });
+    assert.deepEqual(rate.body.to, { postal_code: '80010000' });
   });
 
   await t.test('status confere a credencial OAuth de producao', async () => {

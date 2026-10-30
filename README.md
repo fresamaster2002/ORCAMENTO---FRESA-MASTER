@@ -29,7 +29,7 @@ Em **Orçamentos**, busque por nome (com ou sem acentos), CPF/CNPJ ou número e 
 A área operacional **Melhor Envio** usa exclusivamente `https://melhorenvio.com.br`; não há fluxo Sandbox disponível no app nem nas rotas de envio. Registros antigos de teste são mantidos apenas como histórico. **Continuar para envio**, após a NF-e autorizada, abre o fluxo de produção; isso não cria envio automaticamente.
 
 1. Aprove o orçamento e consulte a NF-e autorizada da série 2 no Bling.
-2. Em **Melhor Envio**, confira o remetente (CEP de origem padrão `13321-472`, editável), destinatário, pacote e produtos.
+2. Em **Melhor Envio**, confira o remetente (CEP de origem padrão `13329-350`, Rua das Nações Unidas, 600, Olaria, Salto/SP, editável), destinatário, pacote e produtos. O endereço fiscal do emitente não é alterado. Orçamentos e remetentes já salvos preservam os dados explícitos: para despachar um orçamento antigo da nova origem, abra as configurações do frete, use **Restaurar CEP padrão Salto/SP** junto ao CEP de origem para recalcular e confira o remetente. O CEP de entrega continua sendo o do cliente; um CEP inexistente precisa ser corrigido, não substituído pelo da origem.
 3. **Testar conexão Melhor Envio** faz apenas leitura da conta. **Cotar no Melhor Envio** obtém preço oficial sem estimativa; não altera o valor cobrado do cliente nem a NF-e.
 4. Confira o custo, marque a confirmação e clique em **Adicionar ao carrinho do Melhor Envio (sem pagar)**.
 5. Abra o carrinho no painel oficial para pagar, emitir e imprimir a etiqueta. O app não faz checkout, debita saldo, gera etiqueta ou confirma postagem no ambiente real.

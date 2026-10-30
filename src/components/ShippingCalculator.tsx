@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
-import { DEFAULT_PACKAGE_DIMENSIONS } from '../../supabase/functions/_shared/shippingDefaults';
+import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../../supabase/functions/_shared/shippingDefaults';
 import {
   Truck,
   Check,
@@ -31,8 +31,6 @@ interface ShippingCalculatorProps {
   onUpdateDestinationCep: (cep: string) => void;
   onUpdateShipping?: (updatedShipping: ShippingInfo, selectedOption?: ShippingOption) => void;
 }
-
-const DEFAULT_ORIGIN_CEP = '13321-472'; // Salto / SP (Expedição Oficial Fresa Master)
 
 export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   shipping,

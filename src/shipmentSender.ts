@@ -1,3 +1,5 @@
+import { DEFAULT_ORIGIN_CEP } from '../supabase/functions/_shared/shippingDefaults';
+
 export interface SenderData {
   name: string;
   document: string;
@@ -16,8 +18,8 @@ export interface SenderData {
 export const initialSender: SenderData = {
   name: 'Fresa Master', document: '59.085.330/0001-70', ie: '600320622110',
   email: 'fresamaster0@gmail.com', phone: '(11) 99852-4939',
-  address: 'Rua Presidente Geisel', number: '62', complement: '',
-  neighborhood: 'Jardim Santo Antonio', city: 'Salto', state: 'SP', cep: '13321-472',
+  address: 'Rua das Nações Unidas', number: '600', complement: '',
+  neighborhood: 'Olaria', city: 'Salto', state: 'SP', cep: DEFAULT_ORIGIN_CEP,
 };
 export const SENDER_STORAGE_KEY = 'fresa_master_sender_v2';
 export const senderFields: Array<{ key: keyof SenderData; label: string; required?: boolean }> = [

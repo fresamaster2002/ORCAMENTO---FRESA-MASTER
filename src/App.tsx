@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
-import { DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
+import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
 import { resolveToolNcm } from '../supabase/functions/_shared/toolNcm';
 import { Header } from './components/Header';
 import { AuthGate } from './components/AuthGate';
@@ -65,7 +65,7 @@ const INITIAL_FRESA_MASTER_QUOTE: QuoteData = {
     },
   ],
   shipping: {
-    originCep: '13321-472',
+    originCep: DEFAULT_ORIGIN_CEP,
     destinationCep: '80010-000',
     weightKg: 0.5,
     weightDescription: '0,5 kg (padrão até 0,5 kg c/ embalagem)',

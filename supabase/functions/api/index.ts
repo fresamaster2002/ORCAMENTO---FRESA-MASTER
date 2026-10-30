@@ -9,7 +9,7 @@ import { quoteMelhorEnvioShipment, SandboxShipmentError } from '../_shared/sandb
 import { createProductionShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection } from '../_shared/productionShipment.ts';
 import { beginProductionOAuth, completeProductionOAuth, MelhorEnvioOAuthError, productionAccessToken, type MelhorEnvioTokenRecord, type MelhorEnvioTokenStore } from '../_shared/productionOAuth.ts';
 import { verifyProductionShipmentInvoice } from '../_shared/productionInvoice.ts';
-import { DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
+import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
 import { CadastralExtractionError, extractCadastralDocument } from '../_shared/cadastralExtraction.ts';
@@ -412,7 +412,7 @@ function calculatePackageWeight(items: Array<{ description?: string; quantity?: 
 
 function calculateShippingRates(
   destinationCep: string,
-  originCep = '13321-472',
+  originCep = DEFAULT_ORIGIN_CEP,
   weightKg = 0.5,
   dimensions: JsonObject = { ...DEFAULT_PACKAGE_DIMENSIONS },
   customShipping?: JsonObject,
@@ -420,7 +420,7 @@ function calculateShippingRates(
   declaredValue = 280,
 ) {
   const destination = destinationCep.replace(/\D/g, '');
-  const origin = originCep.replace(/\D/g, '') || '13321472';
+  const origin = (originCep || DEFAULT_ORIGIN_CEP).replace(/\D/g, '');
   const destDigit = destination ? Number(destination[0]) : 1;
   const originDigit = origin ? Number(origin[0]) : 1;
   const sameState = destDigit === originDigit;
@@ -489,7 +489,7 @@ async function liveShippingRates(destinationCep: string, originCep: string, weig
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken.trim()}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'FresaMaster (fresamaster0@gmail.com)' },
       body: JSON.stringify({
-        from: { postal_code: (originCep || '13321-472').replace(/\D/g, '') },
+        from: { postal_code: (originCep || DEFAULT_ORIGIN_CEP).replace(/\D/g, '') },
         to: { postal_code: destination },
         package: { height: Math.max(2, Number(dimensions.height) || DEFAULT_PACKAGE_DIMENSIONS.height), width: Math.max(11, Number(dimensions.width) || DEFAULT_PACKAGE_DIMENSIONS.width), length: Math.max(16, Number(dimensions.length) || DEFAULT_PACKAGE_DIMENSIONS.length), weight: Math.max(0.1, weightKg || 0.5) },
         options: { insurance_value: insuranceEnabled ? declaredValue : 0, receipt: false, own_hand: false },
@@ -624,7 +624,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   const insuranceEnabled = Boolean(shipping.insuranceEnabled);
   const liveOptions = await liveShippingRates(
     cep,
-    shipping.originCep || '13321-472',
+    shipping.originCep || DEFAULT_ORIGIN_CEP,
     weight.weightKg,
     dimensions,
     insuranceEnabled,
@@ -632,7 +632,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
   );
   const options = liveOptions?.length
     ? liveOptions
-    : labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shipping.originCep || '13321-472', weight.weightKg, dimensions, customShipping, insuranceEnabled, subtotal));
+    : labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shipping.originCep || DEFAULT_ORIGIN_CEP, weight.weightKg, dimensions, customShipping, insuranceEnabled, subtotal));
   for (const option of [
     { service: 'RETIRADA', name: 'Retirada na Fresa Master', carrier: 'Balcão (Salto/SP)', price: 0, deliveryDays: 0, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
     { service: 'MOTOBOY', name: 'Envio por Motoboy / Aplicativo', carrier: 'Motoboy / App', price: 0, deliveryDays: 1, selected: false, insuranceIncluded: false, insuranceCost: 0, withInsurancePrice: 0, withoutInsurancePrice: 0 },
@@ -653,7 +653,7 @@ async function fallbackQuote(text: string, currentQuote: JsonObject = {}, catalo
     client: { ...previousClient, name: clientName, tradeName: previousClient.tradeName || '', company: previousClient.company || clientName, email: previousClient.email || '', phone: previousClient.phone || '', document: previousClient.document || '', ie: previousClient.ie || '', cep: cep || previousClient.cep || '', address: address?.logradouro || previousClient.address || '', number: previousClient.number || '', neighborhood: address?.bairro || previousClient.neighborhood || '', city: address?.cidade || previousClient.city || '', state: address?.uf || previousClient.state || '' },
     project: { title: 'Fornecimento de Fresas Router CNC - Fresa Master', category: 'Ferramentas Router CNC', description: `Fornecimento de ${item.description} para usinagem CNC.`, deadline: `${selected.deliveryDays} dias úteis (${selected.name})`, validityDays: 10, date: new Date().toISOString().split('T')[0] },
     items: [item],
-    shipping: { ...shipping, originCep: shipping.originCep || '13321-472', destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
+    shipping: { ...shipping, originCep: shipping.originCep || DEFAULT_ORIGIN_CEP, destinationCep: cep || previousClient.cep || '', weightKg: weight.weightKg, weightDescription: weight.description, packageDimensions: dimensions, customShippingAmount: customShipping?.amount, customShippingName: customShipping?.name, insuranceEnabled, selectedOption: selected, options: selectedOptions },
     financials: { subtotal, shippingAmount: Number(selected.price || 0), insuranceAmount: 0, discountPercentage, discountAmount, taxPercentage: 0, taxAmount: 0, totalAmount: Math.max(0, subtotal - discountAmount + Number(selected.price || 0)), paymentTerms: 'À vista via Pix ou Boleto', paymentMethod: 'Pix' },
     observations: ['Envio pelo Melhor Envio com seguro total.', 'Garantia contra defeitos de fabricação e balanceamento.'],
     notesForClient: 'Fresa Master - Sua router CNC trabalhando com máxima precisão.',
@@ -692,8 +692,8 @@ async function extractQuote(body: JsonObject): Promise<Response> {
   const weight = calculatePackageWeight(items);
   const shippingState = current.shipping || {};
   const declaredValue = items.reduce((sum: number, item: JsonObject) => sum + item.totalPrice, 0);
-  const localOptions = labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), declaredValue));
-  const liveOptions = await liveShippingRates(cep, shippingState.originCep || '13321-472', weight.weightKg, shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, Boolean(shippingState.insuranceEnabled), declaredValue);
+  const localOptions = labelEstimatedCarrierRates(calculateShippingRates(cep || '00000000', shippingState.originCep || DEFAULT_ORIGIN_CEP, weight.weightKg, shippingState.packageDimensions, undefined, Boolean(shippingState.insuranceEnabled), declaredValue));
+  const liveOptions = await liveShippingRates(cep, shippingState.originCep || DEFAULT_ORIGIN_CEP, weight.weightKg, shippingState.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS }, Boolean(shippingState.insuranceEnabled), declaredValue);
   const shippingOptions = liveOptions?.length
     ? [...liveOptions, ...localOptions.filter((option) => !['SEDEX', 'PAC', 'JADLOG_PACKAGE'].includes(String(option.service)))]
     : localOptions;
@@ -764,7 +764,7 @@ async function shippingCalculate(body: JsonObject): Promise<Response> {
   const weightDescription = Number(body.weightKg) > 0 ? `${weight.toFixed(1).replace('.', ',')} kg (definido manualmente)` : calculatePackageWeight(items).description;
   let declaredValue = Number(body.declaredValue) || items.reduce((sum: number, item: JsonObject) => sum + (Number(item.totalPrice) || 0), 0) || 280;
   const dimensions = body.packageDimensions || { ...DEFAULT_PACKAGE_DIMENSIONS };
-  const originCep = body.originCep || '13321-472';
+  const originCep = body.originCep || DEFAULT_ORIGIN_CEP;
   const insuranceEnabled = Boolean(body.insuranceEnabled);
   let options = await liveShippingRates(destinationCep, originCep, weight, dimensions, insuranceEnabled, declaredValue);
   const isLiveApi = Boolean(options?.length);

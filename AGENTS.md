@@ -89,9 +89,9 @@ Este arquivo documenta as regras de negócio, arquitetura e estado atual do apli
 
 ## 6. Dimensões do Pacote, CEP de Origem & Frete Próprio
 - **CEP de Origem Fresa Master (Despacho / Coleta):**
-  - **Padrão Oficial:** `13321-472` (Salto/SP).
+  - **Padrão Oficial:** `13329-350` (Rua das Nações Unidas, 600, Olaria, Salto/SP; endereço de despacho, não altera o cadastro fiscal).
   - Exibido no cabeçalho do painel de logística e na aba dedicada **"Origem Fresa Master"**.
-  - O operador pode alterar o CEP de expedição a qualquer momento digitando um novo CEP com 1 clique em "Salvar & Recalcular", ou restaurar para o padrão `13321-472`.
+  - O operador pode alterar o CEP de expedição a qualquer momento digitando um novo CEP com 1 clique em "Salvar & Recalcular", ou restaurar para o padrão `13329-350`. Orçamentos e remetentes explicitamente salvos são preservados.
   - Integrado diretamente ao cálculo de frete com o Melhor Envio (Sedex, PAC e Jadlog recalculados com base na nova rota).
 - **Tamanho do Pacote:** Medidas padrão configuradas em **7 cm de altura x 12 cm de largura x 17 cm de comprimento**. Permite ajuste numérico em Configurações, com "Aplicar medidas" para recalcular e "Padrão 7 × 12 × 17 cm" para restaurar. Medidas explícitas de orçamentos salvos são preservadas.
 - **Aba "Meu Frete / Próprio":** Permite definir um frete fixo próprio (ex: transportadora própria, Braspress, Motoboy local ou frete grátis negociado) com valor e nome personalizáveis, adicionado automaticamente às opções de frete disponíveis no orçamento.

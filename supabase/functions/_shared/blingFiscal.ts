@@ -5,6 +5,7 @@ import { buildNfeReview, invoiceWritePayload, nfeRevision } from './blingNfeRevi
 import { clientFiscalReviewIssue } from './clientFiscalReview.ts';
 import { selectedBlingNature } from './blingNature.ts';
 import { DanfeDocumentError, fetchBlingDanfe } from './blingDanfe.ts';
+import { hasProductionAuthorization, readBlingInvoiceXml } from './invoiceAuthorization.ts';
 
 type Data = Record<string, unknown>;
 export type FiscalItem = { sku?: string; blingProductId?: string; description: string; quantity: number; unitPrice: number; ncm?: string };
@@ -133,6 +134,18 @@ export async function readNfe(token: string, id: string): Promise<Data> {
   const response = await requestBling(token, `/nfe/${id}`);
   const nfe = object(response.data);
   if (!validId(nfe.id) || String(nfe.id) !== id) throw new BlingFiscalError('O Bling não retornou os dados da NF-e solicitada.', 502);
+  if (Number(nfe.situacao) === 6) {
+    let xml: string;
+    try {
+      xml = await readBlingInvoiceXml(String(nfe.xml || nfe.linkXml || ''));
+    } catch (error) {
+      throw new BlingFiscalError(`O Bling informa “Emitida DANFE”, mas não foi possível conferir a autorização: ${error instanceof Error ? error.message : 'falha na leitura do XML'} Consulte a situação no Bling; não transmita novamente.`, 502);
+    }
+    if (!hasProductionAuthorization(xml, String(nfe.chaveAcesso || '').replace(/\D/g, ''))) {
+      throw new BlingFiscalError('A situação “Emitida DANFE” não confirma autorização em produção no XML desta chave. Consulte a nota na SEFAZ pelo Bling antes de emitir ou enviar; não crie outra nota.', 409);
+    }
+    return { ...nfe, situacao: 5 };
+  }
   return nfe;
 }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { prepareNfe, monitorNfe, nfeSituationLabel, nfeWithTransmissionRequest } from './nfeWorkflow';
+import { prepareNfe, monitorNfe, nfeSituationLabel, nfeWithTransmissionRequest, synchronizeShippingNfe } from './nfeWorkflow';
 import type { QuoteData } from './types';
 
 const quote: QuoteData = {
@@ -71,4 +71,53 @@ test('solicitação permanece em resultados indefinidos e só libera após situa
     assert.equal(nfeWithTransmissionRequest({ id: 22, situacao }, 'requested').transmissionRequestedAt, undefined);
   }
   assert.equal(nfeWithTransmissionRequest({ id: 22, situacao: 1 }).transmissionRequestedAt, undefined);
+});
+
+test('envio sincroniza NF autorizada fora do app e persiste chave/série sem criar ou transmitir', async () => {
+  const existing = { ...quote, bling: { orderId: 11, nfe: { id: 22, situacao: 1, transmissionRequestedAt: 'pending' } } };
+  let saved: unknown;
+  const updated = await synchronizeShippingNfe(existing, async (link) => {
+    assert.deepEqual(link, { orderId: 11, nfeId: 22 });
+    return { success: true, nfe: { id: 22, numero: '47', situacao: 5, serie: 2, chaveAcesso: '1'.repeat(44) } };
+  }, async (nfe) => { saved = nfe; });
+  assert.equal(updated?.situacao, 5);
+  assert.equal(updated?.serie, 2);
+  assert.equal(updated?.chaveAcesso?.length, 44);
+  assert.equal(updated?.transmissionRequestedAt, undefined);
+  assert.deepEqual(saved, updated);
+  assert.equal(existing.bling.nfe.situacao, 1);
+});
+
+test('envio encontra nota emitida no pedido existente sem vínculo local e preserva nota não autorizada', async () => {
+  const existing = { ...quote, bling: { orderId: 11 } };
+  const discovered = await synchronizeShippingNfe(existing, async (link) => {
+    assert.deepEqual(link, { orderId: 11, nfeId: undefined });
+    return { success: true, nfe: { id: 22, situacao: 5, serie: 2, chaveAcesso: '1'.repeat(44) } };
+  }, async () => {});
+  assert.equal(discovered?.id, 22);
+  const rejected = await synchronizeShippingNfe({ ...existing, bling: { ...existing.bling, nfe: discovered! } }, async () => ({
+    success: true, nfe: { id: 22, situacao: 4 },
+  }), async () => {});
+  assert.equal(rejected?.situacao, 4);
+});
+
+test('envio não adivinha vínculo nem sobrescreve nota divergente ou falha de consulta', async () => {
+  let reads = 0;
+  let writes = 0;
+  const read = async () => { reads++; return { success: true, nfe: { id: 33, situacao: 5 } }; };
+  const persist = async () => { writes++; };
+  await assert.rejects(synchronizeShippingNfe(quote, read, persist), /pedido Bling vinculado/);
+  assert.equal(reads, 0);
+  const existing = { ...quote, bling: { orderId: 11, nfe: { id: 22, situacao: 1 } } };
+  await assert.rejects(synchronizeShippingNfe(existing, read, persist), /outra NF-e/);
+  await assert.rejects(synchronizeShippingNfe(existing, async () => ({ success: false, error: 'Consulta indisponível' }), persist), /indisponível/);
+  await assert.rejects(synchronizeShippingNfe(existing, async () => ({ success: true, nfe: null }), persist), /não retornou a nota/);
+  assert.equal(writes, 0);
+  assert.equal(existing.bling.nfe.situacao, 1);
+});
+
+test('falha ao salvar autorização impede concluir sincronização de envio', async () => {
+  await assert.rejects(synchronizeShippingNfe({ ...quote, bling: { orderId: 11 } }, async () => ({
+    success: true, nfe: { id: 22, situacao: 5, serie: 2, chaveAcesso: '1'.repeat(44) },
+  }), async () => { throw new Error('Falha de gravação na nuvem'); }), /gravação na nuvem/);
 });

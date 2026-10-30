@@ -916,6 +916,7 @@ export default function App() {
             openOnly('bling');
             setView({ blingTab: 'direct' });
           }}
+          onUpdateNfe={(nfe) => handlePersistBlingUpdate(quote.id, { bling: { ...quote.bling, nfe } })}
         />
       )}
 

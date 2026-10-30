@@ -24,6 +24,20 @@ export async function synchronizeNfe(
   return next;
 }
 
+export async function synchronizeShippingNfe(
+  quote: QuoteData,
+  read: (link: { orderId: string | number; nfeId?: string | number }) => Promise<{ success: boolean; error?: string; nfe?: BlingNfe | null }>,
+  persist: (nfe: BlingNfe) => Promise<void>,
+): Promise<BlingNfe | null> {
+  const orderId = quote.bling?.orderId;
+  if (!orderId) throw new Error('Este orçamento não tem pedido Bling vinculado. Use “Conferir NF-e e ferramentas no Bling” para conferir a venda existente; não crie outra nota.');
+  return synchronizeNfe(
+    () => read({ orderId, nfeId: quote.bling?.nfe?.id }),
+    quote.bling?.nfe,
+    persist,
+  );
+}
+
 export async function prepareNfe(
   quote: QuoteData,
   operations: {

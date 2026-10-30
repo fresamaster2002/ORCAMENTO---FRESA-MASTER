@@ -7,17 +7,19 @@ import { completeDeliveryByCep, normalizeExtractedDelivery } from '../../supabas
 interface DeliveryAddressCardProps {
   shipping: ShippingInfo;
   onChange: (shipping: ShippingInfo) => void;
+  onProcessingChange?: (processing: boolean) => void;
 }
 
 const inputClass =
   'w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-amber-500';
 const labelClass = 'block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1';
 
-export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({ shipping, onChange }) => {
+export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({ shipping, onChange, onProcessingChange }) => {
   const [lookupStatus, setLookupStatus] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  useEffect(() => { onProcessingChange?.(isProcessing); }, [isProcessing, onProcessingChange]);
   const latest = useRef({ shipping, onChange });
   latest.current = { shipping, onChange };
   const requestId = useRef(0);

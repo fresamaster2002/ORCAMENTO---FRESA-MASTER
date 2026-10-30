@@ -27,6 +27,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     if (url.endsWith('/nfe/33')) return Response.json({ data: { id: 33, situacao: 1, itens: [{ descricao: 'Fresa', classificacaoFiscal: '0000.00.00' }], parcelas: [{ formaPagamento: { id: 17 } }] } });
     if (url.endsWith('/produtos/123')) return Response.json({ data: { id: 123, nome: 'Fresa de topo', codigo: 'FM-TCT-6X22', tributacao: { ncm: '8207.70.10' } } });
     if (url.endsWith('/produtos/456')) return Response.json({ data: { id: 456, nome: 'Fresa sem SKU', codigo: '', tributacao: { ncm: '8207.70.10' } } });
+    if (url.endsWith('/produtos') && init?.method === 'POST') return Response.json({ data: { id: 789 } }, { status: 201 });
     if (url.includes('/produtos?')) return Response.json({ data: [] });
     throw new Error(`Requisição inesperada: ${url}`);
   });
@@ -60,6 +61,19 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     }));
     assert.equal(response.status, 400);
     assert.equal(calls.some((call) => call.url.includes('api.bling.com.br')), false);
+  });
+  await t.test('cadastro confirmado cria ferramenta com NCM e devolve ID sem criar venda ou NF', async () => {
+    calls.length = 0;
+    const response = await post('products', { product: { name: 'Fresa nova', sku: 'FM-NOVA', price: 140, ncm: '8207.70.10' } });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).product.id, 789);
+    const creation = calls.filter((call) => call.method === 'POST' && call.url.includes('api.bling.com.br'));
+    assert.equal(creation.length, 1);
+    assert.ok(creation[0].url.endsWith('/produtos'));
+    assert.equal(creation[0].body.nome, 'Fresa nova');
+    assert.equal(creation[0].body.codigo, 'FM-NOVA');
+    assert.equal(creation[0].body.preco, 140);
+    assert.deepEqual(creation[0].body.tributacao, { ncm: '82077010' });
   });
   await t.test('NCM genérico é substituído pelo cadastro confirmado antes da venda', async () => {
     calls.length = 0;

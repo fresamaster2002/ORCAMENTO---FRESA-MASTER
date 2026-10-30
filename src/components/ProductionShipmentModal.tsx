@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, X } from 'lucide-react';
 import { apiFetch } from '../api';
-import type { QuoteData } from '../types';
-import { loadSender, senderFields, SENDER_STORAGE_KEY, type SenderData } from '../shipmentSender';
-import { isProductionShipment, productionMissing } from '../productionShipping';
+import type { QuoteData, ShippingInfo } from '../types';
+import { initialSender, loadSender, senderFields, SENDER_STORAGE_KEY, type SenderData } from '../shipmentSender';
+import { deliveryCorrection, isProductionShipment, productionMissing } from '../productionShipping';
+import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { ProposalDeliveryAddress } from './ProposalDeliveryAddress';
 import { ProductionShipmentNotice } from './ProductionShipmentNotice';
 
@@ -12,10 +13,12 @@ interface Props {
   onClose: () => void;
   onPrepare: () => Promise<void>;
   onUpdate: (shipment: NonNullable<QuoteData['productionShipment']>) => Promise<void>;
+  onUpdateShipping: (shipping: ShippingInfo) => Promise<void>;
+  onReviewInvoice: () => void;
 }
 const money = (price: number) => price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }: Props) {
+export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, onUpdateShipping, onReviewInvoice }: Props) {
   const [sender, setSender] = useState(loadSender);
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -25,6 +28,8 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [rate, setRate] = useState<{ price: number; serviceId: number; fingerprint: string } | null>(null);
+  const [deliveryDraft, setDeliveryDraft] = useState<ShippingInfo | null>(null);
+  const [deliveryProcessing, setDeliveryProcessing] = useState(false);
   const operation = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
@@ -39,7 +44,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
   const rateCurrent = rate?.fingerprint === fingerprint;
   const missing = productionMissing(quote);
   if (sender.cep.replace(/\D/g, '') !== quote.shipping.originCep.replace(/\D/g, '')) {
-    missing.push('O CEP do remetente difere da origem do orçamento. Ajuste a origem no painel de frete e recalcule antes de criar.');
+    missing.push('O CEP do remetente difere da origem do orçamento. Use “Usar CEP do remetente como origem” e cote novamente.');
   }
 
   const readSaved = async () => {
@@ -180,7 +185,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-3">
       <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="production-shipment-title" style={{ maxHeight: 'calc(100dvh - var(--fm-nav-h, 0px) - 1.5rem)' }} className="w-full max-w-3xl overflow-y-auto rounded-xl bg-white text-slate-900 shadow-xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div><p className="text-xs font-bold text-amber-700">Melhor Envio • PRODUÇÃO</p><h2 id="production-shipment-title" className="text-lg font-bold">Melhor Envio — {quote.id}</h2></div>
+          <div><p className="text-xs font-bold text-amber-700">Melhor Envio • PRODUÇÃO</p><h2 id="production-shipment-title" className="text-lg font-bold">Melhor Envio — {quote.id}</h2><p className="text-sm">{quote.client.name}</p></div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Fechar envio real" className="p-2"><X className="h-5 w-5" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5">
@@ -198,11 +203,42 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
             <>
               {shipment?.status === 'rejected' && <p role="alert" className="text-sm text-red-800">A inclusão anterior foi recusada pelo Melhor Envio: {shipment.error || 'Confira os dados e a permissão do token real.'} Corrija os dados e faça uma nova cotação.</p>}
               {missing.length > 0 && <ul className="list-disc pl-5 text-sm text-amber-900">{missing.map((item) => <li key={item}>{item}</li>)}</ul>}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy} onClick={() => { setRate(null); setConfirmed(false); setDeliveryDraft(deliveryCorrection(quote)); }} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Corrigir entrega / CEP</button>
+                <button type="button" disabled={busy} onClick={onReviewInvoice} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold">Conferir NF-e e ferramentas no Bling</button>
+              </div>
+              {deliveryDraft && (
+                <fieldset disabled={busy} className="space-y-2">
+                  <DeliveryAddressCard shipping={deliveryDraft} onChange={setDeliveryDraft} onProcessingChange={setDeliveryProcessing} />
+                  <button type="button" disabled={busy || deliveryProcessing} onClick={() => void execute(async () => {
+                    await onUpdateShipping(deliveryDraft);
+                    setRate(null); setConfirmed(false); setDeliveryDraft(null);
+                    setMessage('Entrega salva. A NF-e e o preço cobrado do cliente não foram alterados. Cote novamente antes de criar o envio.');
+                  })} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-bold">Salvar entrega e liberar nova cotação</button>
+                  <button type="button" disabled={busy || deliveryProcessing} onClick={() => setDeliveryDraft(null)} className="ml-2 rounded-lg border border-slate-400 px-3 py-2 text-sm">Cancelar correção</button>
+                </fieldset>
+              )}
               <fieldset disabled={busy} className="space-y-3">
                 <legend className="font-bold">Confira o remetente real</legend>
                 <div className="grid gap-3 sm:grid-cols-2">{senderFields.map(({ key, label, required }) => (
                   <label key={key} className="space-y-1 text-xs font-semibold"><span>{label}{required ? ' *' : ''}</span><input className={inputClass} value={sender[key]} onChange={(event) => updateSender(key, event.target.value)} required={required} maxLength={key === 'state' ? 2 : undefined} /></label>
                 ))}</div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void execute(async () => {
+                    const { address, number, complement, neighborhood, city, state, cep } = initialSender;
+                    const updated = { ...sender, address, number, complement, neighborhood, city, state, cep };
+                    await onUpdateShipping({ ...quote.shipping, originCep: cep });
+                    localStorage.setItem(SENDER_STORAGE_KEY, JSON.stringify(updated));
+                    setSender(updated); setRate(null); setConfirmed(false);
+                    setMessage('Origem de despacho salva: 13329-350. Endereço fiscal e destino preservados. Cote novamente.');
+                  })} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Usar origem Fresa Master 13329-350</button>
+                  <button type="button" onClick={() => void execute(async () => {
+                    if (sender.cep.replace(/\D/g, '').length !== 8) throw new Error('Informe um CEP do remetente com 8 dígitos.');
+                    await onUpdateShipping({ ...quote.shipping, originCep: sender.cep });
+                    setRate(null); setConfirmed(false);
+                    setMessage('Origem salva. Confira o remetente e cote novamente.');
+                  })} className="rounded-lg border border-slate-400 px-3 py-2 text-sm">Usar CEP do remetente como origem</button>
+                </div>
               </fieldset>
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="mb-2 text-sm font-bold">Cliente: {quote.client.name} • {quote.shipping.selectedOption?.name || 'Selecione o frete'}</p>
@@ -213,7 +249,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate }:
               <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={busy} onClick={connectAccount} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold">Conectar Melhor Envio (OAuth)</button>
                 <button type="button" disabled={busy} onClick={() => void testConnection()} className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold">Testar conexão Melhor Envio</button>
-                <button type="button" disabled={busy || !checked || !quote.shipping.selectedOption} onClick={() => void calculate()} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Cotar no Melhor Envio</button>
+                <button type="button" disabled={busy || Boolean(deliveryDraft) || !checked || !quote.shipping.selectedOption} onClick={() => void calculate()} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Cotar no Melhor Envio</button>
               </div>
               {authorizationUrl && <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 underline">Autorizar cotação e carrinho no Melhor Envio (sem pagamento automático)</a>}
               {rateCurrent && rate && <p className="text-sm font-bold">Custo real cotado: {money(rate.price)} • Frete no orçamento do cliente: {money(quote.financials.shippingAmount)} (não alterado).</p>}

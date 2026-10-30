@@ -29,7 +29,7 @@ import { ToolDescriptionInput } from './ToolDescriptionInput';
 import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
-import { resolveSelectedProductNcm } from '../blingProductSelection';
+import { bindBlingProduct } from '../blingProductSelection';
 
 const calculateDiscountAmount = (subtotal: number, discountPercentage: number, fixedDiscount: number) => {
   const amount = discountPercentage > 0 ? (subtotal * discountPercentage) / 100 : fixedDiscount;
@@ -43,6 +43,7 @@ interface QuoteFormProps {
   onOpenBling: () => void;
   isEditingClient: boolean;
   onEditingClientChange: (editing: boolean) => void;
+  catalogRequest?: { itemId: string; requestId: number } | null;
 }
 
 export const QuoteForm: React.FC<QuoteFormProps> = ({
@@ -52,6 +53,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   onOpenBling,
   isEditingClient,
   onEditingClientChange: setIsEditingClient,
+  catalogRequest,
 }) => {
   const [isCadastralModalOpen, setIsCadastralModalOpen] = useState(false);
   const [isBlingCatalogModalOpen, setIsBlingCatalogModalOpen] = useState(false);
@@ -114,18 +116,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
         product = detailed;
       }
       const updatedItems = replaceItemId
-        ? quote.items.map((item) => item.id === replaceItemId ? {
-            ...item,
-            description: product.description,
-            sku: product.sku,
-            blingProductId: /^\d+$/.test(product.id) ? product.id : undefined,
-            ncm: resolveSelectedProductNcm(item, product),
-            category: product.category,
-            unit: product.unit || item.unit,
-            unitPrice: item.unitPrice > 0 ? item.unitPrice : product.unitPrice,
-            totalPrice: item.quantity * (item.unitPrice > 0 ? item.unitPrice : product.unitPrice),
-            notes: `Produto cadastrado no Bling ERP (${product.sku})`,
-          } : item)
+        ? quote.items.map((item) => item.id === replaceItemId ? bindBlingProduct(item, product) : item)
         : [...quote.items, {
             id: `bling-${Date.now()}`,
             description: product.description,
@@ -168,6 +159,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     setNewProductError(null);
   };
 
+  useEffect(() => {
+    if (!catalogRequest) return;
+    const item = quote.items.find((candidate) => candidate.id === catalogRequest.itemId);
+    if (item) openCatalogForItem(item);
+  }, [catalogRequest]);
+
   const createBlingProduct = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsCreatingBlingProduct(true);
@@ -191,6 +188,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'O Bling não confirmou o cadastro.');
+      if (!/^\d+$/.test(String(data.product?.id || ''))) {
+        throw new Error('O Bling não retornou o ID do produto. Atualize o catálogo e confira o cadastro antes de tentar criar novamente.');
+      }
 
       const created = normalizeBlingCatalogProducts([data.product])[0] || {
         id: String(data.product?.id || newProductSku),
@@ -1084,9 +1084,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   type="button"
                   onClick={() => {
                     setNewProductName(catalogSearch.trim());
-                    setNewProductSku(`FM-${Date.now().toString().slice(-6)}`);
-                    setNewProductPrice('');
-                    setNewProductNcm(DEFAULT_FRESA_NCM);
+                    if (!pendingQuoteItemId) {
+                      setNewProductSku(`FM-${Date.now().toString().slice(-6)}`);
+                      setNewProductPrice('');
+                      setNewProductNcm(DEFAULT_FRESA_NCM);
+                    }
                     setNewProductError(null);
                     setShowNewProductForm(true);
                   }}

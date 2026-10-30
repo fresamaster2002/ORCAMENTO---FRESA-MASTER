@@ -384,6 +384,7 @@ export default function App() {
   const [missingInfo, setMissingInfo] = useState<string[] | undefined>([]);
   const [confidence, setConfidence] = useState<number | undefined>(0.98);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [catalogRequest, setCatalogRequest] = useState<{ itemId: string; requestId: number } | null>(null);
 
   // Modals
   const isApiDocsOpen = view.modal === 'api';
@@ -811,6 +812,7 @@ export default function App() {
           onChange={(updated) => setQuote(updated)}
           onPreview={() => setIsProposalOpen(true)}
           onOpenBling={() => setIsBlingOpen(true)}
+          catalogRequest={catalogRequest}
         />
       </main>
 
@@ -878,6 +880,10 @@ export default function App() {
         onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
         onContinueShipping={() => openOnly('production')}
+        onSelectProduct={(itemId) => {
+          setIsBlingOpen(false);
+          setCatalogRequest((previous) => ({ itemId, requestId: (previous?.requestId || 0) + 1 }));
+        }}
       />
 
       <SavedQuotesModal
@@ -901,6 +907,14 @@ export default function App() {
           }}
           onUpdate={async (shipment) => {
             await persistQuote({ ...quote, productionShipment: shipment });
+          }}
+          onUpdateShipping={async (shipping) => {
+            if (!supabase || !supabaseUser) throw new Error('Entre na conta para salvar a correção do envio na nuvem.');
+            await persistQuote({ ...quote, shipping });
+          }}
+          onReviewInvoice={() => {
+            openOnly('bling');
+            setView({ blingTab: 'direct' });
           }}
         />
       )}

@@ -10,3 +10,17 @@ export function resolveSelectedProductNcm(item: QuoteItem, product: BlingCatalog
   if (sameProduct && confirmedNcm(item.ncm)) return item.ncm || '';
   return resolveToolNcm('', product.description);
 }
+
+export function bindBlingProduct(item: QuoteItem, product: BlingCatalogProduct): QuoteItem {
+  return {
+    ...item,
+    description: product.description,
+    sku: product.sku,
+    blingProductId: /^\d+$/.test(product.id) ? product.id : undefined,
+    ncm: resolveSelectedProductNcm(item, product),
+    category: product.category,
+    unit: product.unit || item.unit,
+    totalPrice: item.quantity * item.unitPrice,
+    notes: `Produto cadastrado no Bling ERP (${product.sku})`,
+  };
+}

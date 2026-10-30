@@ -51,6 +51,7 @@ interface BlingIntegrationModalProps {
   onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items'], client?: ClientInfo) => Promise<void>;
   onUpdateItems: (quoteId: string, items: QuoteData['items']) => Promise<void>;
   onContinueShipping: () => void;
+  onSelectProduct: (itemId: string) => void;
   activeTab: WorkspaceView['blingTab'];
   onTabChange: (tab: WorkspaceView['blingTab']) => void;
   cadastralInput: string;
@@ -65,6 +66,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   onUpdateBling,
   onUpdateItems,
   onContinueShipping,
+  onSelectProduct,
   activeTab,
   onTabChange: setActiveTab,
   cadastralInput,
@@ -967,6 +969,17 @@ Telefone/WhatsApp: (41) 98888-5544`;
                     {isResolvingProducts ? 'Consultando produtos...' : 'Usar NCM e produtos do Bling'}
                   </button>
                   {productWarnings.length > 0 && <ul role="alert" className="mt-2 list-disc pl-5 text-amber-700 dark:text-amber-300">{productWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
+                  <ul className="mt-3 space-y-2">
+                    {quote.items.map((item) => (
+                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{item.description} · NCM: {item.ncm || 'pendente'}</span>
+                        <button type="button" disabled={isResolvingProducts || isSubmittingOrder || nfeBusy !== null} onClick={() => onSelectProduct(item.id)} className="rounded-lg border border-emerald-700 px-3 py-2 font-semibold disabled:opacity-50">
+                          Buscar ou cadastrar ferramenta
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs">A seleção mantém a quantidade e o preço negociado. Alterar o orçamento não altera uma NF-e já autorizada.</p>
                 </div>
                 {readinessIssues.length > 0 && (
                   <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-200">

@@ -102,7 +102,13 @@ export async function requestShipmentApi(token: string, path: string, method = '
   if (!response.ok) {
     const details = object(data);
     const errors = [...new Set(errorMessages([details.message, details.error, details.errors, Array.isArray(data) ? data : undefined]))].join(' ');
-    throw new SandboxShipmentError(errors || `Melhor Envio ${environment === 'sandbox' ? 'Sandbox' : 'Produção'} retornou HTTP ${response.status}.`, response.status);
+    const fields = JSON.stringify(details.errors || details.error || {});
+    const guidance = /cep_destino|to\.postal_code/.test(`${fields} ${errors}`)
+      ? 'CEP de entrega recusado pelo Melhor Envio. Use “Corrigir entrega / CEP”, consulte o endereço, salve e cote novamente. Não use o CEP da origem como destino.'
+      : /cep_origem|from\.postal_code/.test(`${fields} ${errors}`)
+        ? 'CEP de origem recusado pelo Melhor Envio. Confira o remetente e aplique a origem correta antes de cotar novamente.'
+        : '';
+    throw new SandboxShipmentError([guidance, errors || `Melhor Envio ${environment === 'sandbox' ? 'Sandbox' : 'Produção'} retornou HTTP ${response.status}.`].filter(Boolean).join(' '), response.status);
   }
 
   return data;

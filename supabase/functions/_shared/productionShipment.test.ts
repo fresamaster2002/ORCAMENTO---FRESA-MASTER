@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createProductionShipment as createVerifiedShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection, type ProductionShipment, type ShipmentQuoteStore } from './productionShipment.ts';
-import { buildShipmentPayload, quoteMelhorEnvioShipment } from './sandboxShipment.ts';
+import { buildShipmentPayload, quoteMelhorEnvioShipment, requestShipmentApi } from './sandboxShipment.ts';
 
 const createProductionShipment = (input: Record<string, unknown>, token: string, store: ShipmentQuoteStore) =>
   createVerifiedShipment(input, token, store, async () => {});
@@ -41,6 +41,30 @@ function memoryStore(source: Record<string, unknown> = quote()) {
 test('token de produção ignora tokens genéricos ou Sandbox', () => {
   assert.equal(productionToken(''), '');
   assert.equal(productionToken(' production-token '), 'production-token');
+});
+
+test('CEP recusado identifica origem ou destino e orienta correção sem substituir endereço', async (t) => {
+  let field = 'cep_destino';
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    message: 'The given data was invalid.',
+    errors: { [field]: ['O campo está inválido.'] },
+  }, { status: 422 }));
+  await assert.rejects(requestShipmentApi('test', '/me/shipment/calculate', 'POST', {}, 'production'), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /Corrigir entrega \/ CEP/);
+    assert.match(error.message, /Não use o CEP da origem como destino/);
+    assert.match(error.message, /O campo está inválido/);
+    return true;
+  });
+  field = 'cep_origem';
+  await assert.rejects(requestShipmentApi('test', '/me/shipment/calculate', 'POST', {}, 'production'), /CEP de origem recusado/);
+  field = 'package.weight';
+  await assert.rejects(requestShipmentApi('test', '/me/shipment/calculate', 'POST', {}, 'production'), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.doesNotMatch(error.message, /CEP de (origem|entrega) recusado/);
+    assert.match(error.message, /O campo está inválido/);
+    return true;
+  });
 });
 
 test('conexão real é somente leitura no host oficial', async (t) => {

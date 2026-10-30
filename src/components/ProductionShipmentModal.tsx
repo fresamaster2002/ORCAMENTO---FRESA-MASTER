@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { LoaderCircle, X } from 'lucide-react';
+import { AlertTriangle, LoaderCircle, X } from 'lucide-react';
 import { apiFetch } from '../api';
 import type { BlingNfe, QuoteData, ShippingInfo } from '../types';
 import { nfeSituationLabel, synchronizeShippingNfe } from '../nfeWorkflow';
@@ -8,6 +8,7 @@ import { deliveryCorrection, isProductionShipment, productionMissing } from '../
 import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { ProposalDeliveryAddress } from './ProposalDeliveryAddress';
 import { ProductionShipmentNotice } from './ProductionShipmentNotice';
+import { shippingErrorDiagnostic, shippingInvoiceDiagnostic, type ShippingDiagnostic } from '../shippingDiagnostics';
 
 interface Props {
   quote: QuoteData;
@@ -35,6 +36,9 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
   const [deliveryProcessing, setDeliveryProcessing] = useState(false);
   const operation = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const deliveryRef = useRef<HTMLFieldSetElement>(null);
+  const senderRef = useRef<HTMLFieldSetElement>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
   const prepareRef = useRef(onPrepare);
@@ -48,9 +52,12 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
   const fingerprint = JSON.stringify([sender, quote.shipping, quote.items]);
   const rateCurrent = rate?.fingerprint === fingerprint;
   const missing = productionMissing(quote);
+  const errorDiagnostic = error ? shippingErrorDiagnostic(error, quote) : null;
+  const invoiceDiagnostic = shippingInvoiceDiagnostic(quote);
   if (sender.cep.replace(/\D/g, '') !== quote.shipping.originCep.replace(/\D/g, '')) {
     missing.push('O CEP do remetente difere da origem do orçamento. Use “Usar CEP do remetente como origem” e cote novamente.');
   }
+  const addressAndOrderMissing = missing.filter((item) => !item.startsWith('Consulte no Bling a NF-e autorizada'));
 
   const readSaved = async () => {
     const response = await apiFetch('/api/shipping/production-shipment', {
@@ -88,6 +95,20 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
       ? `NF-e ${updated.numero || updated.id} • série ${updated.serie ?? 'não informada'} • ${nfeSituationLabel(updated.situacao)}. Situação e chave salvas no orçamento; nenhuma nota foi emitida ou renumerada.`
       : 'O pedido não possui NF-e vinculada no Bling. Confira a venda existente antes de continuar; nenhuma nota foi gerada.');
   };
+
+  useEffect(() => {
+    if (error && !busy) {
+      errorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      errorRef.current?.focus({ preventScroll: true });
+    }
+  }, [error, busy]);
+
+  useEffect(() => {
+    if (deliveryDraft) {
+      deliveryRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      deliveryRef.current?.querySelector<HTMLInputElement>('input[placeholder="00000-000"]')?.focus({ preventScroll: true });
+    }
+  }, [Boolean(deliveryDraft)]);
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -212,6 +233,18 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
     try { localStorage.setItem(SENDER_STORAGE_KEY, JSON.stringify(next)); }
     catch (cause) { setError(`Não foi possível salvar o remetente neste navegador: ${cause instanceof Error ? cause.message : String(cause)}. Confira os dados ao reabrir.`); }
   };
+  const openDeliveryCorrection = () => {
+    setRate(null); setConfirmed(false); setDeliveryDraft(deliveryCorrection(quote));
+  };
+  const diagnosticAction = (diagnostic: ShippingDiagnostic) => {
+    if (diagnostic.action === 'delivery') openDeliveryCorrection();
+    else if (diagnostic.action === 'invoice') void execute(() => refreshInvoice());
+    else if (diagnostic.action === 'connection') void testConnection();
+    else if (diagnostic.action === 'sender') {
+      senderRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      senderRef.current?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+    }
+  };
   const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-3">
@@ -222,7 +255,16 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
         </header>
         <form onSubmit={submit} className="space-y-4 p-5">
           <ProductionShipmentNotice />
-          {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+          {error && errorDiagnostic && (
+            <div ref={errorRef} tabIndex={-1} role="alert" className="space-y-3 rounded-xl border-2 border-red-400 bg-red-50 p-4 text-sm text-red-950">
+              <h3 className="flex items-start gap-2 text-base font-bold"><AlertTriangle className="h-5 w-5 shrink-0" />{errorDiagnostic.title}</h3>
+              <p>{errorDiagnostic.explanation}</p>
+              <p className="font-bold">O que fazer agora:</p>
+              <ol className="list-decimal space-y-1 pl-5">{errorDiagnostic.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+              {errorDiagnostic.action && (!shipment || shipment.status === 'rejected') && <button type="button" disabled={busy} onClick={() => diagnosticAction(errorDiagnostic)} className="rounded-lg bg-red-800 px-4 py-2 font-bold text-white disabled:opacity-50">{errorDiagnostic.actionLabel}</button>}
+              <details className="break-words text-xs"><summary className="cursor-pointer font-semibold">Ver detalhes técnicos do erro</summary><p className="mt-2">{error}</p></details>
+            </div>
+          )}
           {message && <p role="status" className="text-sm text-emerald-800">{message}</p>}
           {shipment && shipment.status !== 'rejected' ? (
             <section className="space-y-2 rounded-lg border border-slate-300 p-4">
@@ -234,14 +276,22 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
           ) : (
             <>
               {shipment?.status === 'rejected' && <p role="alert" className="text-sm text-red-800">A inclusão anterior foi recusada pelo Melhor Envio: {shipment.error || 'Confira os dados e a permissão do token real.'} Corrija os dados e faça uma nova cotação.</p>}
-              {missing.length > 0 && <ul className="list-disc pl-5 text-sm text-amber-900">{missing.map((item) => <li key={item}>{item}</li>)}</ul>}
+              {addressAndOrderMissing.length > 0 && <div className="rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Antes de enviar, resolva estas pendências:</p><ul className="mt-2 list-disc space-y-1 pl-5">{addressAndOrderMissing.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+              {invoiceDiagnostic && !busy && (
+                <section className="space-y-2 rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+                  <h3 className="font-bold">{invoiceDiagnostic.title}</h3>
+                  <p>{invoiceDiagnostic.explanation}</p>
+                  <ol className="list-decimal space-y-1 pl-5">{invoiceDiagnostic.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                  <button type="button" onClick={() => diagnosticAction(invoiceDiagnostic)} className="rounded-lg bg-amber-500 px-4 py-2 font-bold">{invoiceDiagnostic.actionLabel}</button>
+                </section>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={busy} onClick={() => void execute(() => refreshInvoice())} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold">Atualizar NF-e do Bling (sem emitir)</button>
-                <button type="button" disabled={busy} onClick={() => { setRate(null); setConfirmed(false); setDeliveryDraft(deliveryCorrection(quote)); }} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Corrigir entrega / CEP</button>
+                <button type="button" disabled={busy} onClick={openDeliveryCorrection} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold">Corrigir entrega / CEP</button>
                 <button type="button" disabled={busy} onClick={onReviewInvoice} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold">Conferir NF-e e ferramentas no Bling</button>
               </div>
               {deliveryDraft && (
-                <fieldset disabled={busy} className="space-y-2">
+                <fieldset ref={deliveryRef} disabled={busy} className="space-y-2">
                   <DeliveryAddressCard shipping={deliveryDraft} onChange={setDeliveryDraft} onProcessingChange={setDeliveryProcessing} />
                   <button type="button" disabled={busy || deliveryProcessing} onClick={() => void execute(async () => {
                     await onUpdateShipping(deliveryDraft);
@@ -251,7 +301,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
                   <button type="button" disabled={busy || deliveryProcessing} onClick={() => setDeliveryDraft(null)} className="ml-2 rounded-lg border border-slate-400 px-3 py-2 text-sm">Cancelar correção</button>
                 </fieldset>
               )}
-              <fieldset disabled={busy} className="space-y-3">
+              <fieldset ref={senderRef} disabled={busy} className="space-y-3">
                 <legend className="font-bold">Confira o remetente real</legend>
                 <div className="grid gap-3 sm:grid-cols-2">{senderFields.map(({ key, label, required }) => (
                   <label key={key} className="space-y-1 text-xs font-semibold"><span>{label}{required ? ' *' : ''}</span><input className={inputClass} value={sender[key]} onChange={(event) => updateSender(key, event.target.value)} required={required} maxLength={key === 'state' ? 2 : undefined} /></label>

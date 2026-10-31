@@ -27,6 +27,7 @@ import { BlingCatalogProduct, QuoteData, QuoteItem, ShippingOption, ShippingInfo
 import { ShippingCalculator } from './ShippingCalculator';
 import { ToolDescriptionInput } from './ToolDescriptionInput';
 import { DeliveryAddressCard } from './DeliveryAddressCard';
+import { ShippingCepCheck } from './ShippingCepCheck';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
 import { bindBlingProduct } from '../blingProductSelection';
@@ -627,6 +628,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   placeholder="00000-000"
                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-amber-500 font-mono font-bold"
                 />
+                {!quote.shipping.deliveryAddress?.enabled && <ShippingCepCheck
+                  shipping={{ ...quote.shipping, destinationCep: quote.client.cep || '' }}
+                  items={quote.items}
+                  onChange={(shipping) => onChange({ ...quote, shipping: { ...quote.shipping, cepWarningAcknowledgement: shipping.cepWarningAcknowledgement } })}
+                />}
               </div>
 
               <div>
@@ -677,6 +683,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
         <DeliveryAddressCard
           shipping={quote.shipping}
+          items={quote.items}
           onChange={(shipping) => onChange({ ...quote, shipping })}
         />
 
@@ -690,6 +697,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
           onSelectOption={handleSelectShippingOption}
           onUpdateDestinationCep={handleUpdateDestinationCep}
           onUpdateShipping={handleUpdateShippingFull}
+          onUpdateCepWarning={(shipping) => onChange({ ...quote, shipping })}
         />
         </div>
 

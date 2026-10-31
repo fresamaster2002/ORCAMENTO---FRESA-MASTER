@@ -10,6 +10,7 @@ import { createProductionShipment, createShipmentQuoteStore, productionToken, Pr
 import { beginProductionOAuth, completeProductionOAuth, MelhorEnvioOAuthError, productionAccessToken, type MelhorEnvioTokenRecord, type MelhorEnvioTokenStore } from '../_shared/productionOAuth.ts';
 import { verifyProductionShipmentInvoice } from '../_shared/productionInvoice.ts';
 import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../_shared/shippingDefaults.ts';
+import { shippingPreflight } from '../_shared/shippingPreflight.ts';
 import { blingReadinessIssues } from '../_shared/blingReadiness.ts';
 import { listBlingNatures, selectedBlingNature } from '../_shared/blingNature.ts';
 import { CadastralExtractionError, extractCadastralDocument } from '../_shared/cadastralExtraction.ts';
@@ -887,12 +888,13 @@ async function route(request: Request): Promise<Response> {
       return json({ success: true, messageText: messageText || fallback });
     }
     if (path === '/shipping/calculate' && request.method === 'POST') return await shippingCalculate(body);
-    if (['/shipping/quote-production', '/shipping/create-production-shipment', '/shipping/production-shipment', '/shipping/test-production'].includes(path) && request.method === 'POST') {
+    if (['/shipping/check-cep', '/shipping/quote-production', '/shipping/create-production-shipment', '/shipping/production-shipment', '/shipping/test-production'].includes(path) && request.method === 'POST') {
       try {
         const token = typeof body.productionToken === 'string' && body.productionToken.trim()
           ? body.productionToken.trim()
           : await getProductionMelhorEnvioToken();
         if (path === '/shipping/test-production') return json(await testProductionConnection(token));
+        if (path === '/shipping/check-cep') return json(await shippingPreflight(body, token));
         if (path === '/shipping/quote-production') return json(await quoteMelhorEnvioShipment(body, token, 'production'));
         const store = createShipmentQuoteStore(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY') || env('SUPABASE_PUBLISHABLE_KEY'), request.headers.get('authorization') || '');
         if (path === '/shipping/production-shipment') {

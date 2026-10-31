@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, MapPin, Sparkles } from 'lucide-react';
-import { DeliveryAddress, ShippingInfo } from '../types';
+import { DeliveryAddress, ShippingInfo, type QuoteItem } from '../types';
+import { ShippingCepCheck } from './ShippingCepCheck';
 import { apiFetch } from '../api';
 import { completeDeliveryByCep, normalizeExtractedDelivery } from '../../supabase/functions/_shared/deliveryExtraction';
 
@@ -8,13 +9,14 @@ interface DeliveryAddressCardProps {
   shipping: ShippingInfo;
   onChange: (shipping: ShippingInfo) => void;
   onProcessingChange?: (processing: boolean) => void;
+  items?: QuoteItem[];
 }
 
 const inputClass =
   'w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-amber-500';
 const labelClass = 'block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1';
 
-export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({ shipping, onChange, onProcessingChange }) => {
+export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({ shipping, onChange, onProcessingChange, items }) => {
   const [lookupStatus, setLookupStatus] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -171,6 +173,7 @@ export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({ shippi
               className={inputClass}
             />
           </div>
+          <div className="sm:col-span-6"><ShippingCepCheck shipping={shipping} items={items} onChange={onChange} /></div>
           <div className="sm:col-span-4">
             <label className={labelClass}>Rua / Avenida:</label>
             <input type="text" value={delivery.address || ''} onChange={(e) => update({ address: e.target.value })} className={inputClass} />

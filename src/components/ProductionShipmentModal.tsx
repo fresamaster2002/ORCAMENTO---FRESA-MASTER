@@ -292,7 +292,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
               </div>
               {deliveryDraft && (
                 <fieldset ref={deliveryRef} disabled={busy} className="space-y-2">
-                  <DeliveryAddressCard shipping={deliveryDraft} onChange={setDeliveryDraft} onProcessingChange={setDeliveryProcessing} />
+                  <DeliveryAddressCard shipping={deliveryDraft} items={quote.items} onChange={setDeliveryDraft} onProcessingChange={setDeliveryProcessing} />
                   <button type="button" disabled={busy || deliveryProcessing} onClick={() => void execute(async () => {
                     await onUpdateShipping(deliveryDraft);
                     setRate(null); setConfirmed(false); setDeliveryDraft(null);

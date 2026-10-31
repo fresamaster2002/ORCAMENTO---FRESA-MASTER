@@ -88,6 +88,20 @@ test('rotas de Melhor Envio usam somente a conta OAuth de producao', async (t) =
     assert.equal(calls.some((call) => call.url.includes('sandbox.melhorenvio.com.br')), false);
   });
 
+  await t.test('verificação antecipada consulta conta real sem exigir NF ou criar envio', async () => {
+    calls.length = 0;
+    const response = await post('check-cep', { destinationCep: '15082488', originCep: '13329350', weightKg: 0.5 });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.environment, 'production');
+    assert.equal(data.status, 'available');
+    assert.equal(data.services.length, 3);
+    assert.equal(calls.some((call) => /\/cart|\/checkout|\/generate|api\.bling/.test(call.url)), false);
+    const rate = calls.find((call) => call.url.endsWith('/shipment/calculate'));
+    assert.ok(rate);
+    assert.deepEqual(rate.body.to, { postal_code: '15082488' });
+  });
+
   await t.test('cotação sem origem usa o novo CEP de despacho sem alterar o destino', async () => {
     calls.length = 0;
     const response = await post('calculate', { destinationCep: '80010000', weightKg: 0.5 });

@@ -65,6 +65,7 @@ export interface DeliveryAddress {
 }
 
 export interface ShippingInfo {
+  cepWarningAcknowledgement?: { fingerprint: string; acknowledgedAt: string };
   originCep: string;
   destinationCep: string;
   deliveryAddress?: DeliveryAddress;

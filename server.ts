@@ -22,6 +22,7 @@ import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts
 import { resolveToolNcm } from "./supabase/functions/_shared/toolNcm";
 import { fetchBlingApi } from "./supabase/functions/_shared/blingTransport";
 import { quoteMelhorEnvioShipment, SandboxShipmentError } from "./supabase/functions/_shared/sandboxShipment";
+import { shippingPreflight } from "./supabase/functions/_shared/shippingPreflight";
 import { createProductionShipment, createShipmentQuoteStore, productionToken, ProductionShipmentError, testProductionConnection } from "./supabase/functions/_shared/productionShipment";
 import { verifyProductionShipmentInvoice } from "./supabase/functions/_shared/productionInvoice";
 import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from "./supabase/functions/_shared/shippingDefaults";
@@ -560,10 +561,11 @@ async function fetchMelhorEnvioLiveRates(
 }
 
 // Shipping calculation endpoint
-app.post(["/api/shipping/quote-production", "/api/shipping/create-production-shipment", "/api/shipping/production-shipment", "/api/shipping/test-production"], async (req, res) => {
+app.post(["/api/shipping/check-cep", "/api/shipping/quote-production", "/api/shipping/create-production-shipment", "/api/shipping/production-shipment", "/api/shipping/test-production"], async (req, res) => {
   try {
     const token = productionToken(process.env.MELHOR_ENVIO_PRODUCTION_TOKEN || "");
     if (req.path === "/api/shipping/test-production") return res.json(await testProductionConnection(token));
+    if (req.path === "/api/shipping/check-cep") return res.json(await shippingPreflight(req.body, token));
     if (req.path === "/api/shipping/quote-production") return res.json(await quoteMelhorEnvioShipment(req.body, token, "production"));
     const store = createShipmentQuoteStore(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "", process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "", req.headers.authorization || "");
     if (req.path === "/api/shipping/production-shipment") {

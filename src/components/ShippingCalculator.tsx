@@ -21,6 +21,8 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { ShippingInfo, ShippingOption, QuoteItem, PackageDimensions } from '../types';
+import { ShippingCepCheck } from './ShippingCepCheck';
+import { cepCheckFingerprint } from '../shippingCepCheck';
 
 interface ShippingCalculatorProps {
   shipping: ShippingInfo;
@@ -30,6 +32,7 @@ interface ShippingCalculatorProps {
   onSelectOption: (option: ShippingOption) => void;
   onUpdateDestinationCep: (cep: string) => void;
   onUpdateShipping?: (updatedShipping: ShippingInfo, selectedOption?: ShippingOption) => void;
+  onUpdateCepWarning: (shipping: ShippingInfo) => void;
 }
 
 export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
@@ -40,11 +43,13 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   onSelectOption,
   onUpdateDestinationCep,
   onUpdateShipping,
+  onUpdateCepWarning,
 }) => {
   const [cepInput, setCepInput] = useState(shipping.destinationCep || '');
   const [isCalculating, setIsCalculating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [cepWarning, setCepWarning] = useState<{ fingerprint: string; needsAcknowledgement: boolean } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [meStatus, setMeStatus] = useState<{ state: 'checking' | 'connected' | 'disconnected'; detail?: string }>({ state: 'checking' });
 
@@ -142,10 +147,12 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   }, [shipping.selectedOption?.service, shipping.selectedOption?.price]);
 
   useEffect(() => {
-    if (shipping.destinationCep && shipping.destinationCep !== cepInput) {
+    if (shipping.destinationCep !== cepInput) {
       setCepInput(shipping.destinationCep);
     }
   }, [shipping.destinationCep]);
+
+  useEffect(() => { setOriginCep(shipping.originCep || DEFAULT_ORIGIN_CEP); }, [shipping.originCep]);
 
   useEffect(() => {
     setHeightCm(shipping.packageDimensions?.height || DEFAULT_PACKAGE_DIMENSIONS.height);
@@ -170,6 +177,8 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
     const num = parseFloat(clean);
     return isNaN(num) || num <= 0 ? 0.5 : num;
   };
+  const verificationShipping = { ...shipping, destinationCep: cepInput, originCep, weightKg: parseWeightValue(customWeight), packageDimensions: { height: heightCm, width: widthCm, length: lengthCm }, insuranceEnabled };
+  const requiresCepAcknowledgement = cepWarning?.fingerprint === cepCheckFingerprint(verificationShipping, items) && cepWarning.needsAcknowledgement;
 
   const handleRecalculate = async (
     targetCep?: string,
@@ -196,6 +205,13 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
     const weightToUse = weightVal !== undefined ? weightVal : parseWeightValue(customWeight);
     const originCepToUse = originVal || originCep;
     const insuranceToUse = insuranceVal !== undefined ? insuranceVal : insuranceEnabled;
+    const targetFingerprint = cepCheckFingerprint({ ...shipping, destinationCep: cepToUse, originCep: originCepToUse, weightKg: weightToUse, packageDimensions: dimsToUse, insuranceEnabled: insuranceToUse }, items);
+    if (cepWarning?.fingerprint === targetFingerprint && cepWarning.needsAcknowledgement) {
+      setCalculationError('Corrija o CEP ou marque “Continuar orçamento mesmo com este alerta” antes de calcular. Isso não libera um envio recusado pelo Melhor Envio.');
+      setIsCalculating(false);
+      setIsRecalculating(false);
+      return;
+    }
 
     let customShippingPayload = undefined;
     if (customShip !== undefined) {
@@ -605,7 +621,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
               </div>
               <button
                 type="submit"
-                disabled={isCalculating}
+                disabled={isCalculating || requiresCepAcknowledgement}
                 className="px-3 py-2 rounded-xl bg-slate-900 dark:bg-slate-700 hover:bg-black dark:hover:bg-slate-600 text-white text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-50"
               >
                 {isCalculating ? (
@@ -615,6 +631,12 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                 )}
               </button>
             </form>
+            <ShippingCepCheck
+              shipping={verificationShipping}
+              items={items}
+              onWarningChange={setCepWarning}
+              onChange={(updated) => onUpdateCepWarning({ ...shipping, destinationCep: cepInput, cepWarningAcknowledgement: updated.cepWarningAcknowledgement })}
+            />
             {(clientCity || clientState) && (
               <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block truncate">
                 Destino: {clientCity}{clientState ? `/${clientState}` : ''}

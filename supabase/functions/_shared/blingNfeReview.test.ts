@@ -46,6 +46,7 @@ test('edição fiscal relê dados, limita campos e exige revisão atual antes de
     const method = init?.method || 'GET';
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, path, body });
+    if (path.endsWith('/nfe')) return Response.json({ data: [] });
     if (path.endsWith('/formas-pagamentos')) return Response.json({ data: [{ id: 17, descricao: 'Pix', situacao: 1, finalidade: 2, tipoPagamento: 20 }] });
     if (path.endsWith('/pedidos/vendas/1')) return Response.json({ data: linkedOrder });
     if (path.endsWith('/nfe/99') && method === 'GET') return Response.json({ data: stored });
@@ -55,6 +56,144 @@ test('edição fiscal relê dados, limita campos e exige revisão atual antes de
     }
     if (path.endsWith('/nfe/99/enviar') && method === 'POST') { stored.situacao = 5; return Response.json({ data: {} }); }
     throw new Error(`Chamada inesperada ${method} ${path}`);
+  });
+
+  await t.test('correção de número mantém a mesma nota, confere ocupação e não transmite', async (t) => {
+    let stored = structuredClone(draft);
+    let linkedId = 99;
+    let occupied = false;
+    let cancelled = false;
+    let persist = true;
+    let changeTotal = false;
+    let changeDuringCheck = false;
+    let invalidList = false;
+    let failList = false;
+    let loseSendResponse = false;
+    let listCalls = 0;
+    const calls: Array<{ method: string; url: URL; body?: Record<string, unknown> }> = [];
+    t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method || 'GET';
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ method, url, body });
+      if (url.pathname.endsWith('/pedidos/vendas/1')) return Response.json({ data: { ...order, notaFiscal: { id: linkedId } } });
+      if (url.pathname.endsWith('/formas-pagamentos')) return Response.json({ data: [{ id: 17, descricao: 'Pix', situacao: 1, finalidade: 2, tipoPagamento: 20 }] });
+      if (url.pathname.endsWith('/nfe')) {
+        listCalls++;
+        assert.equal(url.searchParams.get('serie'), '2');
+        assert.equal(url.searchParams.get('tipo'), '1');
+        if (failList) return Response.json({ error: { message: 'Sem permissão para consultar notas' } }, { status: 403 });
+        if (invalidList) return Response.json({ data: {} });
+        if (changeDuringCheck) stored.observacoes = 'Alterada externamente';
+        return Response.json({ data: occupied && (cancelled === (url.searchParams.get('situacao') === '2')) ? [{ id: 100, numero: url.searchParams.get('numero') }] : [{ id: 99, numero: url.searchParams.get('numero') }] });
+      }
+      if (url.pathname.endsWith('/nfe/99') && method === 'PUT') {
+        if (persist) stored = { ...stored, ...body, situacao: 1, ...(changeTotal ? { valorNota: 999 } : {}) };
+        return Response.json({ data: { id: 99 } });
+      }
+      if (url.pathname.endsWith('/nfe/99')) return Response.json({ data: stored });
+      if (url.pathname.endsWith('/nfe/99/enviar')) {
+        if (loseSendResponse) throw new Error('Teste: resposta da transmissão perdida');
+        return Response.json({ data: {} });
+      }
+      throw new Error(`Chamada inesperada ${method} ${url}`);
+    });
+    const input = { nfeId: 99, orderId: 1, quote, confirmNumberChange: true, edit: { numero: '13' } };
+    const update = async (extra: Record<string, unknown> = {}) => handleBlingNfe('update-number', { ...input, revision: await nfeRevision(stored), ...extra }, 'number-test');
+    const writes = () => calls.filter(({ method }) => method !== 'GET');
+    await t.test('pendente e rejeitada aceitam somente número com confirmação e preservam série, itens e valores', async () => {
+      for (const situation of [1, 4]) {
+        stored = { ...structuredClone(draft), situacao: situation };
+        calls.length = 0;
+        const result = await update();
+        assert.equal(result.status, 200);
+        assert.equal(stored.numero, '13');
+        assert.equal(stored.serie, 2);
+        assert.equal(stored.valorNota, draft.valorNota);
+        assert.deepEqual(stored.itens, draft.itens);
+        assert.equal(writes().length, 1);
+        assert.equal(writes()[0].method, 'PUT');
+        assert.equal('serie' in writes()[0].body!, false);
+        assert.equal('situacao' in writes()[0].body!, false);
+        assert.equal(calls.some(({ url }) => url.searchParams.get('situacao') === '2'), true);
+      }
+    });
+    await t.test('valida limites, campos, confirmação, revisão, vínculo e estados antes de gravar', async () => {
+      stored = structuredClone(draft);
+      calls.length = 0;
+      for (const numero of ['', '0', '-1', '1.5', '1000000000', '1e2', ' 13', 13]) assert.equal((await update({ edit: { numero } })).status, 400);
+      assert.equal((await update({ edit: { numero: '12' } })).status, 400);
+      assert.equal((await update({ edit: { numero: '13', serie: 3 } })).status, 400);
+      assert.equal((await update({ confirmNumberChange: false })).status, 400);
+      assert.equal((await update({ revision: 'antiga' })).status, 409);
+      linkedId = 100;
+      assert.equal((await update()).status, 409);
+      linkedId = 99;
+      for (const situacao of [2, 3, 5, 7, 8, 9, 10, 11]) {
+        stored.situacao = situacao;
+        assert.equal((await update()).status, 409);
+      }
+      stored.situacao = 1;
+      assert.equal((await update({ quote: { ...quote, bling: { nfe: { id: 99, transmissionRequestedAt: '2026-11-04' } } } })).status, 409);
+      stored.serie = 1;
+      assert.equal((await update()).status, 409);
+      stored.serie = 2;
+      assert.equal(writes().length, 0);
+    });
+    await t.test('números usados inclusive canceladas bloqueiam salvar e transmitir, sem deixar envio incerto', async () => {
+      for (const isCancelled of [false, true]) {
+        cancelled = isCancelled;
+        occupied = true;
+        calls.length = 0;
+        const result = await update();
+        assert.equal(result.status, 409);
+        assert.match(String(result.body.error), /já usado.*outra nota/);
+        const send = await handleBlingNfe('send-reviewed', { ...input, revision: await nfeRevision(stored) }, 'number-test');
+        assert.equal(send.status, 409);
+        assert.equal(send.body.transmissionNotAttempted, true);
+        assert.equal(writes().length, 0);
+      }
+      occupied = false;
+    });
+    await t.test('falha de consulta e resposta incompleta não afirmam disponibilidade', async () => {
+      calls.length = 0;
+      invalidList = true;
+      assert.equal((await update()).status, 502);
+      invalidList = false;
+      failList = true;
+      assert.equal((await update()).status, 403);
+      failList = false;
+      assert.equal(writes().length, 0);
+    });
+    await t.test('concorrência entre consulta e gravação impede PUT', async () => {
+      calls.length = 0;
+      changeDuringCheck = true;
+      assert.equal((await update()).status, 409);
+      assert.equal(writes().length, 0);
+      changeDuringCheck = false;
+      stored = structuredClone(draft);
+    });
+    await t.test('readback exige persistência e preservação dos demais dados', async () => {
+      persist = false;
+      assert.equal((await update()).status, 409);
+      persist = true;
+      changeTotal = true;
+      assert.equal((await update()).status, 409);
+      changeTotal = false;
+      stored = structuredClone(draft);
+      assert.equal((await update({ edit: { numero: '999999999' } })).status, 200);
+      assert.equal(stored.numero, '999999999');
+    });
+    await t.test('falha após tentativa de transmissão mantém resultado incerto e nunca repete POST', async () => {
+      calls.length = 0;
+      stored = structuredClone(draft);
+      loseSendResponse = true;
+      const result = await handleBlingNfe('send-reviewed', { ...input, revision: await nfeRevision(stored) }, 'number-test');
+      assert.equal(result.status, 502);
+      assert.equal(result.body.transmissionNotAttempted, undefined);
+      assert.equal(writes().length, 1);
+      assert.ok(listCalls > 0);
+    });
   });
   const input = { nfeId: 99, orderId: 1, quote };
   const edit = { itens: [{ ncm: '8207.70.90', cfop: '5102' }], observacoes: 'Conferido pelo operador' };

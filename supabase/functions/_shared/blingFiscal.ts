@@ -266,7 +266,29 @@ async function prepareDraft(token: string, nfeId: string, order: Data, input: Da
   return updated;
 }
 
-async function reviewInvoice(action: string, input: Data, token: string, nfeId: string): Promise<Data> {
+async function checkInvoiceNumber(token: string, nfe: Data): Promise<void> {
+  const numero = String(nfe.numero ?? '');
+  if (!/^\d{1,9}$/.test(numero) || Number(numero) < 1 || Number(nfe.serie) !== 2 || Number(nfe.tipo) !== 1) {
+    throw new BlingFiscalError('Confira o número (1 a 999999999), a série 2 e o tipo saída da NF-e antes de continuar.', 409);
+  }
+  // Sem filtro o Bling omite canceladas, que também não podem ter o número reutilizado.
+  for (const cancelled of [false, true]) {
+    for (let page = 1; ; page++) {
+      if (page > 20) throw new BlingFiscalError('A consulta de numeração excedeu o limite de páginas. Confira a sequência no Bling antes de continuar.', 409);
+      const response = await requestBling(token, `/nfe?numero=${Number(numero)}&serie=2&tipo=1&limite=100&pagina=${page}${cancelled ? '&situacao=2' : ''}`);
+      if (!Array.isArray(response.data)) throw new BlingFiscalError('O Bling não retornou uma lista válida para conferir o número da NF-e. Nenhuma gravação ou transmissão foi feita.', 502);
+      const entries = records(response.data);
+      for (const entry of entries) {
+        if (!validId(entry.id) || !/^\d{1,9}$/.test(String(entry.numero))) throw new BlingFiscalError('A consulta de numeração retornou dados incompletos. Confira as notas no Bling antes de continuar.', 502);
+        if (Number(entry.numero) !== Number(numero) || (entry.serie != null && Number(entry.serie) !== 2)) throw new BlingFiscalError('O Bling retornou notas que não correspondem ao número e à série consultados. Recarregue antes de continuar.', 502);
+        if (String(entry.id) !== String(nfe.id)) throw new BlingFiscalError(`Número de NF-e ${Number(numero)} da série 2 já usado por outra nota no Bling (ID ${entry.id}). Não transmita novamente com esse número. Confira a outra nota e corrija o número desta NF-e; para as próximas, ajuste a sequência global no Bling.`, 409);
+      }
+      if (entries.length < 100) break;
+    }
+  }
+}
+
+async function reviewInvoice(action: string, input: Data, token: string, nfeId: string, onTransmissionAttempt: () => void): Promise<Data> {
   if (!validId(nfeId) || !validId(input.orderId) || !input.quote) throw new BlingFiscalError('Informe a nota, o pedido vinculado e o orçamento para conferir a NF-e.');
   const order = object((await requestBling(token, `/pedidos/vendas/${input.orderId}`)).data);
   if (String(object(order.notaFiscal).id) !== nfeId) throw new BlingFiscalError('A NF-e não corresponde ao pedido vinculado. Confira os vínculos no Bling.', 409);
@@ -304,6 +326,24 @@ async function reviewInvoice(action: string, input: Data, token: string, nfeId: 
       const otherIssues = issues.filter((issue) => issue !== clientFiscalReviewIssue(client));
       if (otherIssues.length) throw new BlingFiscalError(otherIssues.join(' '), 409);
       return { success: true, client, nfe: summarize(nfe), review: await buildNfeReview(nfe) };
+    } else if (action === 'update-number') {
+      if (![1, 4].includes(Number(nfe.situacao))) throw new BlingFiscalError('Somente uma NF-e pendente ou rejeitada pode ter o número corrigido. Notas autorizadas ou em processamento não serão alteradas.', 409);
+      if (object(object(quote.bling).nfe).transmissionRequestedAt && Number(nfe.situacao) !== 4) throw new BlingFiscalError('Há uma transmissão sem resultado confirmado. Consulte a situação antes de corrigir o número.', 409);
+      const edit = object(input.edit);
+      if (input.confirmNumberChange !== true || Object.keys(edit).some((key) => key !== 'numero') || typeof edit.numero !== 'string' || !/^\d{1,9}$/.test(edit.numero) || Number(edit.numero) < 1) throw new BlingFiscalError('Confirme a alteração e informe somente o número da NF-e, inteiro de 1 a 999999999.');
+      if (Number(edit.numero) === Number(nfe.numero)) throw new BlingFiscalError('Informe um número diferente do atual para corrigir esta nota.');
+      const expected = { ...nfe, numero: String(Number(edit.numero)) };
+      await checkInvoiceNumber(token, expected);
+      if (await nfeRevision(await readNfe(token, nfeId)) !== input.revision) throw new BlingFiscalError('A NF-e mudou durante a conferência do número. Recarregue antes de salvar.', 409);
+      await requestBling(token, `/nfe/${nfeId}`, 'PUT', invoiceWritePayload(expected));
+      const updated = await readNfe(token, nfeId);
+      if (Number(updated.numero) !== Number(edit.numero) || ![1, 4].includes(Number(updated.situacao))) throw new BlingFiscalError('O Bling não confirmou o número e a situação esperados após salvar. Recarregue a nota; não transmita nem repita a alteração.', 409);
+      const unchanged = (value: Data) => {
+        const { frete: _frete, ...transport } = object(value.transporte);
+        return { ...value, numero: '', situacao: 1, transporte: transport };
+      };
+      if (await nfeRevision(unchanged(nfe)) !== await nfeRevision(unchanged(updated))) throw new BlingFiscalError('O Bling alterou outros dados durante a correção do número. Recarregue e confira a nota antes de emitir.', 409);
+      nfe = updated;
     } else if (action === 'update-draft') {
       if (Number(nfe.situacao) !== 1) throw new BlingFiscalError('Somente uma NF-e pendente pode ser editada. Notas autorizadas não serão alteradas.', 409);
       const edit = object(input.edit);
@@ -339,6 +379,9 @@ async function reviewInvoice(action: string, input: Data, token: string, nfeId: 
       const issues = await fiscalIssues(token, nfe, method, quote, true);
       if (![1, 4].includes(Number(nfe.situacao))) issues.push('A situação da NF-e não permite nova transmissão.');
       if (issues.length) throw new BlingFiscalError(issues.join(' '), 409);
+      await checkInvoiceNumber(token, nfe);
+      if (await nfeRevision(await readNfe(token, nfeId)) !== input.revision) throw new BlingFiscalError('A NF-e mudou durante a conferência do número. Recarregue e confira novamente antes de transmitir.', 409);
+      onTransmissionAttempt();
       await requestBling(token, `/nfe/${nfeId}/enviar`, 'POST');
       nfe = await readNfe(token, nfeId);
     }
@@ -354,6 +397,7 @@ async function reviewInvoice(action: string, input: Data, token: string, nfeId: 
 
 export async function handleBlingNfe(action: string, input: Data, token: string): Promise<{ status: number; body: Data }> {
   let nfeId = String(input.nfeId || '');
+  let transmissionAttempted = false;
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
     if (action === 'danfe-document') {
@@ -385,7 +429,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
       const current = await readNfe(token, nfeId);
       return { status: 200, body: { success: true, nfeId: Number(nfeId), nfe: summarize(current), fiscalIssues: [], readyToSend: false } };
     }
-    if (['review', 'update-draft', 'send-reviewed', 'adopt-recipient'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId) };
+    if (['review', 'update-draft', 'update-number', 'send-reviewed', 'adopt-recipient'].includes(action)) return { status: 200, body: await reviewInvoice(action, input, token, nfeId, () => { transmissionAttempted = true; }) };
     let nfe: Data;
     if (action === 'generate') {
       const orderId = String(input.orderId || '');
@@ -440,9 +484,10 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
     const issues = await fiscalIssues(token, nfe, method, input.quote ? object(input.quote) : undefined);
     return { status: 200, body: { success: true, nfeId: Number(nfeId), nfe: summarize(nfe), fiscalIssues: issues, readyToSend: !issues.length && [1, 4].includes(Number(nfe.situacao)), ...(input.debug ? { raw: nfe } : {}) } };
   } catch (error) {
+    const transmission = action === 'send-reviewed' && !transmissionAttempted ? { transmissionNotAttempted: true } : {};
     if (error instanceof DanfeDocumentError) return { status: error.status, body: { success: false, error: error.message } };
-    if (error instanceof BlingFiscalError) return { status: error.status, body: { success: false, error: error.message, details: error.details, ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };
+    if (error instanceof BlingFiscalError) return { status: error.status, body: { success: false, error: error.message, details: error.details, ...transmission, ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };
     console.error('Falha no processamento da NF-e:', error);
-    return { status: 502, body: { success: false, error: 'Falha de comunicação com o Bling. Confira a nota existente antes de repetir a operação.', ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };
+    return { status: 502, body: { success: false, error: 'Falha de comunicação com o Bling. Confira a nota existente antes de repetir a operação.', ...transmission, ...(validId(nfeId) ? { nfeId: Number(nfeId), nfe: { id: Number(nfeId) }, readyToSend: false } : {}) } };
   }
 }

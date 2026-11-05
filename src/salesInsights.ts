@@ -49,14 +49,18 @@ export function searchCustomers(customers: CustomerHistory[], query: string): Cu
   });
 }
 
-export function salesInsights(quotes: QuoteData[], year: number) {
+export function salesInsights(quotes: QuoteData[], year: number, selectedMonth: number | null = null) {
+  if (!Number.isInteger(year) || year < 1 || year > 9999 || selectedMonth !== null && (!Number.isInteger(selectedMonth) || selectedMonth < 1 || selectedMonth > 12)) {
+    throw new Error('Informe um ano válido e um mês entre janeiro e dezembro.');
+  }
   const months = Array.from({ length: 12 }, (_, month) => ({
     key: `${year}-${String(month + 1).padStart(2, '0')}`,
     label: new Date(year, month, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
     approved: 0, authorized: 0, count: 0,
   }));
   const statuses: Record<QuoteData['status'], number> = { draft: 0, sent: 0, approved: 0, rejected: 0 };
-  const period = quotes.filter((quote) => quoteDate(quote)?.startsWith(`${year}-`));
+  const prefix = selectedMonth ? `${year}-${String(selectedMonth).padStart(2, '0')}` : `${year}-`;
+  const period = quotes.filter((quote) => quoteDate(quote)?.startsWith(prefix));
   let approvedCount = 0;
   let authorizedCount = 0;
   const invoiceIds = new Set<string>();
@@ -86,7 +90,8 @@ export function salesInsights(quotes: QuoteData[], year: number) {
   const approvedTotal = months.reduce((sum, month) => sum + month.approved, 0);
   const authorizedTotal = months.reduce((sum, month) => sum + month.authorized, 0);
   return {
-    months, statuses, period, approvedTotal, authorizedTotal, approvedCount, authorizedCount,
+    months: selectedMonth ? months.filter((month) => month.key === prefix) : months,
+    statuses, period, approvedTotal, authorizedTotal, approvedCount, authorizedCount,
     average: approvedCount ? approvedTotal / approvedCount : 0,
     conversion: period.length ? approvedCount / period.length * 100 : 0,
     topCustomers: [...customers.values()].sort((a, b) => b.total - a.total).slice(0, 5),

@@ -1,16 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { Copy, FolderOpen, Search, Users } from 'lucide-react';
-import type { QuoteData } from '../types';
+import type { QuoteData, SaveCommercialTracking } from '../types';
 import { customerHistories, formatMoney, quoteDate, searchCustomers } from '../salesInsights';
 import { quoteStatusLabels } from '../quoteWorkspaceTools';
+import { CommercialControls } from './CommercialControls';
+import { paymentSummary } from '../commercialTracking';
 
 interface Props {
   quotes: QuoteData[];
   onOpen: (quote: QuoteData) => void;
   onDuplicate: (quote: QuoteData) => void;
+  onSaveCommercial?: SaveCommercialTracking;
 }
 
-export function CustomersPage({ quotes, onOpen, onDuplicate }: Props) {
+export function CustomersPage({ quotes, onOpen, onDuplicate, onSaveCommercial }: Props) {
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const customers = useMemo(() => customerHistories(quotes), [quotes]);
@@ -61,10 +64,12 @@ export function CustomersPage({ quotes, onOpen, onDuplicate }: Props) {
                   <strong className="text-indigo-600 dark:text-indigo-300">{formatMoney(quote.financials.totalAmount)}</strong>
                 </div>
                 <p className="my-3 break-words text-sm text-slate-600 dark:text-slate-300">{quote.items.map((item) => `${item.quantity} × ${item.description}`).join(' · ') || 'Sem itens'}</p>
+                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{paymentSummary(quote).status}{quote.commercial?.notes ? ` · Anotação: ${quote.commercial.notes}` : ''}{quote.commercial?.nextContactDate ? ` · Próximo contato: ${quote.commercial.nextContactDate.split('-').reverse().join('/')}` : ''}</p>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => onOpen(quote)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600"><FolderOpen className="h-4 w-4" />Abrir orçamento</button>
                   <button type="button" onClick={() => onDuplicate(quote)} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"><Copy className="h-4 w-4" />Replicar orçamento</button>
                 </div>
+                {onSaveCommercial && <details className="mt-4"><summary className="cursor-pointer text-sm font-semibold text-indigo-600 dark:text-indigo-300">Pagamentos e anotações de {quote.id}</summary><div className="mt-3"><CommercialControls key={quote.id} quote={quote} onSave={onSaveCommercial} /></div></details>}
               </article>)}
             </div>
           </div>

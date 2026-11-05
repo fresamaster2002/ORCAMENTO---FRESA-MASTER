@@ -54,5 +54,6 @@ export function duplicateQuote(source: QuoteData, empty: QuoteData): QuoteData {
     bling: undefined,
     sandboxShipment: undefined,
     productionShipment: undefined,
+    commercial: undefined,
   };
 }

@@ -44,6 +44,16 @@ O dashboard permite selecionar o ano e apresenta evolução mensal, distribuiç�
 
 O histórico da nuvem é carregado por páginas de 500 registros, sem truncar a lista em 500 orçamentos. Registros de controle de envio não entram nos clientes nem no dashboard. Falhas de leitura/sincronização continuam visíveis no app; indicadores podem refletir apenas os dados locais preservados quando a nuvem estiver indisponível.
 
+### Pagamentos manuais e acompanhamento comercial
+
+O Dashboard possui uma barra de pesquisa por **mês e ano**, com **Este mês**, **Ano inteiro**, filtro imediato dos indicadores, gráficos, status e ranking, e comparação dos aprovados com o mês anterior (ou ano anterior na visão anual). Período anterior sem valor positivo aparece como sem base para comparação, não como crescimento artificial. A central de pendências considera **todos os períodos**, independentemente desse filtro.
+
+**Pagamentos e acompanhamento** aparece no orçamento e no histórico de cada cliente. Permite registrar recebimentos parciais por valor/data/forma, visualizar saldo e cancelar lançamentos preservando o histórico. É controle **manual**, não integração bancária: não confirma Pix, não cobra, não altera status de aprovação e não modifica NF-e/pedido/envio. Datas futuras, valores inválidos e valores acima do saldo são recusados. Reduzir um orçamento abaixo dos pagamentos existentes mostra um excesso que precisa ser conferido. Cancelar um lançamento não estorna dinheiro. Falhas de sincronização aparecem explicitamente; se o registro aparecer no histórico local, não registre outra vez apenas por falha na nuvem.
+
+Os cartões **Recebimentos registrados** seguem a data do pagamento manual, inclusive pagamentos de orçamentos de outros meses; **Saldo dos aprovados** mostra o saldo atual dos orçamentos aprovados cuja data pertence ao período selecionado. Não é posição histórica de contas a receber. Lançamentos cancelados não entram nos recebimentos. A duplicação remove todos os pagamentos, contatos agendados e anotações comerciais para não transferir recebimentos de uma venda anterior.
+
+Anotações são internas e específicas de cada orçamento; podem registrar preferências do cliente e negociações, mas não alteram cadastro fiscal e não são enviadas à extração de IA. É possível agendar o próximo contato, registrar contato realizado hoje e abrir uma mensagem de acompanhamento no WhatsApp (envio pelo operador, sem automação). A central destaca propostas enviadas sem resposta, vencimento de validade, contatos vencidos/para hoje, saldo manual pendente, NF-e rejeitada/não confirmada e envio Melhor Envio ainda não registrado. Esses avisos usam os dados salvos, não consultam bancos/SEFAZ/transportadoras em segundo plano nem substituem a conferência fiscal.
+
 ### Resolver pendências dentro do app
 
 - Na tela do Bling, **Buscar ou cadastrar ferramenta** abre o catálogo real para substituir o item escolhido. Se não encontrar, **Não encontrou? Cadastrar no Bling** permite confirmar descrição, SKU, preço e NCM; o ID retornado pelo ERP vincula a ferramenta ao orçamento, mantendo quantidade e preço negociados. Revise antes de criar, especialmente após falha de comunicação, para não duplicar cadastros.

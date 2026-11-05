@@ -95,6 +95,17 @@ test('abas de clientes e dashboard são recuperadas na reabertura', () => {
   }
 });
 
+test('pagamentos e acompanhamento persistem no rascunho local sem confundir pagamento com aprovação', () => {
+  const local = session();
+  local.quote.commercial = {
+    payments: [{ id: 'manual-1', amount: 20, date: '2026-11-05', method: 'Pix', recordedAt: '2026-11-05T12:00:00Z' }],
+    notes: 'Cliente trabalha com MDF', nextContactDate: '2026-11-10', lastContactDate: '2026-11-05',
+  };
+  const restored = readWorkspace({ getItem: () => JSON.stringify(local) }, 'a', normalize);
+  assert.deepEqual(restored?.quote.commercial, local.quote.commercial);
+  assert.equal(restored?.quote.status, 'draft');
+});
+
 test('histórico carrega mais de 500 registros e não retorna resultado parcial após erro', async () => {
   const records = Array.from({ length: 1201 }, (_, index) => quote(`FM-${index}`));
   const offsets: number[] = [];

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
+import { withoutCommercialTracking } from '../commercialTracking';
 import {
   ArrowLeft,
   X,
@@ -104,7 +105,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          quote,
+          quote: withoutCommercialTracking(quote),
           channel: 'whatsapp',
           tone: 'friendly',
         }),

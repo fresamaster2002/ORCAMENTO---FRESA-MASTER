@@ -132,7 +132,26 @@ export interface Financials {
   paymentMethod: string;
 }
 
+export interface ManualPayment {
+  id: string;
+  amount: number;
+  date: string;
+  method: string;
+  recordedAt: string;
+  voidedAt?: string;
+}
+
+export interface CommercialTracking {
+  payments?: ManualPayment[];
+  notes?: string;
+  nextContactDate?: string;
+  lastContactDate?: string;
+}
+
+export type SaveCommercialTracking = (quoteId: string, update: (quote: QuoteData) => CommercialTracking) => Promise<void>;
+
 export interface QuoteData {
+  commercial?: CommercialTracking;
   productionShipment?: ProductionShipment;
   id: string;
   status: 'draft' | 'sent' | 'approved' | 'rejected';

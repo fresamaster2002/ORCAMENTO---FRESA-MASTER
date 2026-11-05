@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
 import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
@@ -16,6 +16,9 @@ import { QuoteSummaryBar } from './components/QuoteSummaryBar';
 import { duplicateQuote } from './quoteWorkspaceTools';
 import { CustomersPage } from './components/CustomersPage';
 import { SalesDashboard } from './components/SalesDashboard';
+import { CommercialControls } from './components/CommercialControls';
+import type { SaveCommercialTracking } from './types';
+import { normalizeCommercialTracking, withoutCommercialTracking } from './commercialTracking';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, Truck } from 'lucide-react';
@@ -281,6 +284,7 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
     },
     observations: Array.isArray(saved.observations) ? saved.observations : defaults.observations,
     notesForClient: String(saved.notesForClient ?? saved.notes ?? defaults.notesForClient),
+    commercial: normalizeCommercialTracking(saved.commercial),
   };
 };
 
@@ -380,6 +384,21 @@ export default function App() {
     supabaseUser?.email?.toLowerCase() === allowedAdminEmail ? supabaseUser.id : null,
     INITIAL_FRESA_MASTER_QUOTE, normalizeSavedQuote, createEmptyQuote,
   );
+  const latestWorkspace = useRef({ quote, recentQuotes });
+  latestWorkspace.current = { quote, recentQuotes };
+  const commercialLocks = useRef(new Set<string>());
+  const handleSaveCommercial: SaveCommercialTracking = async (quoteId, update) => {
+    if (commercialLocks.current.has(quoteId)) throw new Error('Este orçamento já está sendo salvo. Aguarde antes de alterar outro lançamento.');
+    const latest = latestWorkspace.current;
+    const original = latest.quote.id === quoteId ? latest.quote : latest.recentQuotes.find((saved) => saved.id === quoteId);
+    if (!original) throw new Error('Orçamento não encontrado para salvar o controle comercial.');
+    commercialLocks.current.add(quoteId);
+    try {
+      await persistQuote({ ...original, commercial: update(original) });
+    } finally {
+      commercialLocks.current.delete(quoteId);
+    }
+  };
   const [isExtracting, setIsExtracting] = useState(false);
   const [transcribedText, setTranscribedText] = useState<string>('');
   const [summary, setSummary] = useState<string | undefined>();
@@ -488,6 +507,7 @@ export default function App() {
         // Continua localmente quando a integração externa não está ativa.
       }
 
+      const quoteForExtraction = withoutCommercialTracking(quote);
       const response = await apiFetch('/api/quote/extract', {
         method: 'POST',
         headers: {
@@ -495,7 +515,7 @@ export default function App() {
         },
         body: JSON.stringify({
           text,
-          currentQuote: quote,
+          currentQuote: quoteForExtraction,
           blingCatalogAvailable,
           blingProducts,
         }),
@@ -525,6 +545,7 @@ export default function App() {
       const insuranceAmount = Number(data.quote.financials?.insuranceAmount || 0);
       setQuote({
         ...data.quote,
+        commercial: (latestWorkspace.current.quote.id === quote.id ? latestWorkspace.current.quote : latestWorkspace.current.recentQuotes.find((saved) => saved.id === quote.id))?.commercial,
         items: parsedItems,
         financials: {
           ...data.quote.financials,
@@ -540,7 +561,8 @@ export default function App() {
       return;
     } catch (err: any) {
       console.warn('Fallback local de extração ativado:', err.message || err);
-      const fallback = buildLocalQuoteFallback(text, quote);
+      const original = latestWorkspace.current.quote.id === quote.id ? latestWorkspace.current.quote : latestWorkspace.current.recentQuotes.find((saved) => saved.id === quote.id) || quote;
+      const fallback = buildLocalQuoteFallback(text, original);
       setQuote(fallback.quote);
       setSummary(fallback.summary);
       setMissingInfo(fallback.missingInfo);
@@ -569,6 +591,7 @@ export default function App() {
 
   const handleDeleteQuote = async (target: QuoteData) => {
     if (!supabase || !supabaseUser) return;
+    if (target.commercial?.payments?.length && !window.confirm(`Excluir ${target.id} também remove seu histórico de pagamentos manuais dos relatórios do app. Isso não estorna dinheiro nem exclui a NF-e no Bling. Confirma a exclusão?`)) return;
     try {
       await saveNow();
     } catch {
@@ -806,7 +829,7 @@ export default function App() {
         {view.modal === 'customers' ? <CustomersPage quotes={recentQuotes} onOpen={(selected) => {
           setQuote(selected);
           handleGoHome();
-        }} onDuplicate={handleDuplicateQuote} /> : view.modal === 'dashboard' ? <SalesDashboard quotes={recentQuotes} /> : <>
+        }} onDuplicate={handleDuplicateQuote} onSaveCommercial={handleSaveCommercial} /> : view.modal === 'dashboard' ? <SalesDashboard quotes={recentQuotes} onOpen={(selected) => { setQuote(selected); handleGoHome(); }} /> : <>
         {/* Clean Unified Quick Order Input (Voice or Text) */}
         <QuickOrderInput
           onProcess={handleExtract}
@@ -827,6 +850,7 @@ export default function App() {
           onOpenBling={() => setIsBlingOpen(true)}
           catalogRequest={catalogRequest}
         />
+        <CommercialControls key={quote.id} quote={quote} onSave={handleSaveCommercial} />
         </>}
       </main>
 

@@ -3,7 +3,7 @@ import type { SetStateAction } from 'react';
 import type { QuoteData } from './types';
 import { isSupabaseConfigured, supabase } from './supabase';
 import {
-  defaultWorkspaceView, mergeWorkspaceQuotes, readWorkspace, resumeWorkspaceQuote, workspaceKey, workspaceErrorMessage,
+  defaultWorkspaceView, loadQuoteHistory, mergeWorkspaceQuotes, readWorkspace, resumeWorkspaceQuote, workspaceKey, workspaceErrorMessage,
   type WorkspaceSession, type WorkspaceView,
 } from './workspaceSession';
 
@@ -48,7 +48,7 @@ export function useWorkspaceSession(
     if (isSupabaseConfigured) setStatus(cloudReadable.current ? 'saving' : 'error');
     persistLocal();
     setQuoteState(next);
-    setRecentQuotes((quotes) => [next, ...quotes.filter((saved) => saved.id !== next.id)].slice(0, 500));
+    setRecentQuotes((quotes) => [next, ...quotes.filter((saved) => saved.id !== next.id)]);
     setRevision((value) => value + 1);
   }, [persistLocal]);
 
@@ -82,11 +82,16 @@ export function useWorkspaceSession(
       let loaded = !isSupabaseConfigured;
       try {
         if (supabase && ownerId) {
-          const { data, error: readError } = await supabase.from('quotes').select('quote')
-            .eq('owner_id', ownerId).not('id', 'like', 'ME-PRODUCTION:%').order('updated_at', { ascending: false }).limit(500)
-            .abortSignal(AbortSignal.timeout(15000));
-          if (readError) throw readError;
-          cloud = (data || []).map((row) => normalize(row.quote)).filter((saved): saved is QuoteData => saved !== null);
+          const database = supabase;
+          const history = await loadQuoteHistory(async (offset, size) => {
+            const { data, error: readError } = await database.from('quotes').select('quote')
+              .eq('owner_id', ownerId).not('id', 'like', 'ME-PRODUCTION:%')
+              .order('updated_at', { ascending: false }).order('id').range(offset, offset + size - 1)
+              .abortSignal(AbortSignal.timeout(15000));
+            if (readError) throw readError;
+            return active ? data || [] : [];
+          });
+          cloud = history.map((row) => normalize(row.quote)).filter((saved): saved is QuoteData => saved !== null);
           loaded = true;
         }
       } catch (cause) {
@@ -156,7 +161,7 @@ export function useWorkspaceSession(
       setQuoteState(next);
     }
     persistLocal();
-    setRecentQuotes((quotes) => [next, ...quotes.filter((saved) => saved.id !== next.id)].slice(0, 500));
+    setRecentQuotes((quotes) => [next, ...quotes.filter((saved) => saved.id !== next.id)]);
     await saveNow();
   }, [persistLocal, saveNow]);
 

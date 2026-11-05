@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyRound, FileSpreadsheet, House, Building, Moon, Sun, Download, Settings, Truck, LogOut } from 'lucide-react';
+import { KeyRound, FileSpreadsheet, House, Building, Moon, Sun, Download, Settings, Truck, LogOut, Users, ChartNoAxesCombined } from 'lucide-react';
 import { FresaMasterLogo } from './FresaMasterLogo';
 
 interface HeaderProps {
@@ -14,7 +14,9 @@ interface HeaderProps {
   userEmail?: string;
   onSignOut?: () => void;
   onOpenProduction?: () => void;
-  activeTab?: 'home' | 'proposal' | 'bling' | 'production' | null;
+  onOpenCustomers?: () => void;
+  onOpenDashboard?: () => void;
+  activeTab?: 'home' | 'proposal' | 'bling' | 'production' | 'customers' | 'dashboard' | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,6 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   userEmail,
   onSignOut,
   onOpenProduction,
+  onOpenCustomers,
+  onOpenDashboard,
   activeTab = 'home',
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -153,7 +157,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
       <nav ref={navRef} className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800">
-        <div className="max-w-3xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-4 gap-1.5">
+        <div className="max-w-5xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-3 sm:grid-cols-6 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>
@@ -169,6 +173,12 @@ export const Header: React.FC<HeaderProps> = ({
           <button id="btn-open-production" type="button" onClick={onOpenProduction} title="Conectar e gerenciar envios da conta de produção do Melhor Envio" className={cls('production')}>
             <Truck className="w-4 h-4" />
             <span>Melhor Envio</span>
+          </button>
+          <button id="btn-open-customers" type="button" onClick={onOpenCustomers} className={cls('customers')}>
+            <Users className="w-4 h-4" /><span>Clientes</span>
+          </button>
+          <button id="btn-open-dashboard" type="button" onClick={onOpenDashboard} className={cls('dashboard')}>
+            <ChartNoAxesCombined className="w-4 h-4" /><span>Dashboard</span>
           </button>
         </div>
       </nav>

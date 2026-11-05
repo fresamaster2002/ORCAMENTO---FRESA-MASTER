@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { QuoteData } from './types';
 import {
-  defaultWorkspaceView, mergeWorkspaceQuotes, readWorkspace, resumeWorkspaceQuote, workspaceKey, workspaceErrorMessage,
+  defaultWorkspaceView, loadQuoteHistory, mergeWorkspaceQuotes, readWorkspace, resumeWorkspaceQuote, workspaceKey, workspaceErrorMessage,
   type WorkspaceSession,
 } from './workspaceSession.ts';
 
@@ -84,4 +84,29 @@ test('dados corrompidos ou bloqueio de armazenamento são erros explícitos', ()
 test('apresenta a mensagem de erros Supabase em vez de object Object', () => {
   assert.equal(workspaceErrorMessage({ message: 'Conexão indisponível', code: '503' }), 'Conexão indisponível');
   assert.equal(workspaceErrorMessage(new Error('Quota do navegador')), 'Quota do navegador');
+});
+
+test('abas de clientes e dashboard são recuperadas na reabertura', () => {
+  for (const modal of ['customers', 'dashboard'] as const) {
+    const local = session();
+    local.view.modal = modal;
+    const restored = readWorkspace({ getItem: () => JSON.stringify(local) }, 'a', normalize);
+    assert.equal(restored?.view.modal, modal);
+  }
+});
+
+test('histórico carrega mais de 500 registros e não retorna resultado parcial após erro', async () => {
+  const records = Array.from({ length: 1201 }, (_, index) => quote(`FM-${index}`));
+  const offsets: number[] = [];
+  const loaded = await loadQuoteHistory(async (offset, size) => {
+    offsets.push(offset);
+    return records.slice(offset, offset + size);
+  });
+  assert.deepEqual(offsets, [0, 500, 1000]);
+  assert.deepEqual(loaded, records);
+  assert.equal((await loadQuoteHistory(async () => [])).length, 0);
+  await assert.rejects(loadQuoteHistory(async (offset, size) => {
+    if (offset > 0) throw new Error('Falha ao carregar página');
+    return records.slice(0, size);
+  }), /Falha ao carregar página/);
 });

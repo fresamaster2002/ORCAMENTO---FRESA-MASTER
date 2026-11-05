@@ -1,7 +1,7 @@
 import type { QuoteData } from './types';
 
 export interface WorkspaceView {
-  modal: 'home' | 'bling' | 'production' | 'proposal' | 'saved' | 'api';
+  modal: 'home' | 'bling' | 'production' | 'proposal' | 'saved' | 'api' | 'customers' | 'dashboard';
   quickText: string;
   scrollY: number;
   blingTab: 'direct' | 'app_register' | 'cadastral' | 'products' | 'xml' | 'json' | 'manual';
@@ -28,6 +28,16 @@ export const defaultWorkspaceView: WorkspaceView = {
 };
 
 export const workspaceKey = (ownerId: string) => `fresa_master_workspace_v1_${ownerId}`;
+
+export async function loadQuoteHistory<T>(readPage: (offset: number, size: number) => Promise<T[]>): Promise<T[]> {
+  const history: T[] = [];
+  const size = 500;
+  for (let offset = 0; ; offset += size) {
+    const page = await readPage(offset, size);
+    history.push(...page);
+    if (page.length < size) return history;
+  }
+}
 
 export function workspaceErrorMessage(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
@@ -57,7 +67,7 @@ export function readWorkspace(
   return {
     version: 1, quote, pending,
     view: {
-      modal: view && ['home', 'bling', 'production', 'proposal', 'saved', 'api'].includes(view.modal) ? view.modal : 'home',
+      modal: view && ['home', 'bling', 'production', 'proposal', 'saved', 'api', 'customers', 'dashboard'].includes(view.modal) ? view.modal : 'home',
       quickText: typeof view?.quickText === 'string' ? view.quickText : '',
       scrollY: typeof view?.scrollY === 'number' && Number.isFinite(view.scrollY) ? Math.max(0, view.scrollY) : 0,
       blingTab: view && ['direct', 'app_register', 'cadastral', 'products', 'xml', 'json', 'manual'].includes(view.blingTab) ? view.blingTab : 'direct',

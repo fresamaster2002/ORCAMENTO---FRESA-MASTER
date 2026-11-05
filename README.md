@@ -34,6 +34,16 @@ A área operacional **Melhor Envio** usa exclusivamente `https://melhorenvio.com
 4. Confira o custo, marque a confirmação e clique em **Adicionar ao carrinho do Melhor Envio (sem pagar)**.
 5. Abra o carrinho no painel oficial para pagar, emitir e imprimir a etiqueta. O app não faz checkout, debita saldo, gera etiqueta ou confirma postagem no ambiente real.
 
+### Clientes e dashboard comercial
+
+As abas **Clientes** e **Dashboard** ficam na navegação principal, com suporte a celular e aos temas claro/escuro. Clientes usa exclusivamente os orçamentos da conta carregados na sessão, não um cadastro separado do Bling. A busca considera nome, nome fantasia, CPF/CNPJ com ou sem máscara, telefone, e-mail, cidade e número do orçamento. O agrupamento prioriza o documento; sem documento, usa nome e contato para reduzir a união indevida de homônimos. O cadastro exibido é o do orçamento de data mais recente, e cada orçamento mantém os próprios dados.
+
+No histórico do cliente, **Abrir orçamento** retoma o registro original e **Replicar orçamento** reutiliza a duplicação segura existente: cria novo ID, data atual e status rascunho, preserva cliente/itens e remove vínculos de pedido, NF-e e envios. Frete precisa de nova seleção/cotação; preços e dados fiscais devem ser revisados. Nenhuma venda ou nota é criada no ERP ao replicar.
+
+O dashboard permite selecionar o ano e apresenta evolução mensal, distribuição dos status, ranking de clientes e tabela com os valores dos gráficos. **Aprovados** usa o status `approved`; **Com NF-e autorizada** exige situação salva `5`, deduplicando o ID da nota no ano. São indicadores sobrepostos, não parcelas somáveis. A base temporal é `project.date` (data do orçamento), com fallback para a data de criação somente quando a data do projeto estiver vazia. Não é um relatório pela data de autorização, pagamento ou recebimento, e não sincroniza automaticamente notas do Bling. Os valores são os totais dos orçamentos, incluindo frete e descontos, não o total fiscal relido da nota. Datas inválidas são excluídas com aviso; valores inválidos são contados, mas não somados, também com aviso.
+
+O histórico da nuvem é carregado por páginas de 500 registros, sem truncar a lista em 500 orçamentos. Registros de controle de envio não entram nos clientes nem no dashboard. Falhas de leitura/sincronização continuam visíveis no app; indicadores podem refletir apenas os dados locais preservados quando a nuvem estiver indisponível.
+
 ### Resolver pendências dentro do app
 
 - Na tela do Bling, **Buscar ou cadastrar ferramenta** abre o catálogo real para substituir o item escolhido. Se não encontrar, **Não encontrou? Cadastrar no Bling** permite confirmar descrição, SKU, preço e NCM; o ID retornado pelo ERP vincula a ferramenta ao orçamento, mantendo quantidade e preço negociados. Revise antes de criar, especialmente após falha de comunicação, para não duplicar cadastros.

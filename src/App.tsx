@@ -14,6 +14,8 @@ import { ProductionShipmentModal } from './components/ProductionShipmentModal';
 import { SavedQuotesModal } from './components/SavedQuotesModal';
 import { QuoteSummaryBar } from './components/QuoteSummaryBar';
 import { duplicateQuote } from './quoteWorkspaceTools';
+import { CustomersPage } from './components/CustomersPage';
+import { SalesDashboard } from './components/SalesDashboard';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, Truck } from 'lucide-react';
@@ -586,7 +588,7 @@ export default function App() {
   };
   const barBtn = 'cursor-pointer rounded-md border border-slate-300 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 focus:outline-none focus-visible:outline-none focus:border-[#ff6a00] focus:shadow-[0_0_0_1px_#ff6a00,0_0_10px_rgba(255,106,0,0.55)] active:border-[#ff6a00] dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500';
 
-  const openOnly = (target: 'proposal' | 'bling' | 'production') => {
+  const openOnly = (target: 'proposal' | 'bling' | 'production' | 'customers' | 'dashboard') => {
     setView({ modal: target });
   };
 
@@ -597,8 +599,10 @@ export default function App() {
 
   const handleNewQuote = () => {
     setQuote(createEmptyQuote([quote.id, ...recentQuotes.map((savedQuote) => savedQuote.id)]));
+    setView({ modal: 'home', clientEditing: false, quickText: '', scrollY: 0 });
     setSummary('Novo orçamento Fresa Master em branco iniciado.');
     setMissingInfo([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDuplicateQuote = (source: QuoteData) => {
@@ -727,7 +731,7 @@ export default function App() {
           onGoHome={handleGoHome}
           onPreviewProposal={() => openOnly('proposal')}
           onOpenBlingModal={() => openOnly('bling')}
-          activeTab={isProductionShipmentOpen ? 'production' : isBlingOpen ? 'bling' : isProposalOpen ? 'proposal' : isApiDocsOpen || isSavedQuotesOpen ? null : 'home'}
+          activeTab={view.modal === 'customers' || view.modal === 'dashboard' ? view.modal : isProductionShipmentOpen ? 'production' : isBlingOpen ? 'bling' : isProposalOpen ? 'proposal' : isApiDocsOpen || isSavedQuotesOpen ? null : 'home'}
           hasItems={quote.items.length > 0}
           isApproved={quote.status === 'approved'}
           isDarkMode={isDarkMode}
@@ -735,6 +739,8 @@ export default function App() {
           userEmail={supabaseUser?.email ?? undefined}
           onSignOut={supabaseUser ? handleSignOut : undefined}
           onOpenProduction={() => openOnly('production')}
+          onOpenCustomers={() => openOnly('customers')}
+          onOpenDashboard={() => openOnly('dashboard')}
         />
 
         {supabaseUser && (
@@ -747,7 +753,10 @@ export default function App() {
                   value={quote.id}
                   onChange={(event) => {
                     const selected = recentQuotes.find((savedQuote) => savedQuote.id === event.target.value);
-                    if (selected) setQuote(selected);
+                    if (selected) {
+                      setQuote(selected);
+                      handleGoHome();
+                    }
                   }}
                   className="min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 >
@@ -772,7 +781,7 @@ export default function App() {
           </div>
         )}
 
-        <QuoteSummaryBar quote={quote} onPreview={() => openOnly('proposal')} onOpenBling={() => openOnly('bling')} />
+        {view.modal !== 'customers' && view.modal !== 'dashboard' && <QuoteSummaryBar quote={quote} onPreview={() => openOnly('proposal')} onOpenBling={() => openOnly('bling')} />}
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Error notification */}
@@ -794,6 +803,10 @@ export default function App() {
           </div>
         )}
 
+        {view.modal === 'customers' ? <CustomersPage quotes={recentQuotes} onOpen={(selected) => {
+          setQuote(selected);
+          handleGoHome();
+        }} onDuplicate={handleDuplicateQuote} /> : view.modal === 'dashboard' ? <SalesDashboard quotes={recentQuotes} /> : <>
         {/* Clean Unified Quick Order Input (Voice or Text) */}
         <QuickOrderInput
           onProcess={handleExtract}
@@ -814,6 +827,7 @@ export default function App() {
           onOpenBling={() => setIsBlingOpen(true)}
           catalogRequest={catalogRequest}
         />
+        </>}
       </main>
 
       {/* Footer */}

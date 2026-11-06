@@ -76,6 +76,10 @@ Nas telas Início e Melhor Envio, os cabeçalhos do comando rápido, gestão do 
 
 Cabeçalho, navegação, resumo, conteúdo e rodapé compartilham a mesma largura máxima e margens responsivas. As cotações Sedex, PAC, Jadlog e frete próprio ocupam colunas adaptáveis, sem reservar uma coluna vazia quando há menos opções. Seus cartões usam fundo neutro, nomes e valores de alto contraste e seleção verde-água no tema escuro; também podem ser selecionados pelo teclado, com estado `aria-pressed`. Cálculos de frete, seguro e valor cobrado permanecem iguais.
 
+O cabeçalho da logo e as seis abas de navegação mantêm a paleta escura também no tema claro; a troca de tema continua afetando o conteúdo e os campos. Comandos rápidos apenas de produtos, quantidades ou frete preservam integralmente o cliente já selecionado, inclusive dados fiscais. Campos vazios retornados pela IA não apagam o cadastro em comandos de atualização do cliente. Uma troca explícita de identidade não herda os dados fiscais do cliente anterior. No modo local, o CEP ditado atualiza o destino do frete, sem sobrescrever o CEP fiscal.
+
+O app inclui manifest com nome Fresa Master e ícones PNG de 192/512 px, versão maskable e ícone Apple de 180 px, usando o emblema oficial. Instale pelo menu do navegador (no iPhone/iPad, Compartilhar > Adicionar à Tela de Início). Instalações antigas podem exigir reinstalação para atualizar o ícone; isso depende do navegador/sistema. Antes de remover uma instalação, confirme que os orçamentos estão sincronizados na nuvem. A instalação não habilita funcionamento offline nem altera o login. Para regenerar os ícones no Windows: `powershell -File tools\generate-app-icons.ps1`.
+
 ### Resolver pendências dentro do app
 
 - Na tela do Bling, **Buscar ou cadastrar ferramenta** abre o catálogo real para substituir o item escolhido. Se não encontrar, **Não encontrou? Cadastrar no Bling** permite confirmar descrição, SKU, preço e NCM; o ID retornado pelo ERP vincula a ferramenta ao orçamento, mantendo quantidade e preço negociados. Revise antes de criar, especialmente após falha de comunicação, para não duplicar cadastros.

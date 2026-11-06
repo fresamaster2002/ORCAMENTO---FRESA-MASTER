@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
     'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-left rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer';
 
   const corner =
-    'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
+    'fm-hero-control inline-flex items-center justify-center w-9 h-9 rounded-lg transition cursor-pointer';
   const tab =
     'fm-nav-tab flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-1 sm:px-3 py-2 text-[10px] sm:text-xs font-semibold rounded-xl transition cursor-pointer leading-tight border';
   const cls = (k: NonNullable<HeaderProps['activeTab']>) => `${tab} fm-nav-${k}`;
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
         <div className="flex justify-center">
-          <FresaMasterLogo size="xl" theme={isDarkMode ? 'dark' : 'light'} />
+          <FresaMasterLogo size="xl" theme="dark" />
         </div>
         <div className="flex justify-end">
           <div className="relative" ref={menuRef}>
@@ -100,7 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Definições"
               className={corner}
             >
-              <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <Settings className="w-4 h-4" />
             </button>
 
             {menuOpen && (
@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
-      <nav ref={navRef} aria-label="Navegação principal" className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800 shadow-sm">
+      <nav ref={navRef} aria-label="Navegação principal" className="fm-brand-nav sticky top-0 z-[80] backdrop-blur border-y shadow-sm">
         <div className="fm-container fm-nav-links py-1.5 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} aria-pressed={activeTab === 'home'} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />

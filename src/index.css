@@ -194,8 +194,9 @@ body {
 .fm-nav-production { --tab-from: #c2410c; --tab-to: #b45309; --tab-icon: #c2410c; --tab-icon-dark: #fb923c; }
 .fm-nav-customers { --tab-from: #be185d; --tab-to: #c026d3; --tab-icon: #db2777; --tab-icon-dark: #f472b6; }
 .fm-nav-dashboard { --tab-from: #4338ca; --tab-to: #7c3aed; --tab-icon: #6366f1; --tab-icon-dark: #a5b4fc; }
-.fm-nav-tab { position: relative; color: #475569; border-color: transparent; background: transparent; }
-.fm-nav-tab svg { flex-shrink: 0; width: 28px; height: 28px; padding: 6px; border-radius: 9px; color: var(--tab-icon); }
+.fm-brand-nav { background: rgba(18, 39, 71, .95); border-color: #1e293b; }
+.fm-nav-tab { position: relative; color: #cbd5e1; border-color: transparent; background: transparent; }
+.fm-nav-tab svg { flex-shrink: 0; width: 28px; height: 28px; padding: 6px; border-radius: 9px; color: var(--tab-icon-dark); }
 .fm-nav-tab::after {
   content: "";
   position: absolute;
@@ -207,13 +208,13 @@ body {
   background: linear-gradient(90deg, var(--tab-from), var(--tab-to));
   opacity: 0;
 }
-.fm-nav-tab:hover:not(:disabled) { background: #f8fafc; }
+.fm-nav-tab:hover:not(:disabled) { background: rgba(148, 163, 184, .04); }
 .dark .fm-nav-tab { color: #cbd5e1; }
 .dark .fm-nav-tab svg { color: var(--tab-icon-dark); }
 .dark .fm-nav-tab:hover:not(:disabled) { background: rgba(148, 163, 184, .04); }
 .fm-nav-tab[aria-pressed="true"] {
-  color: #0f172a;
-  background: #f1f5f9;
+  color: #f1f5f9;
+  background: rgba(148, 163, 184, .06);
   border-color: transparent;
   box-shadow: none;
 }
@@ -294,11 +295,13 @@ a {
   background: var(--fm-panel) !important;
 }
 
+header.fm-brand-header,
 .dark header.fm-brand-header.dark\:bg-slate-900 {
   background: linear-gradient(90deg, #020408 0%, #06090e 30%, #10151d 55%, #202833 78%, #333c49 100%) !important;
   backdrop-filter: none;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .12);
 }
+header.fm-brand-header .text-amber-600 { color: #fbbf24; }
 
 .dark .dark\:bg-slate-800\/40 {
   background: rgba(27, 53, 86, 0.72) !important;

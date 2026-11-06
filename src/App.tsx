@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
+import { preserveQuoteClient } from './quoteClientMerge';
 import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
 import { resolveToolNcm } from '../supabase/functions/_shared/toolNcm';
 import { Header } from './components/Header';
@@ -290,17 +291,14 @@ const normalizeSavedQuote = (value: unknown): QuoteData | null => {
 };
 
 const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
-  const cep = extractCepFromText(text) || currentQuote.client.cep || '';
+  const cep = extractCepFromText(text) || currentQuote.shipping.destinationCep || currentQuote.client.cep || '';
   const prices = extractUnitPricesFromText(text);
   const spokenDiscount = extractDiscountAmountFromText(text);
   const motoboyPrice = extractMotoboyPriceFromText(text);
 
   const nextQuote: QuoteData = {
     ...currentQuote,
-    client: {
-      ...currentQuote.client,
-      cep,
-    },
+    client: { ...currentQuote.client },
     shipping: {
       ...currentQuote.shipping,
       destinationCep: cep || currentQuote.shipping.destinationCep,
@@ -545,8 +543,10 @@ export default function App() {
       const discountAmount = Math.min(subtotal, spokenDiscount ?? 0);
       const shippingAmount = Number(data.quote.financials?.shippingAmount || 0);
       const insuranceAmount = Number(data.quote.financials?.insuranceAmount || 0);
+      const original = latestWorkspace.current.quote.id === quote.id ? latestWorkspace.current.quote : latestWorkspace.current.recentQuotes.find((saved) => saved.id === quote.id) || quote;
       setQuote({
         ...data.quote,
+        client: preserveQuoteClient(text, original.client, data.quote.client),
         commercial: (latestWorkspace.current.quote.id === quote.id ? latestWorkspace.current.quote : latestWorkspace.current.recentQuotes.find((saved) => saved.id === quote.id))?.commercial,
         items: parsedItems,
         financials: {

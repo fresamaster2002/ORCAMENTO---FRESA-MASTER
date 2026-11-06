@@ -121,20 +121,16 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
 
   return (
     <div className="fm-panel overflow-hidden transition-all">
-      <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3">
+      <form onSubmit={handleSubmit}>
         {/* Header bar */}
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Comando Rápido de Orçamento (Voz ou Texto)
-            </h2>
-          </div>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            Conectado ao Catálogo Bling ERP & Melhor Envio
-          </span>
+        <div className="fm-hero fm-hero-inset p-6 sm:p-8">
+          <p className="fm-hero-kicker mb-2 flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-5 w-5" />Comando rápido · Voz ou texto</p>
+          <h2 className="text-2xl font-bold sm:text-3xl">Seu próximo orçamento começa aqui</h2>
+          <p className="fm-hero-description mt-2 max-w-2xl text-sm">Dite ou digite o pedido para preencher os produtos, o cliente e o frete.</p>
+          <p className="fm-hero-kicker mt-4 text-xs font-semibold">Catálogo Bling ERP · Melhor Envio</p>
         </div>
 
+        <div className="p-4 sm:p-5 space-y-3">
         {/* Input Text Area with Embedded Actions */}
         <div className="relative rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-blue-500 dark:focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
           <textarea
@@ -202,6 +198,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
             <span className="truncate">{summary}</span>
           </div>
         )}
+        </div>
       </form>
     </div>
   );

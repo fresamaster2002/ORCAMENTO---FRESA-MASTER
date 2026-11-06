@@ -249,9 +249,9 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-3">
       <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="production-shipment-title" style={{ maxHeight: 'calc(100dvh - var(--fm-nav-h, 0px) - 1.5rem)' }} className="fm-shipping-dialog w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-xl">
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div><p className="fm-accent text-xs font-bold">Melhor Envio • PRODUÇÃO</p><h2 id="production-shipment-title" className="text-lg font-bold">Melhor Envio — {quote.id}</h2><p className="text-sm">{quote.client.name}</p></div>
-          <button type="button" onClick={onClose} disabled={busy} aria-label="Fechar envio real" className="p-2"><X className="h-5 w-5" /></button>
+        <header className="fm-hero fm-hero-inset flex items-start justify-between gap-4 p-6 sm:p-8">
+          <div className="min-w-0"><p className="fm-hero-kicker mb-2 text-sm font-semibold">Logística · Conta de produção</p><h2 id="production-shipment-title" className="text-2xl font-bold sm:text-3xl">Seu pedido, pronto para seguir</h2><p className="fm-hero-description mt-2 break-words text-sm">Melhor Envio — {quote.id} · {quote.client.name}</p><p className="fm-hero-kicker mt-4 text-xs">Confira os dados e adicione ao carrinho. Pagamento e etiqueta no painel oficial.</p></div>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Fechar envio real" className="fm-hero-control rounded-lg p-2 shrink-0"><X className="h-5 w-5" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5">
           <ProductionShipmentNotice />

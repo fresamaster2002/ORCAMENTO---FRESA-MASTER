@@ -431,22 +431,24 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
   return (
     <div className="fm-panel overflow-hidden space-y-6">
-      <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60">
+      <div className="fm-hero fm-hero-inset p-6 sm:p-8">
+        <p className="fm-hero-kicker mb-2 flex items-center gap-2 text-sm font-semibold"><FileSpreadsheet className="h-5 w-5" />Gestão do pedido</p>
+        <h2 className="mb-4 text-2xl font-bold sm:text-3xl">Cada detalhe do seu orçamento</h2>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <span className="fm-accent-soft text-xs font-mono font-bold px-2.5 py-1 rounded-lg border">
+            <span className="fm-hero-control text-xs font-mono font-bold px-2.5 py-1 rounded-lg">
               {quote.id}
             </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">Validade: {quote.project.validityDays} dias</span>
+            <span className="fm-hero-description text-xs">Validade: {quote.project.validityDays} dias</span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={onPreview}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition cursor-pointer flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+              className="fm-hero-control px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
             >
-              <Eye className="w-3.5 h-3.5 text-slate-500" />
+              <Eye className="w-3.5 h-3.5" />
               <span>Visualizar PDF</span>
             </button>
 
@@ -465,15 +467,15 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
           </div>
         </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <p className="flex-1 basis-52 text-slate-500 dark:text-slate-400">{nextAction.text}</p>
+            <p className="fm-hero-description flex-1 basis-52">{nextAction.text}</p>
             <button type="button" onClick={() => {
               if (nextAction.target === 'proposal') onPreview();
               else if (nextAction.target === 'bling') onOpenBling();
               else document.getElementById(nextAction.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }} className="min-h-9 cursor-pointer rounded-lg border border-slate-300 px-3 font-semibold text-slate-700 hover:border-amber-500 dark:border-slate-700 dark:text-slate-200">{nextAction.label}</button>
+            }} className="fm-hero-control min-h-9 cursor-pointer rounded-lg px-3 font-semibold">{nextAction.label}</button>
           </div>
           {(quote.bling?.orderId || quote.bling?.nfe?.id || quote.sandboxShipment || quote.productionShipment) && (
-            <details className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <details className="fm-hero-description mt-3 border-t border-indigo-200/20 pt-3 text-xs">
               <summary className="cursor-pointer">Vínculos registrados neste orçamento</summary>
               <ul className="mt-2 space-y-1 break-words">
                 {quote.bling?.orderId && <li>Pedido Bling: {quote.bling.orderNumber || quote.bling.orderId}</li>}
@@ -490,7 +492,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               className={`rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition ${
                 step.done
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                  : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                  : 'fm-hero-control'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -504,7 +506,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
       <div className="px-5 sm:px-6 space-y-6">
         {/* Section 1: Client Overview Card (Clean & Compact) */}
-        <div id="quote-client" className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30 p-4">
+        <div id="quote-client" className="fm-panel p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-slate-500" />
@@ -863,7 +865,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
         </div>
 
         {/* Section 4: Financials & Totals Breakdown (Clear addition of insurance!) */}
-        <div className="bg-slate-50/70 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between gap-6">
+        <div className="fm-panel p-5 flex flex-col md:flex-row justify-between gap-6">
           <div className="space-y-3 text-xs flex-1">
             <h4 className="font-bold text-slate-800 dark:text-slate-200">Condições de Pagamento Fresa Master:</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

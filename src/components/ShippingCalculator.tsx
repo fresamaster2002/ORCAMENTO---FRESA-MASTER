@@ -309,16 +309,16 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
   const estimatedInsuranceFee = Math.max(2.5, Number((totalItemsValue * 0.015).toFixed(2)));
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+    <div className="fm-panel overflow-hidden">
       {/* Header bar */}
-      <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="fm-accent-soft h-8 w-8 rounded-lg flex items-center justify-center shrink-0">
+      <div className="fm-hero fm-hero-inset p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="fm-hero-control h-10 w-10 rounded-xl flex items-center justify-center shrink-0">
             <Truck className="w-4 h-4" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-xl font-bold sm:text-2xl">
                 Cálculo de Frete & Logística
               </h3>
               <button
@@ -340,8 +340,8 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
             {meStatus.state === 'disconnected' && meStatus.detail && (
               <p role="status" className="mt-1 max-w-xl text-[10px] text-amber-700 dark:text-amber-300">{meStatus.detail}</p>
             )}
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Despacho direto de <span className="font-semibold text-slate-700 dark:text-slate-300">Salto/SP ({originCep})</span>
+            <p className="fm-hero-description mt-2 text-sm">
+              Despacho direto de <span className="font-semibold">Salto/SP ({originCep})</span>
             </p>
           </div>
         </div>
@@ -349,7 +349,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 flex items-center gap-1.5 transition cursor-pointer px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="fm-hero-control text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer px-3 py-2 rounded-lg shrink-0"
         >
           <Settings2 className="w-3.5 h-3.5" />
           <span>{showAdvanced ? 'Ocultar Opções' : 'Configurações de Pacote'}</span>

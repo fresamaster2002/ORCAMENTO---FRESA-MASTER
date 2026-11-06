@@ -9,6 +9,10 @@
   --fm-line: rgba(147, 197, 253, 0.18);
   --fm-gold: #f59e0b;
   --fm-cyan: #38bdf8;
+  --fm-hero-background:
+    radial-gradient(ellipse at 95% 0%, rgba(56, 189, 248, .25), transparent 55%),
+    radial-gradient(ellipse at 0% 100%, rgba(139, 92, 246, .22), transparent 60%),
+    linear-gradient(120deg, #0f172a, #1e1b4b 65%, #312e81);
 }
 
 html {
@@ -33,10 +37,7 @@ body {
 .fm-hero {
   border: 1px solid rgba(165, 180, 252, .2);
   border-radius: 1.5rem;
-  background:
-    radial-gradient(ellipse at 95% 0%, rgba(56, 189, 248, .25), transparent 55%),
-    radial-gradient(ellipse at 0% 100%, rgba(139, 92, 246, .22), transparent 60%),
-    linear-gradient(120deg, #0f172a, #1e1b4b 65%, #312e81);
+  background: var(--fm-hero-background);
   box-shadow: 0 16px 36px -24px rgba(49, 46, 129, .65);
 }
 
@@ -105,16 +106,24 @@ body {
   border-color: rgba(245, 158, 11, .3);
 }
 .fm-shipping-dialog { color: #334155; }
-.fm-shipping-dialog > header {
-  background: #f8fafc;
-  color: #0f172a;
-}
 .dark .fm-shipping-dialog { color: #cbd5e1; }
-.dark .fm-shipping-dialog > header {
-  background: var(--fm-panel-raised) !important;
-  color: #f1f5f9;
+.fm-hero-inset {
+  border-radius: 0;
+  color: #fff;
+  box-shadow: none;
+}
+.dark header.fm-hero-inset {
+  background: var(--fm-hero-background) !important;
   backdrop-filter: none;
 }
+.fm-hero-kicker { color: #c7d2fe; }
+.fm-hero-description { color: #e0e7ff; }
+.fm-hero-control {
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(199, 210, 254, .3);
+  color: #e0e7ff;
+}
+.fm-hero-control:hover:not(:disabled) { background: rgba(255, 255, 255, .15); }
 .fm-shipping-dialog button.border,
 .fm-shipping-dialog a.border {
   border-color: #cbd5e1;

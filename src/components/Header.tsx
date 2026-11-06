@@ -67,12 +67,8 @@ export const Header: React.FC<HeaderProps> = ({
   const corner =
     'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
   const tab =
-    'flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-1 sm:px-3 py-2.5 text-[10px] sm:text-xs font-semibold rounded-xl transition cursor-pointer leading-tight border';
-  const tabIdle =
-    'text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-700';
-  const tabOn =
-    'text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 shadow-sm';
-  const cls = (k: string) => `${tab} ${activeTab === k ? tabOn : tabIdle}`;
+    'fm-nav-tab flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-1 sm:px-3 py-2.5 text-[10px] sm:text-xs font-semibold rounded-xl transition cursor-pointer leading-tight border';
+  const cls = (k: NonNullable<HeaderProps['activeTab']>) => `${tab} fm-nav-${k}`;
 
   return (
     <>
@@ -158,26 +154,26 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
       <nav ref={navRef} aria-label="Navegação principal" className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="max-w-5xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-          <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
+          <button id="btn-go-home" type="button" onClick={onGoHome} aria-pressed={activeTab === 'home'} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>
           </button>
-          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} disabled={!hasItems} className={`${cls('proposal')} disabled:opacity-40 disabled:cursor-not-allowed`}>
+          <button id="btn-preview-proposal" type="button" onClick={onPreviewProposal} aria-pressed={activeTab === 'proposal'} disabled={!hasItems} className={`${cls('proposal')} disabled:opacity-40 disabled:cursor-not-allowed`}>
             <FileSpreadsheet className="w-4 h-4" />
             <span>Proposta</span>
           </button>
-          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} className={cls('bling')}>
+          <button id="btn-open-bling-modal" type="button" onClick={onOpenBlingModal} aria-pressed={activeTab === 'bling'} className={cls('bling')}>
             <Building className="w-4 h-4" />
             <span>Bling</span>
           </button>
-          <button id="btn-open-production" type="button" onClick={onOpenProduction} title="Conectar e gerenciar envios da conta de produção do Melhor Envio" className={cls('production')}>
+          <button id="btn-open-production" type="button" onClick={onOpenProduction} aria-pressed={activeTab === 'production'} title="Conectar e gerenciar envios da conta de produção do Melhor Envio" className={cls('production')}>
             <Truck className="w-4 h-4" />
             <span>Melhor Envio</span>
           </button>
-          <button id="btn-open-customers" type="button" onClick={onOpenCustomers} className={cls('customers')}>
+          <button id="btn-open-customers" type="button" onClick={onOpenCustomers} aria-pressed={activeTab === 'customers'} className={cls('customers')}>
             <Users className="w-4 h-4" /><span>Clientes</span>
           </button>
-          <button id="btn-open-dashboard" type="button" onClick={onOpenDashboard} className={cls('dashboard')}>
+          <button id="btn-open-dashboard" type="button" onClick={onOpenDashboard} aria-pressed={activeTab === 'dashboard'} className={cls('dashboard')}>
             <ChartNoAxesCombined className="w-4 h-4" /><span>Dashboard</span>
           </button>
         </div>

@@ -70,6 +70,8 @@ Anotações são internas e específicas de cada orçamento; podem registrar pre
 
 O tema escuro usa fundo grafite neutro, superfícies elevadas discretas e textos secundários com mais contraste, sem textura diagonal ou brilhos coloridos no fundo. Cores de situação, gráficos, tema claro e proposta/PDF são preservados.
 
+A navegação destaca a aba selecionada com gradiente vivo e texto/ícone branco: azul no Início, violeta na Proposta, verde no Bling, laranja no Melhor Envio, rosa em Clientes e índigo/violeta no Dashboard. Ícones não selecionados usam a mesma família de cor, adaptada aos temas claro/escuro. A seleção também é indicada por `aria-pressed`, não apenas pela cor; ações e bloqueio da proposta sem itens permanecem iguais.
+
 ### Resolver pendências dentro do app
 
 - Na tela do Bling, **Buscar ou cadastrar ferramenta** abre o catálogo real para substituir o item escolhido. Se não encontrar, **Não encontrou? Cadastrar no Bling** permite confirmar descrição, SKU, preço e NCM; o ID retornado pelo ERP vincula a ferramenta ao orçamento, mantendo quantidade e preço negociados. Revise antes de criar, especialmente após falha de comunicação, para não duplicar cadastros.

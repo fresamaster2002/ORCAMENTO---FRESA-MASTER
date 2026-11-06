@@ -74,7 +74,9 @@ A navegação destaca a aba selecionada com gradiente restrito à cápsula do í
 
 Nas telas Início e Melhor Envio, os cabeçalhos do comando rápido, gestão do pedido, logística e envio real reutilizam o mesmo degradê azul/índigo/violeta do cartão Relacionamento em Clientes, com títulos brancos, descrições claras e controles translúcidos. O corpo dos cartões mantém superfícies sólidas e campos legíveis nos dois temas. Ações principais e seleção da modalidade Melhor Envio usam azul sóbrio; avisos mantêm âmbar discreto, sucesso mantém verde e erros mantêm vermelho. A gravação ativa continua indicada em vermelho. A paleta das abas de navegação e os bloqueios de envio não mudam.
 
-Cabeçalho, navegação, resumo, conteúdo e rodapé compartilham a mesma largura máxima e margens responsivas. As cotações Sedex, PAC, Jadlog e frete próprio ocupam colunas adaptáveis, sem reservar uma coluna vazia quando há menos opções. Seus cartões usam fundo neutro, nomes e valores de alto contraste e seleção verde-água no tema escuro; também podem ser selecionados pelo teclado, com estado `aria-pressed`. Cálculos de frete, seguro e valor cobrado permanecem iguais.
+Cabeçalho, navegação, resumo, conteúdo e rodapé compartilham a largura máxima de 1.152 px (72 rem) e margens responsivas iguais dos dois lados. Maximizar a janela não estica o conteúdo além desse limite nem aumenta fontes ou controles; no celular a largura acompanha a tela. O app instalado pelo navegador não bloqueia a maximização da janela pelo sistema operacional.
+
+As cotações Sedex, PAC, Jadlog e frete próprio ocupam colunas adaptáveis, sem reservar uma coluna vazia quando há menos opções. Seus cartões usam fundo neutro, nomes e valores de alto contraste e seleção verde-água no tema escuro; também podem ser selecionados pelo teclado, com estado `aria-pressed`. Cálculos de frete, seguro e valor cobrado permanecem iguais.
 
 As janelas de proposta, Bling, API e catálogo limitam sua altura à área disponível abaixo da navegação fixa, mantendo os controles dentro da tela e a rolagem no conteúdo. O Bling usa margens externas equilibradas, sem barra de rolagem adicional que desloque sua janela para um lado. Essa limitação aplica-se apenas à tela, preservando as regras de impressão.
 
@@ -350,4 +352,4 @@ Para publicar localmente a Edge Function no Windows com verificação de tipos e
 
 ## Acesso e dados
 
-O login usa e-mail e senha com sessão persistente. O e-mail é usado apenas para configurar ou recuperar a senha. Os orçamentos são salvos na tabela `quotes` do Supabase, protegida por Row Level Security.
+O login usa e-mail e senha com sessão persistente. A tela inicia com ambos os campos vazios, sem divulgar o e-mail autorizado nas mensagens de validação; os campos também são limpos ao entrar ou sair. O formulário solicita que o navegador não complete as credenciais automaticamente, mas gerenciadores de senhas podem ignorar essa preferência. Em dispositivos compartilhados, use **Sair** e não salve credenciais no navegador. Recuperação de senha exige informar o e-mail da conta. Os orçamentos são salvos na tabela `quotes` do Supabase, protegida por Row Level Security.

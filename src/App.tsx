@@ -373,7 +373,7 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
-  const [authEmail, setAuthEmail] = useState(allowedAdminEmail);
+  const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const {
@@ -433,6 +433,10 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const user = session?.user || null;
       setSupabaseUser(user);
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
+        setAuthEmail('');
+        setAuthPassword('');
+      }
       setIsPasswordRecovery(event === 'PASSWORD_RECOVERY');
       setIsAuthLoading(false);
     });
@@ -445,7 +449,7 @@ export default function App() {
     if (!supabaseUser) return;
 
     if (supabaseUser.email?.toLowerCase() !== allowedAdminEmail) {
-      setAuthError(`Acesso permitido somente para ${allowedAdminEmail}.`);
+      setAuthError('Acesso permitido apenas para a conta administradora.');
       void supabase.auth.signOut();
       return;
     }
@@ -647,7 +651,7 @@ export default function App() {
     setAuthNotice(null);
     try {
       if (authEmail.trim().toLowerCase() !== allowedAdminEmail) {
-        throw new Error(`Acesso permitido somente para ${allowedAdminEmail}.`);
+        throw new Error('Informe o e-mail da conta administradora.');
       }
       if (!authPassword) throw new Error('Informe sua senha.');
 
@@ -670,7 +674,7 @@ export default function App() {
     setAuthNotice(null);
     try {
       if (authEmail.trim().toLowerCase() !== allowedAdminEmail) {
-        throw new Error(`Acesso permitido somente para ${allowedAdminEmail}.`);
+        throw new Error('Informe o e-mail da conta administradora.');
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim().toLowerCase(), {

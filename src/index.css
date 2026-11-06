@@ -3,6 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  --fm-content-max-width: 72rem;
   --fm-ink: #0b1833;
   --fm-panel: #122747;
   --fm-panel-raised: #1b3556;
@@ -30,7 +31,7 @@ body {
 .fm-container {
   width: 100%;
   min-width: 0;
-  max-width: 80rem;
+  max-width: var(--fm-content-max-width);
   margin-inline: auto;
   padding-inline: 1rem;
 }

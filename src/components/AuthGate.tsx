@@ -66,7 +66,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
           <input
             id="auth-email"
             type="email"
-            autoComplete="email"
+            autoComplete="off"
             value={email}
             onChange={(event) => onEmailChange(event.target.value)}
             className="mt-2 w-full border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-amber-400"
@@ -78,7 +78,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
           <input
             id="auth-password"
             type="password"
-            autoComplete={isPasswordRecovery ? 'new-password' : 'current-password'}
+            autoComplete={isPasswordRecovery ? 'new-password' : 'off'}
             minLength={isPasswordRecovery ? 8 : undefined}
             value={password}
             onChange={(event) => onPasswordChange(event.target.value)}

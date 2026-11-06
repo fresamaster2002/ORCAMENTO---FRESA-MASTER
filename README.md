@@ -70,7 +70,7 @@ Anotações são internas e específicas de cada orçamento; podem registrar pre
 
 O tema escuro usa fundo grafite neutro, superfícies elevadas discretas e textos secundários com mais contraste, sem textura diagonal ou brilhos coloridos no fundo. Cores de situação, gráficos, tema claro e proposta/PDF são preservados.
 
-A navegação destaca a aba selecionada com gradiente vivo e texto/ícone branco: azul no Início, violeta na Proposta, verde no Bling, laranja no Melhor Envio, rosa em Clientes e índigo/violeta no Dashboard. Ícones não selecionados usam a mesma família de cor, adaptada aos temas claro/escuro. A seleção também é indicada por `aria-pressed`, não apenas pela cor; ações e bloqueio da proposta sem itens permanecem iguais.
+A navegação destaca a aba selecionada com gradiente restrito à cápsula do ícone e uma linha fina inferior, mantendo o texto neutro e o fundo discreto, sem preencher o botão inteiro: azul no Início, violeta na Proposta, verde no Bling, laranja no Melhor Envio, rosa em Clientes e índigo/violeta no Dashboard. Ícones não selecionados usam a mesma família de cor, adaptada aos temas claro/escuro. A seleção também é indicada por `aria-pressed`, não apenas pela cor; ações e bloqueio da proposta sem itens permanecem iguais.
 
 ### Resolver pendências dentro do app
 

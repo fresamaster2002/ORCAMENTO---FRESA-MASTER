@@ -43,11 +43,12 @@ export function CommercialControls({ quote, onSave }: { quote: QuoteData; onSave
   const input = 'w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800';
   return <section aria-label={`Controle comercial ${quote.id}`} className="space-y-5 rounded-2xl border border-indigo-200 bg-white p-5 dark:border-indigo-900 dark:bg-slate-900">
     <div><h2 className="flex items-center gap-2 text-lg font-bold"><CircleDollarSign className="h-5 w-5 text-emerald-500" />Pagamentos e acompanhamento · {quote.id}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Controle manual e interno. Não confirma Pix, não cobra o cliente nem altera pedido, NF-e ou envio no Bling.</p></div>
+    {quote.status === 'approved' && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Aprovado: pagamento confirmado pelo operador no fluxo da Fresa Master. Os campos abaixo detalham os recebimentos para os relatórios; um valor ainda não registrado não significa cobrança pendente.</p>}
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</p>}
     {summary.issues.map((issue) => <p role="alert" key={issue} className="text-sm text-rose-600">{issue}</p>)}
     <div className="grid gap-3 sm:grid-cols-3">{[
-      ['Registrado como recebido', formatMoney(summary.paid)], ['Saldo a registrar', summary.issues.length ? 'Conferir total' : formatMoney(summary.outstanding)], ['Situação manual', summary.status],
+      ['Registrado como recebido', formatMoney(summary.paid)], ['Valor a detalhar no registro', summary.issues.length ? 'Conferir total' : formatMoney(summary.outstanding)], ['Situação dos lançamentos', summary.status],
     ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">{label}</p><p className="mt-1 font-bold">{value}</p></div>)}</div>
     {summary.excess > 0 && <p role="alert" className="text-sm text-amber-700 dark:text-amber-400">Os pagamentos excedem o total atual em {formatMoney(summary.excess)}. Confira alterações no orçamento; cancelar um lançamento não devolve dinheiro ao cliente.</p>}
     <form onSubmit={(event) => {

@@ -121,8 +121,6 @@ export function followUpIssues(quote: QuoteData, today = localDate()): string[] 
   issues.push(...summary.issues);
   if (summary.excess > 0) issues.push('Pagamentos excedem o total atual');
   if (quote.status === 'approved') {
-    if (!summary.issues.length && summary.outstanding > 0) issues.push('Pagamento pendente (controle manual)');
-    if (quote.bling?.nfe?.situacao !== 5) issues.push('NF-e ainda não confirmada como autorizada');
     const service = quote.shipping.selectedOption?.service;
     if (service && !['RETIRADA', 'MOTOBOY', 'PROPRIO', 'CONTA_FRESA'].includes(service) && !quote.productionShipment) issues.push('Envio Melhor Envio ainda não registrado');
   }

@@ -107,6 +107,23 @@ test('pendências diferenciam resposta, validade, contato, pagamento, nota e env
   assert.ok(followUpIssues(current).includes('Envio Melhor Envio ainda não registrado'));
 });
 
+test('aprovação não gera cobrança ou pendência por ausência de NF-e e preserva alertas operacionais reais', () => {
+  const current = quote();
+  const before = structuredClone(current);
+  assert.deepEqual(followUpIssues(current, '2026-11-05'), []);
+  assert.deepEqual(current, before);
+  current.commercial = { payments: [payment()] };
+  assert.deepEqual(followUpIssues(current, '2026-11-05'), []);
+  assert.equal(receiptInsights([current], 2026, 11).received, 40);
+  current.bling = { nfe: { id: 10, situacao: 1 } };
+  assert.deepEqual(followUpIssues(current, '2026-11-05'), []);
+  current.bling.nfe!.situacao = 4;
+  assert.deepEqual(followUpIssues(current, '2026-11-05'), ['NF-e rejeitada: revisar situação fiscal']);
+  current.bling = undefined;
+  current.shipping.selectedOption = { service: 'SEDEX', name: 'Sedex', carrier: 'Correios', price: 10, deliveryDays: 2 };
+  assert.deepEqual(followUpIssues(current, '2026-11-05'), ['Envio Melhor Envio ainda não registrado']);
+});
+
 test('WhatsApp normaliza DDI uma vez e duplicação nunca herda pagamentos ou acompanhamento', () => {
   const current = quote();
   const url = followUpWhatsapp(current);
@@ -132,11 +149,18 @@ test('renderização expõe controles manuais, filtro mensal e central sem afirm
   assert.match(controls, /não cobra o cliente/);
   const pending = renderToStaticMarkup(<PendingSales quotes={[current]} onOpen={() => {}} />);
   assert.match(pending, /Central de pendências/);
-  assert.match(pending, /Abrir e resolver/);
+  assert.match(pending, /Nenhuma pendência identificada/);
+  assert.doesNotMatch(pending, /Abrir e resolver|Pagamento pendente|NF-e ainda não confirmada/);
+  current.status = 'sent';
+  const waiting = renderToStaticMarkup(<PendingSales quotes={[current]} onOpen={() => {}} />);
+  assert.match(waiting, /Abrir e resolver/);
+  current.status = 'approved';
   const dashboard = renderToStaticMarkup(<SalesDashboard quotes={[current]} />);
   assert.match(dashboard, /Mês de análise/);
   assert.match(dashboard, /Ano do período/);
   assert.match(dashboard, /Este mês/);
   assert.match(dashboard, /Recebimentos registrados/);
+  assert.match(dashboard, /Recebimentos a detalhar/);
+  assert.doesNotMatch(dashboard, /Saldo dos aprovados/);
   assert.doesNotMatch(dashboard, /NaN|Infinity/);
 });

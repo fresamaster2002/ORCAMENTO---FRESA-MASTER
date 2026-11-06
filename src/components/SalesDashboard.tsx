@@ -41,7 +41,7 @@ export function SalesDashboard({ quotes, onOpen, onDuplicate, ownerId, goalStore
     { title: 'Ticket médio aprovado', value: formatMoney(data.average), detail: 'Valor aprovado ÷ orçamentos aprovados', icon: TrendingUp, color: 'from-sky-500 to-blue-600' },
     { title: 'Taxa de aprovação', value: `${data.conversion.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`, detail: `${data.approvedCount} de ${data.period.length} orçamentos`, icon: Target, color: 'from-amber-500 to-orange-600' },
     { title: 'Recebimentos registrados', value: formatMoney(receipts.received), detail: 'Pela data do recebimento · controle manual', icon: CircleDollarSign, color: 'from-fuchsia-500 to-purple-600' },
-    { title: 'Saldo dos aprovados', value: formatMoney(receipts.outstanding), detail: 'Saldo atual dos orçamentos do período · manual', icon: Receipt, color: 'from-rose-500 to-pink-600' },
+    { title: 'Recebimentos a detalhar', value: formatMoney(receipts.outstanding), detail: 'Aprovados sem detalhamento completo no controle manual · não é dívida', icon: Receipt, color: 'from-slate-500 to-slate-600' },
   ];
   return <section aria-labelledby="dashboard-title" className="space-y-6">
     <div className="fm-hero flex flex-wrap items-end justify-between gap-4 p-6 text-white sm:p-8">

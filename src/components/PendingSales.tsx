@@ -12,6 +12,7 @@ export function PendingSales({ quotes, onOpen }: { quotes: QuoteData[]; onOpen: 
   return <section aria-labelledby="pending-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
     <h2 id="pending-title" className="flex items-center gap-2 text-lg font-bold"><ClipboardList className="h-5 w-5 text-amber-500" />Central de pendências</h2>
     <p className="text-xs text-slate-500 dark:text-slate-400">Todos os períodos · {pending.length} orçamentos precisam de atenção. Pagamentos são manuais; NF-e e envio refletem o último estado salvo. Nada é cobrado ou transmitido automaticamente.</p>
+    <p className="text-xs text-slate-500 dark:text-slate-400">No fluxo da Fresa Master, aprovado indica pagamento confirmado pelo operador. Falta de lançamento manual ou de NF-e não gera pendência automática. Erros de lançamentos, NF-e rejeitada e envio ainda precisam de conferência; a obrigação fiscal é verificada à parte.</p>
     <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 dark:border-slate-600"><Search className="h-4 w-4 text-slate-400" /><span className="sr-only">Buscar pendências</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, documento ou orçamento..." className="min-w-0 flex-1 bg-transparent py-3 text-sm" /></label>
     <div className="max-h-[32rem] space-y-3 overflow-y-auto">
       {pending.filter((entry) => visibleIds.has(entry.quote.id)).map(({ quote, issues }) => {

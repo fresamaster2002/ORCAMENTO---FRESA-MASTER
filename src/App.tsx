@@ -750,7 +750,7 @@ export default function App() {
   }
 
   return (
-      <div className={`min-h-screen ${isDarkMode ? 'dark bg-[#090d16] text-slate-100' : 'bg-slate-100/70 text-slate-800'} flex flex-col font-sans antialiased transition-colors duration-200`}>
+      <div className={`min-h-screen ${isDarkMode ? 'dark bg-[var(--fm-ink)] text-slate-100' : 'bg-slate-100/70 text-slate-800'} flex flex-col font-sans antialiased transition-colors duration-200`}>
         <Header
           onOpenApiDocs={() => setIsApiDocsOpen(true)}
           onGoHome={handleGoHome}

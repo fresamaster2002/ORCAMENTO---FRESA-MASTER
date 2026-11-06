@@ -313,7 +313,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
       {/* Header bar */}
       <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+          <div className="fm-accent-soft h-8 w-8 rounded-lg flex items-center justify-center shrink-0">
             <Truck className="w-4 h-4" />
           </div>
           <div>
@@ -374,13 +374,13 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
               }}
               className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                 shippingMode === 'melhor_envio'
-                  ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                  ? 'fm-accent-soft ring-2 ring-blue-500/20 shadow-xs'
                   : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center justify-between mb-1.5">
-                <Truck className={`w-4 h-4 ${shippingMode === 'melhor_envio' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`} />
-                {shippingMode === 'melhor_envio' && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                <Truck className={`w-4 h-4 ${shippingMode === 'melhor_envio' ? 'fm-accent' : 'text-slate-500'}`} />
+                {shippingMode === 'melhor_envio' && <Check className="w-3.5 h-3.5 fm-accent" />}
               </div>
               <div>
                 <span className="block text-xs font-black text-slate-900 dark:text-slate-100">
@@ -673,7 +673,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   onClick={() => handleQuickWeightChange(0.5)}
                   className={`px-2 py-1 text-[11px] font-bold rounded-lg transition cursor-pointer ${
                     parseWeightValue(customWeight) === 0.5
-                      ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-2xs'
+                      ? 'bg-white dark:bg-slate-700 fm-accent shadow-2xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                   title="Tarifa mínima padrão (0,5 kg)"
@@ -685,7 +685,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   onClick={() => handleQuickWeightChange(1.0)}
                   className={`px-2 py-1 text-[11px] font-bold rounded-lg transition cursor-pointer ${
                     parseWeightValue(customWeight) === 1.0
-                      ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-2xs'
+                      ? 'bg-white dark:bg-slate-700 fm-accent shadow-2xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                   title="Peso para pacotes médios (1,0 kg)"
@@ -813,7 +813,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                       setLengthCm(DEFAULT_PACKAGE_DIMENSIONS.length);
                       handleRecalculate(undefined, undefined, { ...DEFAULT_PACKAGE_DIMENSIONS });
                     }}
-                    className="text-xs font-bold text-amber-700 dark:text-amber-400"
+                    className="fm-accent text-xs font-bold"
                   >
                     Padrão 7 × 12 × 17 cm
                   </button>
@@ -874,7 +874,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                 onClick={() => onSelectOption({ ...opt, price: finalCardPrice })}
                 className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                    ? 'fm-accent-soft ring-2 ring-blue-500/20 shadow-xs'
                     : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50/50 dark:hover:bg-slate-800'
                 }`}
               >
@@ -888,7 +888,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                       {opt.service === 'PROPRIO' && 'Transportadora Própria'}
                     </span>
                     {isSelected && (
-                      <span className="h-4 w-4 rounded-full bg-amber-600 text-white flex items-center justify-center shrink-0">
+                      <span className="fm-action h-4 w-4 rounded-full flex items-center justify-center shrink-0">
                         <Check className="w-2.5 h-2.5" />
                       </span>
                     )}
@@ -936,7 +936,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">
                     {opt.carrier}
                   </span>
-                  <span className={`text-base font-extrabold ${isSelected ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                  <span className={`text-base font-extrabold ${isSelected ? 'fm-accent' : 'text-slate-900 dark:text-white'}`}>
                     {finalCardPrice === 0
                       ? 'Grátis'
                       : finalCardPrice.toLocaleString('pt-BR', {

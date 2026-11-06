@@ -434,7 +434,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+            <span className="fm-accent-soft text-xs font-mono font-bold px-2.5 py-1 rounded-lg border">
               {quote.id}
             </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">Validade: {quote.project.validityDays} dias</span>
@@ -517,10 +517,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCadastralModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700 font-bold text-xs transition cursor-pointer"
+                className="fm-accent-soft inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border font-bold text-xs transition cursor-pointer"
                 title="Lê Cartão CNPJ, PDF ou mensagem de WhatsApp com IA"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <Sparkles className="w-3.5 h-3.5" />
                 <span>Preencher c/ IA (Cartão CNPJ)</span>
               </button>
 
@@ -731,7 +731,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
               <button
                 type="button"
                 onClick={() => addItem('Fresa 3 Cortes TCT 6x22mm Haste 6mm (Widia)', 140)}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition cursor-pointer font-medium"
+                className="fm-accent-soft text-[11px] px-2.5 py-1 rounded-lg border transition cursor-pointer font-medium"
               >
                 + 3 Cortes TCT (R$ 140)
               </button>

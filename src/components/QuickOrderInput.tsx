@@ -125,7 +125,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
         {/* Header bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
               Comando Rápido de Orçamento (Voz ou Texto)
             </h2>
@@ -136,7 +136,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
         </div>
 
         {/* Input Text Area with Embedded Actions */}
-        <div className="relative rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-amber-500 dark:focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
+        <div className="relative rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-blue-500 dark:focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
           <textarea
             rows={2}
             value={text}
@@ -157,7 +157,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
                 }`}
                 title={isRecording ? 'Parar gravação e processar' : 'Gravar comando por voz'}
               >
-                {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 text-rose-500" />}
+                {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 fm-accent" />}
                 <span className="hidden sm:inline">{isRecording ? 'Ouvindo...' : 'Voz'}</span>
               </button>
             )}
@@ -165,7 +165,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
             <button
               type="submit"
               disabled={isLoading || !text.trim()}
-              className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="fm-action px-3 py-2 rounded-lg disabled:opacity-50 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
             >
               {isLoading ? (
                 <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -188,7 +188,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
                 setText(p.text);
                 onProcess(p.text);
               }}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-400 text-slate-600 dark:text-slate-300 transition cursor-pointer whitespace-nowrap shrink-0"
+              className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 transition cursor-pointer whitespace-nowrap shrink-0"
             >
               {p.title}
             </button>

@@ -72,6 +72,8 @@ O tema escuro usa fundo azul-marinho definido e cartões em azul profundo, com s
 
 A navegação destaca a aba selecionada com gradiente restrito à cápsula do ícone e uma linha fina inferior, mantendo o texto neutro e o fundo discreto, sem preencher o botão inteiro: azul no Início, violeta na Proposta, verde no Bling, laranja no Melhor Envio, rosa em Clientes e índigo/violeta no Dashboard. Ícones não selecionados usam a mesma família de cor, adaptada aos temas claro/escuro. A seleção também é indicada por `aria-pressed`, não apenas pela cor; ações e bloqueio da proposta sem itens permanecem iguais.
 
+Nas telas Início e Melhor Envio, ações principais e seleção de frete usam azul sóbrio, com destaques suaves e textos claros no tema escuro. A tela de envio real usa cabeçalho azul profundo e ações secundárias neutras; avisos mantêm âmbar discreto, sucesso mantém verde e erros mantêm vermelho. A gravação ativa continua indicada em vermelho. A paleta das abas de navegação e os bloqueios de envio não mudam.
+
 ### Resolver pendências dentro do app
 
 - Na tela do Bling, **Buscar ou cadastrar ferramenta** abre o catálogo real para substituir o item escolhido. Se não encontrar, **Não encontrou? Cadastrar no Bling** permite confirmar descrição, SKU, preço e NCM; o ID retornado pelo ERP vincula a ferramenta ao orçamento, mantendo quantidade e preço negociados. Revise antes de criar, especialmente após falha de comunicação, para não duplicar cadastros.

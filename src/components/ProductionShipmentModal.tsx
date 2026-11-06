@@ -248,9 +248,9 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
   const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-3">
-      <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="production-shipment-title" style={{ maxHeight: 'calc(100dvh - var(--fm-nav-h, 0px) - 1.5rem)' }} className="w-full max-w-3xl overflow-y-auto rounded-xl bg-white text-slate-900 shadow-xl">
+      <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="production-shipment-title" style={{ maxHeight: 'calc(100dvh - var(--fm-nav-h, 0px) - 1.5rem)' }} className="fm-shipping-dialog w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div><p className="text-xs font-bold text-amber-700">Melhor Envio • PRODUÇÃO</p><h2 id="production-shipment-title" className="text-lg font-bold">Melhor Envio — {quote.id}</h2><p className="text-sm">{quote.client.name}</p></div>
+          <div><p className="fm-accent text-xs font-bold">Melhor Envio • PRODUÇÃO</p><h2 id="production-shipment-title" className="text-lg font-bold">Melhor Envio — {quote.id}</h2><p className="text-sm">{quote.client.name}</p></div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Fechar envio real" className="p-2"><X className="h-5 w-5" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5">
@@ -276,13 +276,13 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
           ) : (
             <>
               {shipment?.status === 'rejected' && <p role="alert" className="text-sm text-red-800">A inclusão anterior foi recusada pelo Melhor Envio: {shipment.error || 'Confira os dados e a permissão do token real.'} Corrija os dados e faça uma nova cotação.</p>}
-              {addressAndOrderMissing.length > 0 && <div className="rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Antes de enviar, resolva estas pendências:</p><ul className="mt-2 list-disc space-y-1 pl-5">{addressAndOrderMissing.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+              {addressAndOrderMissing.length > 0 && <div className="fm-warning-soft rounded-xl border p-3 text-sm"><p className="font-bold">Antes de enviar, resolva estas pendências:</p><ul className="mt-2 list-disc space-y-1 pl-5">{addressAndOrderMissing.map((item) => <li key={item}>{item}</li>)}</ul></div>}
               {invoiceDiagnostic && !busy && (
-                <section className="space-y-2 rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+                <section className="fm-warning-soft space-y-2 rounded-xl border p-4 text-sm">
                   <h3 className="font-bold">{invoiceDiagnostic.title}</h3>
                   <p>{invoiceDiagnostic.explanation}</p>
                   <ol className="list-decimal space-y-1 pl-5">{invoiceDiagnostic.steps.map((step) => <li key={step}>{step}</li>)}</ol>
-                  <button type="button" onClick={() => diagnosticAction(invoiceDiagnostic)} className="rounded-lg bg-amber-500 px-4 py-2 font-bold">{invoiceDiagnostic.actionLabel}</button>
+                  <button type="button" onClick={() => diagnosticAction(invoiceDiagnostic)} className="fm-action rounded-lg px-4 py-2 font-bold">{invoiceDiagnostic.actionLabel}</button>
                 </section>
               )}
               <div className="flex flex-wrap gap-2">
@@ -297,7 +297,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
                     await onUpdateShipping(deliveryDraft);
                     setRate(null); setConfirmed(false); setDeliveryDraft(null);
                     setMessage('Entrega salva. A NF-e e o preço cobrado do cliente não foram alterados. Cote novamente antes de criar o envio.');
-                  })} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-bold">Salvar entrega e liberar nova cotação</button>
+                  })} className="fm-action rounded-lg px-3 py-2 text-sm font-bold">Salvar entrega e liberar nova cotação</button>
                   <button type="button" disabled={busy || deliveryProcessing} onClick={() => setDeliveryDraft(null)} className="ml-2 rounded-lg border border-slate-400 px-3 py-2 text-sm">Cancelar correção</button>
                 </fieldset>
               )}
@@ -337,7 +337,7 @@ export function ProductionShipmentModal({ quote, onClose, onPrepare, onUpdate, o
               {authorizationUrl && <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 underline">Autorizar cotação e carrinho no Melhor Envio (sem pagamento automático)</a>}
               {rateCurrent && rate && <p className="text-sm font-bold">Custo real cotado: {money(rate.price)} • Frete no orçamento do cliente: {money(quote.financials.shippingAmount)} (não alterado).</p>}
               <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={busy || !rateCurrent || !checked} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" /><span>Conferi remetente, destinatário, NF-e e pacote. Autorizo adicionar este envio ao carrinho REAL, sem pagamento ou emissão automática.</span></label>
-              <button type="submit" disabled={busy || !checked || !invoiceChecked || !confirmed || !rateCurrent || missing.length > 0} className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-40">Adicionar ao carrinho do Melhor Envio (sem pagar)</button>
+              <button type="submit" disabled={busy || !checked || !invoiceChecked || !confirmed || !rateCurrent || missing.length > 0} className="fm-action rounded-lg px-4 py-3 text-sm font-bold disabled:opacity-40">Adicionar ao carrinho do Melhor Envio (sem pagar)</button>
             </>
           )}
           {!checked && !busy && <button type="button" onClick={() => void execute(async () => { await prepareRef.current(); await readSaved(); if (fiscalRef.current.quote.bling?.orderId) await refreshInvoice(); })} className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold">Conferir solicitação salva / recuperar envio</button>}

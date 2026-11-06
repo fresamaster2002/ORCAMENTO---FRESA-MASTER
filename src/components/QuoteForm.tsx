@@ -1016,7 +1016,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
       {/* Bling Catalog Selection Modal */}
       {isBlingCatalogModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-scaleIn">
+          <div className="fm-window bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-2xl w-full flex flex-col overflow-hidden animate-scaleIn">
             <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Building className="w-5 h-5 text-emerald-600" />

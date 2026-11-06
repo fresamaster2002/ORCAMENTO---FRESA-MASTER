@@ -655,8 +655,8 @@ E-mail para envio de XML/DANFE: fiscal@moveisrequinte.com.br
 Telefone/WhatsApp: (41) 98888-5544`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="fm-window bg-white dark:bg-slate-900 rounded-2xl max-w-5xl w-full flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
         {/* Header */}
         <div className="px-5 sm:px-7 py-4 sm:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 text-white">
           <div className="flex items-center gap-3.5">

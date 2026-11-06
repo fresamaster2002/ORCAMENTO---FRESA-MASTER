@@ -82,6 +82,16 @@ body {
 .dark .fm-secondary:hover:not(:disabled) { background: #1e293b; }
 .dark .fm-metric { border-top-color: #37306b; }
 
+.fm-nav-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+}
+@media (min-width: 640px) {
+  .fm-nav-links { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 .fm-nav-home { --tab-from: #0369a1; --tab-to: #2563eb; --tab-icon: #0284c7; --tab-icon-dark: #38bdf8; }
 .fm-nav-proposal { --tab-from: #6d28d9; --tab-to: #9333ea; --tab-icon: #7c3aed; --tab-icon-dark: #c084fc; }
 .fm-nav-bling { --tab-from: #047857; --tab-to: #0f766e; --tab-icon: #059669; --tab-icon-dark: #34d399; }
@@ -189,7 +199,7 @@ a {
 }
 
 .dark header.fm-brand-header.dark\:bg-slate-900 {
-  background: linear-gradient(90deg, #020408 0%, #12161c 45%, #454d59 100%) !important;
+  background: linear-gradient(90deg, #020408 0%, #06090e 30%, #10151d 55%, #202833 78%, #333c49 100%) !important;
   backdrop-filter: none;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .12);
 }

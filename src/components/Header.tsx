@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
       <nav ref={navRef} aria-label="Navegação principal" className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="max-w-5xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+        <div className="fm-nav-links px-2 sm:px-6 py-1.5 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} aria-pressed={activeTab === 'home'} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>

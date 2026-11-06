@@ -857,7 +857,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
         )}
 
         {/* Clean, High-Contrast Shipping Cards (Sedex, PAC, Jadlog) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="fm-shipping-rates">
           {(shipping.options || [])
             .filter((opt) => ['SEDEX', 'PAC', 'JADLOG_PACKAGE', 'PROPRIO'].includes(opt.service))
             .map((opt, idx) => {
@@ -869,33 +869,31 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
             const finalCardPrice = insuranceEnabled ? (baseFreightPrice + insuranceCost) : baseFreightPrice;
 
             return (
-              <div
+              <button
+                type="button"
                 key={idx}
+                aria-pressed={isSelected}
                 onClick={() => onSelectOption({ ...opt, price: finalCardPrice })}
-                className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'fm-accent-soft ring-2 ring-blue-500/20 shadow-xs'
-                    : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50/50 dark:hover:bg-slate-800'
-                }`}
+                className="fm-rate-card p-4 rounded-xl transition cursor-pointer flex flex-col justify-between text-left"
               >
                 <div>
                   {/* Service & Checkmark */}
                   <div className="flex items-center justify-between gap-1 mb-2">
-                    <span className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
+                    <span className="text-sm font-bold">
                       {opt.service === 'SEDEX' && 'SEDEX (Correios)'}
                       {opt.service === 'PAC' && 'PAC (Correios)'}
                       {opt.service === 'JADLOG_PACKAGE' && 'Jadlog .Package'}
                       {opt.service === 'PROPRIO' && 'Transportadora Própria'}
                     </span>
                     {isSelected && (
-                      <span className="fm-action h-4 w-4 rounded-full flex items-center justify-center shrink-0">
+                      <span className="fm-rate-check h-5 w-5 rounded-full flex items-center justify-center shrink-0">
                         <Check className="w-2.5 h-2.5" />
                       </span>
                     )}
                   </div>
 
                   {/* Delivery ETA */}
-                  <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                  <div className="fm-rate-detail flex items-center gap-1 text-xs mt-2 mb-3">
                     <Clock className="w-3 h-3" />
                     <span>
                       {opt.deliveryDays > 0 ? `Entrega em ~${opt.deliveryDays} dias úteis` : 'A combinar'}
@@ -905,7 +903,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   {/* Price breakdown when insurance is active */}
                   {insuranceEnabled && (
                     <div className="space-y-1 mb-3 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[11px]">
-                      <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                      <div className="fm-rate-detail flex justify-between">
                         <span>Frete base:</span>
                         <span className="font-mono">
                           {baseFreightPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -924,19 +922,19 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                   )}
 
                   {!insuranceEnabled && (
-                    <div className="mb-2 text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                      <ShieldAlert className="w-3 h-3 text-slate-400" />
+                    <div className="fm-rate-detail mb-2 text-xs flex items-center gap-1">
+                      <ShieldAlert className="w-3 h-3" />
                       <span>Sem cobertura de seguro</span>
                     </div>
                   )}
                 </div>
 
                 {/* Final Total for this option */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-700 flex items-baseline justify-between">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                <div className="pt-3 mt-1 border-t border-slate-200 dark:border-slate-600 flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="fm-rate-detail text-xs uppercase font-semibold">
                     {opt.carrier}
                   </span>
-                  <span className={`text-base font-extrabold ${isSelected ? 'fm-accent' : 'text-slate-900 dark:text-white'}`}>
+                  <span className="text-xl font-bold tabular-nums">
                     {finalCardPrice === 0
                       ? 'Grátis'
                       : finalCardPrice.toLocaleString('pt-BR', {
@@ -945,7 +943,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
                         })}
                   </span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

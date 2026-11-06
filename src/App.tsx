@@ -770,7 +770,7 @@ export default function App() {
 
         {supabaseUser && (
           <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <div className="fm-container flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <label htmlFor="saved-quotes" className="shrink-0 text-[11px] font-bold text-slate-500 dark:text-slate-400">Orçamentos salvos</label>
                 <select
@@ -808,7 +808,7 @@ export default function App() {
 
         {view.modal !== 'customers' && view.modal !== 'dashboard' && <QuoteSummaryBar quote={quote} onPreview={() => openOnly('proposal')} onOpenBling={() => openOnly('bling')} />}
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <main className="fm-container flex-1 py-6 space-y-6">
         {/* Error notification */}
         {errorMessage && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-xs flex items-center gap-2 shadow-xs">
@@ -858,7 +858,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 mt-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="fm-container flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-700">Fresa Master CNC</span>
             <span>•</span>

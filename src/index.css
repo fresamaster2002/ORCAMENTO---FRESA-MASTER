@@ -27,6 +27,46 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.fm-container {
+  width: 100%;
+  min-width: 0;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+@media (min-width: 640px) {
+  .fm-container { padding-inline: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .fm-container { padding-inline: 2rem; }
+}
+.fm-shipping-rates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: .75rem;
+}
+.fm-rate-card {
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+.fm-rate-card:hover { border-color: #64748b; }
+.fm-rate-card[aria-pressed="true"] {
+  border-color: #0f766e;
+  box-shadow: inset 0 3px 0 #0f766e;
+}
+.fm-rate-detail { color: #475569; }
+.fm-rate-check { background: #0f766e; color: #fff; }
+.dark .fm-rate-card { background: #202b3b; border-color: #526176; color: #f8fafc; }
+.dark .fm-rate-card:hover { border-color: #94a3b8; }
+.dark .fm-rate-card[aria-pressed="true"] {
+  background: #263547;
+  border-color: #5eead4;
+  box-shadow: inset 0 3px 0 #5eead4;
+}
+.dark .fm-rate-detail { color: #cbd5e1; }
+
 .fm-panel {
   border: 1px solid #e2e8f0;
   border-radius: 1.25rem;
@@ -144,9 +184,6 @@ body {
 .fm-nav-links {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: 100%;
-  max-width: 80rem;
-  margin-inline: auto;
 }
 @media (min-width: 640px) {
   .fm-nav-links { grid-template-columns: repeat(6, minmax(0, 1fr)); }

@@ -14,7 +14,7 @@ export function QuoteSummaryBar({ quote, onPreview, onOpenBling }: Props) {
   const authorized = Number(quote.bling?.nfe?.situacao) === 5;
   return (
     <section aria-label="Resumo do orçamento" className="fm-summary sticky z-20 border-b border-slate-200 bg-white/95 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
+      <div className="fm-container flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
             <span className="font-mono">{quote.id}</span>

@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
     <header className="fm-brand-header bg-white dark:bg-slate-900">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-3 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
+      <div className="fm-container pt-4 pb-3 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
         <div className="flex justify-start">
           {onToggleDarkMode && (
             <button
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
       <nav ref={navRef} aria-label="Navegação principal" className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="fm-nav-links px-2 sm:px-6 py-1.5 gap-1.5">
+        <div className="fm-container fm-nav-links py-1.5 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} aria-pressed={activeTab === 'home'} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />
             <span>Início</span>

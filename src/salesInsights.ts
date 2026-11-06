@@ -16,6 +16,14 @@ export interface CustomerHistory {
   quotes: QuoteData[];
 }
 
+export function openCustomerQuotes(customer: CustomerHistory): QuoteData[] {
+  return customer.quotes.filter((quote) => quote.status === 'draft' || quote.status === 'sent');
+}
+
+export function customersWithOpenQuotes(customers: CustomerHistory[]): CustomerHistory[] {
+  return customers.filter((customer) => openCustomerQuotes(customer).length > 0);
+}
+
 function customerKey(client: ClientInfo): string | null {
   const document = client.document?.replace(/\D/g, '');
   const name = normalizeSearch(client.name || client.company || client.tradeName || '');

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { QuoteData } from './types';
-import { customerHistories, quoteDate, salesInsights, searchCustomers } from './salesInsights';
+import { customerHistories, customersWithOpenQuotes, openCustomerQuotes, quoteDate, salesInsights, searchCustomers } from './salesInsights';
 import { CustomersPage } from './components/CustomersPage';
 import { SalesDashboard } from './components/SalesDashboard';
 
@@ -44,6 +44,25 @@ test('homônimos com documentos ou contatos diferentes ficam separados; registro
   assert.equal(customerHistories([first, second]).length, 2);
   first.client = { name: '' };
   assert.equal(customerHistories([first, second]).length, 1);
+});
+
+test('clientes em aberto incluem rascunhos e enviados sem perder histórico ou misturar aprovados/rejeitados', () => {
+  const draft = quote('D', '2025-01-01');
+  const sent = quote('S', '2026-01-01', 'sent');
+  const approved = quote('A', '2026-02-01', 'approved');
+  const rejected = quote('R', '2026-03-01', 'rejected');
+  const other = quote('O', '2026-04-01', 'approved');
+  other.client.document = '99999999999';
+  const customers = customerHistories([draft, sent, approved, rejected, other]);
+  const open = customersWithOpenQuotes(customers);
+  assert.equal(open.length, 1);
+  assert.equal(open[0].quotes.length, 4);
+  assert.deepEqual(openCustomerQuotes(open[0]).map(({ id }) => id), ['S', 'D']);
+  assert.equal(searchCustomers(open, 'A').length, 1);
+  assert.equal(searchCustomers(open, '99999999999').length, 0);
+  assert.equal(customers.length, 2);
+  assert.equal(customersWithOpenQuotes(customerHistories([approved, rejected])).length, 0);
+  assert.deepEqual(customersWithOpenQuotes([]), []);
 });
 
 test('mensal separa aprovados e autorizados sem somar estados como vendas extras', () => {
@@ -111,6 +130,12 @@ test('telas renderizam navegação, ações de replicação, legendas acessívei
   assert.match(customers, /Replicar orçamento/);
   assert.match(customers, /Abrir orçamento/);
   assert.match(customers, /Fresa TCT/);
+  assert.match(customers, /Com orçamento em aberto/);
+  assert.match(customers, /Perfil do cliente/);
+  assert.match(customers, /Em aberto = rascunho ou enviado/);
+  const sent = renderToStaticMarkup(<CustomersPage quotes={[quote('S', '2026-01-01', 'sent')]} onOpen={() => {}} onDuplicate={() => {}} />);
+  assert.match(sent, /Acompanhar pelo WhatsApp/);
+  assert.match(sent, /https:\/\/wa.me\/5511999991234/);
   const dashboard = renderToStaticMarkup(<SalesDashboard quotes={[]} />);
   assert.match(dashboard, /Nenhum orçamento neste ano/);
   assert.match(dashboard, /não representam recebimentos/);

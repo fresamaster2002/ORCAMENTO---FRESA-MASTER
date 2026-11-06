@@ -120,7 +120,7 @@ export const QuickOrderInput: React.FC<QuickOrderInputProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden transition-all">
+    <div className="fm-panel overflow-hidden transition-all">
       <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3">
         {/* Header bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap">

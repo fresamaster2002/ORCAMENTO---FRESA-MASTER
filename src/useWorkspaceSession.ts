@@ -85,7 +85,7 @@ export function useWorkspaceSession(
           const database = supabase;
           const history = await loadQuoteHistory(async (offset, size) => {
             const { data, error: readError } = await database.from('quotes').select('quote')
-              .eq('owner_id', ownerId).not('id', 'like', 'ME-PRODUCTION:%')
+              .eq('owner_id', ownerId).not('id', 'like', 'ME-PRODUCTION:%').not('id', 'like', 'SALES-GOAL:%')
               .order('updated_at', { ascending: false }).order('id').range(offset, offset + size - 1)
               .abortSignal(AbortSignal.timeout(15000));
             if (readError) throw readError;

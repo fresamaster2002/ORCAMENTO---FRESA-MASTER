@@ -67,11 +67,11 @@ export const Header: React.FC<HeaderProps> = ({
   const corner =
     'inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer';
   const tab =
-    'flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold rounded-lg transition cursor-pointer leading-tight bg-transparent border focus:outline-none focus-visible:outline-none';
+    'flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-1 sm:px-3 py-2.5 text-[10px] sm:text-xs font-semibold rounded-xl transition cursor-pointer leading-tight border';
   const tabIdle =
-    'text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500';
+    'text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-700';
   const tabOn =
-    'text-amber-700 dark:text-amber-400 border-amber-500 bg-amber-50 dark:bg-amber-950/30';
+    'text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 shadow-sm';
   const cls = (k: string) => `${tab} ${activeTab === k ? tabOn : tabIdle}`;
 
   return (
@@ -156,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
-      <nav ref={navRef} className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800">
+      <nav ref={navRef} aria-label="Navegação principal" className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur border-y border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="max-w-5xl mx-auto px-2 sm:px-6 py-1.5 grid grid-cols-3 sm:grid-cols-6 gap-1.5">
           <button id="btn-go-home" type="button" onClick={onGoHome} title="Voltar ao início" className={cls('home')}>
             <House className="w-4 h-4" />

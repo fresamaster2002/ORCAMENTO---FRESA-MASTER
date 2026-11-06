@@ -5,8 +5,12 @@ import { formatMoney, quoteDate, salesInsights } from '../salesInsights';
 import { quoteStatusLabels } from '../quoteWorkspaceTools';
 import { receiptInsights } from '../commercialTracking';
 import { PendingSales } from './PendingSales';
+import { SalesGoals } from './SalesGoals';
+import { ProductRanking } from './ProductRanking';
+import { RepurchasePanel } from './RepurchasePanel';
+import type { salesGoalsStore } from '../salesGoalsStore';
 
-export function SalesDashboard({ quotes, onOpen }: { quotes: QuoteData[]; onOpen?: (quote: QuoteData) => void }) {
+export function SalesDashboard({ quotes, onOpen, onDuplicate, ownerId, goalStore }: { quotes: QuoteData[]; onOpen?: (quote: QuoteData) => void; onDuplicate?: (quote: QuoteData) => void; ownerId?: string; goalStore?: ReturnType<typeof salesGoalsStore> }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState<number | null>(null);
@@ -23,7 +27,7 @@ export function SalesDashboard({ quotes, onOpen }: { quotes: QuoteData[]; onOpen
   const previous = salesInsights(quotes, previousYear, previousMonth);
   const change = previous.approvedTotal > 0 ? (data.approvedTotal - previous.approvedTotal) / previous.approvedTotal * 100 : null;
   const maximum = Math.max(1, ...data.months.flatMap((month) => [month.approved, month.authorized]));
-  const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 sm:p-6';
+  const panel = 'fm-panel p-5 sm:p-6';
   const statusColors = { draft: '#94a3b8', sent: '#3b82f6', approved: '#10b981', rejected: '#f43f5e' };
   let angle = 0;
   const segments = Object.entries(data.statuses).map(([status, count]) => {
@@ -40,7 +44,7 @@ export function SalesDashboard({ quotes, onOpen }: { quotes: QuoteData[]; onOpen
     { title: 'Saldo dos aprovados', value: formatMoney(receipts.outstanding), detail: 'Saldo atual dos orçamentos do período · manual', icon: Receipt, color: 'from-rose-500 to-pink-600' },
   ];
   return <section aria-labelledby="dashboard-title" className="space-y-6">
-    <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-800 p-6 text-white sm:p-8">
+    <div className="fm-hero flex flex-wrap items-end justify-between gap-4 p-6 text-white sm:p-8">
       <div><p className="mb-2 flex items-center gap-2 text-sm font-semibold text-indigo-200"><BarChart3 className="h-5 w-5" />Visão comercial</p>
         <h1 id="dashboard-title" className="text-2xl font-bold sm:text-3xl">Resultados da Fresa Master</h1><p className="mt-2 text-sm text-indigo-100">Acompanhe oportunidades, aprovações e notas vinculadas mês a mês.</p></div>
       <label className="text-sm font-semibold">Ano de análise<select aria-label="Ano de análise" value={year} onChange={(event) => setYear(Number(event.target.value))} className="ml-3 rounded-lg border border-white/30 bg-slate-900 px-4 py-2 text-white">{years.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -56,10 +60,14 @@ export function SalesDashboard({ quotes, onOpen }: { quotes: QuoteData[]; onOpen
     <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">Base: data do orçamento, não data de pagamento ou emissão. Valores incluem frete e descontos do orçamento; não representam recebimentos nem o total fiscal consultado da NF-e. Aprovados e autorizados são visões sobrepostas: não some os dois. Situação da NF-e conforme última sincronização salva no app.</p>
     {(data.invalidDates > 0 || data.invalidAmounts > 0) && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{data.invalidDates} registros sem data válida foram excluídos da análise. {data.invalidAmounts} registros do período têm valor inválido: são contados, mas não somados aos valores.</p>}
     {receipts.invalidRecords > 0 && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900">{receipts.invalidRecords} orçamentos têm pagamentos ou totais inconsistentes e não entram nos indicadores de recebimentos/saldo. Confira os lançamentos na central.</p>}
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(({ title, value, detail, icon: Icon, color }) => <article key={title} className={panel}>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{metrics.map(({ title, value, detail, icon: Icon, color }) => <article key={title} className={`${panel} fm-metric`}>
       <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${color} p-3 text-white shadow-sm`}><Icon className="h-5 w-5" /></div>
       <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</h2><p className="mt-2 break-words text-2xl font-bold tracking-tight">{value}</p><p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{detail}</p>
     </article>)}</div>
+    <div className="grid items-start gap-5 xl:grid-cols-2">
+      <SalesGoals ownerId={ownerId} year={year} month={month} months={data.months} store={goalStore} />
+      <ProductRanking quotes={data.period} />
+    </div>
     {data.period.length === 0 && <p role="status" className={`${panel} text-center text-slate-500`}>{month ? 'Nenhum orçamento neste mês.' : 'Nenhum orçamento neste ano.'} Selecione outro período ou crie seu primeiro orçamento.</p>}
     <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
       <article className={`${panel} min-w-0`}>
@@ -93,6 +101,7 @@ export function SalesDashboard({ quotes, onOpen }: { quotes: QuoteData[]; onOpen
         <ol className="mt-5 space-y-5">{data.topCustomers.map((customer, index) => <li key={index}><div className="flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 font-bold text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300">{index + 1}</span><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold">{customer.name}</p><p className="mt-1 text-xs text-slate-500">{customer.count} aprovados · {formatMoney(customer.total)}</p></div></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500" style={{ width: `${data.topCustomers[0].total ? customer.total / data.topCustomers[0].total * 100 : 0}%` }} /></div></li>)}</ol>
       </article>
     </div>
+    {onOpen && onDuplicate && <RepurchasePanel quotes={quotes} onOpen={onOpen} onDuplicate={onDuplicate} />}
     {onOpen && <PendingSales quotes={quotes} onOpen={onOpen} />}
   </section>;
 }

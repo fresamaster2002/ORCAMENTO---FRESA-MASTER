@@ -130,11 +130,11 @@ export function followUpIssues(quote: QuoteData, today = localDate()): string[] 
   return issues;
 }
 
-export function followUpWhatsapp(quote: QuoteData): string | null {
+export function followUpWhatsapp(quote: QuoteData, customMessage?: string): string | null {
   let phone = quote.client.phone?.replace(/\D/g, '') || '';
   if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
   if (!/^55\d{10,11}$/.test(phone)) return null;
-  const message = `Olá, ${quote.client.tradeName || quote.client.name || 'tudo bem'}! Aqui é da Fresa Master. Gostaria de saber se conseguiu avaliar o orçamento ${quote.id}. Posso ajudar com alguma dúvida sobre as ferramentas ou o envio?`;
+  const message = customMessage ?? `Olá, ${quote.client.tradeName || quote.client.name || 'tudo bem'}! Aqui é da Fresa Master. Gostaria de saber se conseguiu avaliar o orçamento ${quote.id}. Posso ajudar com alguma dúvida sobre as ferramentas ou o envio?`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 

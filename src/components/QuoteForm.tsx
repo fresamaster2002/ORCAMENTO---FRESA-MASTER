@@ -430,7 +430,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     : { text: Number(quote.bling?.nfe?.situacao) === 5 ? 'NF-e autorizada. Consulte os documentos e confira a entrega.' : 'Pedido aprovado. Confira o cadastro fiscal e continue no Bling.', label: 'Abrir Bling', target: 'bling' };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden space-y-6">
+    <div className="fm-panel overflow-hidden space-y-6">
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">

@@ -5,6 +5,7 @@ import { customerHistories, formatMoney, quoteDate, searchCustomers } from '../s
 import { quoteStatusLabels } from '../quoteWorkspaceTools';
 import { CommercialControls } from './CommercialControls';
 import { paymentSummary } from '../commercialTracking';
+import { RepurchasePanel } from './RepurchasePanel';
 
 interface Props {
   quotes: QuoteData[];
@@ -19,9 +20,9 @@ export function CustomersPage({ quotes, onOpen, onDuplicate, onSaveCommercial }:
   const customers = useMemo(() => customerHistories(quotes), [quotes]);
   const visible = useMemo(() => searchCustomers(customers, query), [customers, query]);
   const selected = visible.find((customer) => customer.key === selectedKey) || visible[0];
-  const panel = 'rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900';
+  const panel = 'fm-panel';
   return <section aria-labelledby="customers-title" className="space-y-6">
-    <div className="rounded-2xl bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-800 p-6 text-white sm:p-8">
+    <div className="fm-hero p-6 text-white sm:p-8">
       <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-indigo-200"><Users className="h-5 w-5" />Relacionamento</p>
       <h1 id="customers-title" className="text-2xl font-bold sm:text-3xl">Seus clientes, sempre por perto</h1>
       <p className="mt-2 max-w-2xl text-sm text-indigo-100">Pesquise o histórico e transforme um orçamento anterior em uma nova oportunidade.</p>
@@ -75,5 +76,6 @@ export function CustomersPage({ quotes, onOpen, onDuplicate, onSaveCommercial }:
           </div>
         </div>
       </div>}
+    <RepurchasePanel quotes={quotes} onOpen={onOpen} onDuplicate={onDuplicate} />
   </section>;
 }

@@ -44,7 +44,19 @@ O dashboard permite selecionar o ano e apresenta evolução mensal, distribuiç�
 
 O histórico da nuvem é carregado por páginas de 500 registros, sem truncar a lista em 500 orçamentos. Registros de controle de envio não entram nos clientes nem no dashboard. Falhas de leitura/sincronização continuam visíveis no app; indicadores podem refletir apenas os dados locais preservados quando a nuvem estiver indisponível.
 
-### Pagamentos manuais e acompanhamento comercial
+### Metas, produtos e recompra
+
+O dashboard apresenta **Metas de vendas** por mês, com valor realizado, progresso e saldo para atingir a meta. Selecione um mês para salvar, alterar ou remover sua meta. O realizado segue os totais dos orçamentos **aprovados**, incluindo frete e descontos, pela data do orçamento; não representa lucro ou recebimentos. Na visão anual, a comparação inclui somente os meses com metas configuradas, informando quantos meses participam. Progresso acima de 100% é exibido sem gerar saldo negativo.
+
+As metas são sincronizadas na conta Supabase e podem ser consultadas em outros dispositivos ao abrir o dashboard ou usar **Atualizar metas**. Sem conta/conexão não há falso salvamento local. Falhas de leitura e gravação são mostradas no painel. Cada mês é um registro de controle `SALES-GOAL:AAAA-MM` na tabela `quotes`, com JSON `{ version: 1, amount }`, seguindo o armazenamento de metadados já utilizado pelo controle de envio. A política RLS existente restringe o registro à conta administradora proprietária; não exige nova tabela ou migração. Esses registros são excluídos da consulta de histórico, paginação, contagem, pesquisa e análises de orçamentos. Salvar um mês não substitui metas de outros meses; edições simultâneas do mesmo mês seguem a última gravação, sem atualização em tempo real.
+
+**Produtos mais vendidos** usa os itens dos aprovados no período selecionado, com ordenação por quantidade ou valor bruto dos itens, antes do desconto geral e sem frete. Não é faturamento fiscal, margem ou recebimento. Agrupa por SKU, ou ID Bling/descrição quando ausente, sempre separando unidades diferentes. Conta cada orçamento uma vez por produto e sinaliza itens inválidos excluídos. O painel começa com os cinco primeiros e permite consultar todos.
+
+**Oportunidades de recompra**, em Clientes e Dashboard, considera todos os períodos e a última data de orçamento aprovado por cliente, com filtros de pelo menos 30, 60 ou 90 dias sem compra. Não usa data da NF-e, nem considera rascunhos/envios como novas compras. Clientes com aprovados de data inválida ou futura não são sugeridos para evitar inferências incorretas. Mostra últimos itens, contatos registrados e permite abrir o aprovado original, preparar um novo orçamento pela duplicação segura ou abrir uma mensagem editável no WhatsApp. Nenhuma mensagem é enviada automaticamente; preços, cadastro e frete devem ser revisados no novo orçamento.
+
+O refinamento visual usa cartões, hierarquia de informações e navegação mais espaçada, com contraste nos temas claro/escuro e foco de teclado visível. Não altera aprovação, cálculos, frete, emissão fiscal, proposta/PDF ou chamadas do ERP.
+
+### Controle de recebimentos e contatos
 
 O Dashboard possui uma barra de pesquisa por **mês e ano**, com **Este mês**, **Ano inteiro**, filtro imediato dos indicadores, gráficos, status e ranking, e comparação dos aprovados com o mês anterior (ou ano anterior na visão anual). Período anterior sem valor positivo aparece como sem base para comparação, não como crescimento artificial. A central de pendências considera **todos os períodos**, independentemente desse filtro.
 

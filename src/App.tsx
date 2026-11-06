@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { apiFetch } from './api';
 import { DEFAULT_ORIGIN_CEP, DEFAULT_PACKAGE_DIMENSIONS } from '../supabase/functions/_shared/shippingDefaults';
@@ -19,6 +19,7 @@ import { SalesDashboard } from './components/SalesDashboard';
 import { CommercialControls } from './components/CommercialControls';
 import type { SaveCommercialTracking } from './types';
 import { normalizeCommercialTracking, withoutCommercialTracking } from './commercialTracking';
+import { salesGoalsStore } from './salesGoalsStore';
 import { QuoteData, ClientInfo } from './types';
 import { BLING_FRESA_MASTER_CATALOG } from './blingCatalog';
 import { AlertTriangle, KeyRound, Sparkles, Building, Truck } from 'lucide-react';
@@ -370,6 +371,7 @@ const buildLocalQuoteFallback = (text: string, currentQuote: QuoteData) => {
 
 export default function App() {
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const goalStore = useMemo(() => supabase && supabaseUser ? salesGoalsStore(supabase, supabaseUser.id) : undefined, [supabaseUser?.id]);
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
@@ -829,7 +831,7 @@ export default function App() {
         {view.modal === 'customers' ? <CustomersPage quotes={recentQuotes} onOpen={(selected) => {
           setQuote(selected);
           handleGoHome();
-        }} onDuplicate={handleDuplicateQuote} onSaveCommercial={handleSaveCommercial} /> : view.modal === 'dashboard' ? <SalesDashboard quotes={recentQuotes} onOpen={(selected) => { setQuote(selected); handleGoHome(); }} /> : <>
+        }} onDuplicate={handleDuplicateQuote} onSaveCommercial={handleSaveCommercial} /> : view.modal === 'dashboard' ? <SalesDashboard quotes={recentQuotes} ownerId={supabaseUser?.id} goalStore={goalStore} onDuplicate={handleDuplicateQuote} onOpen={(selected) => { setQuote(selected); handleGoHome(); }} /> : <>
         {/* Clean Unified Quick Order Input (Voice or Text) */}
         <QuickOrderInput
           onProcess={handleExtract}

@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-    <header className="bg-white dark:bg-slate-900">
+    <header className="fm-brand-header bg-white dark:bg-slate-900">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-3 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
         <div className="flex justify-start">
           {onToggleDarkMode && (

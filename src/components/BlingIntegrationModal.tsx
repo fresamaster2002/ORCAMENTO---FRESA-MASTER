@@ -12,6 +12,7 @@ import { formatBlingError, isDuplicateBlingSale } from '../../supabase/functions
 import { blingReadinessIssues } from '../../supabase/functions/_shared/blingReadiness';
 import { adoptBlingRecipient, blingOrderChanged, blingOrderSnapshot } from '../blingOrderSnapshot';
 import { BlingOrderDifferences } from './BlingOrderDifferences';
+import { BlingOrderRepair } from './BlingOrderRepair';
 import { DanfeDownloadButton } from './DanfeDownloadButton';
 import { supabaseUrl } from '../supabase';
 import { 
@@ -50,6 +51,7 @@ interface BlingIntegrationModalProps {
   onUpdateClient: (client: ClientInfo) => void;
   onUpdateBling: (quoteId: string, bling: NonNullable<QuoteData['bling']>, items?: QuoteData['items'], client?: ClientInfo) => Promise<void>;
   onUpdateItems: (quoteId: string, items: QuoteData['items']) => Promise<void>;
+  onRestoreQuote: (quote: QuoteData) => Promise<void>;
   onContinueShipping: () => void;
   onSelectProduct: (itemId: string) => void;
   activeTab: WorkspaceView['blingTab'];
@@ -65,6 +67,7 @@ export const BlingIntegrationModal: React.FC<BlingIntegrationModalProps> = ({
   onUpdateClient,
   onUpdateBling,
   onUpdateItems,
+  onRestoreQuote,
   onContinueShipping,
   onSelectProduct,
   activeTab,
@@ -1096,6 +1099,7 @@ Telefone/WhatsApp: (41) 98888-5544`;
                           token={blingToken}
                           orderChanged={orderChanged}
                           onContinueShipping={onContinueShipping}
+                          onRestoreQuote={async (next) => { await onRestoreQuote(next); setClientData(next.client); }}
                           onReviewClient={() => { setShowNfeReview(false); setActiveTab('cadastral'); }}
                           onAdoptRecipient={async (client) => {
                             const orderSnapshot = adoptBlingRecipient({ ...quote, client: clientData }, client);
@@ -1113,6 +1117,13 @@ Telefone/WhatsApp: (41) 98888-5544`;
                       </div>
                     )}</>}
                     {nfeError && <p className="text-xs text-red-600 font-semibold">{nfeError}</p>}
+                    {orderResult && (orderChanged || (nfeError && /itens.*pedido|orçamento não corresponde/.test(nfeError))) && <BlingOrderRepair
+                      key={`${quote.id}:${quote.bling?.orderSnapshot}:${orderChanged}`}
+                      quote={{ ...quote, client: clientData }} token={blingToken} changed={orderChanged}
+                      disabled={nfeBusy !== null || preparationStep !== null || isResolvingProducts}
+                      onPersist={async (next) => { await onRestoreQuote(next); setClientData(next.client); }}
+                      onCorrected={() => { setNfeError(null); setNfeFiscalIssues([]); setNfeReadyToSend(false); setStatusMessage(nfe?.id ? 'Correção salva. Reabra a conferência da NF-e antes de emitir.' : 'Correção salva. Clique em Preparar NF-e para conferir novamente antes de emitir.'); }}
+                    />}
                     {nfeFiscalIssues.length > 0 && <div className="text-xs text-amber-700 dark:text-amber-300"><p role="alert">{nfeFiscalIssues.join(' ')}</p><button type="button" onClick={() => setShowNfeReview(true)} disabled={!nfe?.id || nfeBusy !== null} className="underline disabled:opacity-50">Abrir conferência e corrigir pendências</button></div>}
                   </div>
 

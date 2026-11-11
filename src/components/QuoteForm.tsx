@@ -31,6 +31,7 @@ import { ShippingCepCheck } from './ShippingCepCheck';
 import { ClientCadastralModal } from './ClientCadastralModal';
 import { matchBlingCatalogProduct, normalizeBlingCatalogProducts } from '../blingCatalog';
 import { bindBlingProduct } from '../blingProductSelection';
+import { formatBlingError } from '../../supabase/functions/_shared/blingErrors';
 
 const calculateDiscountAmount = (subtotal: number, discountPercentage: number, fixedDiscount: number) => {
   const amount = discountPercentage > 0 ? (subtotal * discountPercentage) / 100 : fixedDiscount;
@@ -71,6 +72,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
   const [newProductSku, setNewProductSku] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductNcm, setNewProductNcm] = useState('');
+  const [newProductOrigin, setNewProductOrigin] = useState('');
 
   useEffect(() => {
     if (!isBlingCatalogModalOpen) return;
@@ -148,6 +150,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     setNewProductPrice(item.unitPrice > 0 ? String(item.unitPrice) : '');
     setNewProductNcm(resolveToolNcm(item.ncm, item.description));
     setShowNewProductForm(false);
+    setNewProductOrigin('');
     setNewProductError(null);
     setIsBlingCatalogModalOpen(true);
   };
@@ -157,6 +160,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
     setCatalogSearch('');
     setPendingQuoteItemId(null);
     setShowNewProductForm(false);
+    setNewProductOrigin('');
     setNewProductError(null);
   };
 
@@ -168,6 +172,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
 
   const createBlingProduct = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isCreatingBlingProduct) return;
     setIsCreatingBlingProduct(true);
     setNewProductError(null);
     try {
@@ -184,11 +189,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
             sku: newProductSku,
             price: Number(newProductPrice),
             ncm: newProductNcm,
+            ...(newProductOrigin !== '' ? { origin: Number(newProductOrigin) } : {}),
           },
         }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || 'O Bling não confirmou o cadastro.');
+      if (!response.ok || !data.success) throw new Error(formatBlingError(data.details, data.error || 'O Bling não confirmou o cadastro.'));
       if (!/^\d+$/.test(String(data.product?.id || ''))) {
         throw new Error('O Bling não retornou o ID do produto. Atualize o catálogo e confira o cadastro antes de tentar criar novamente.');
       }
@@ -721,6 +727,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                 onClick={() => {
                   setPendingQuoteItemId(null);
                   setShowNewProductForm(false);
+                  setNewProductOrigin('');
                   setNewProductError(null);
                   setIsBlingCatalogModalOpen(true);
                 }}
@@ -1114,6 +1121,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                   <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Confirmar novo produto no Bling</div>
                   <input
                     required
+                    maxLength={120}
+                    aria-label="Descrição do novo produto"
                     value={newProductName}
                     onChange={(event) => setNewProductName(event.target.value)}
                     placeholder="Descrição do produto"
@@ -1125,6 +1134,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                       value={newProductSku}
                       onChange={(event) => setNewProductSku(event.target.value)}
                       placeholder="SKU"
+                      aria-label="SKU do novo produto"
                       className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
                     />
                     <input
@@ -1145,7 +1155,27 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({
                       className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
                     />
                   </div>
-                  {newProductError && <p className="text-[11px] text-red-700 dark:text-red-400">{newProductError}</p>}
+                  <label className="block text-xs">
+                    Origem fiscal da mercadoria (confira na nota de compra)
+                    <select aria-label="Origem fiscal da mercadoria" value={newProductOrigin} onChange={(event) => setNewProductOrigin(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900">
+                      <option value="">Usar configuração do Bling</option>
+                      <option value="0">0 — Nacional</option>
+                      <option value="1">1 — Estrangeira: importação direta</option>
+                      <option value="2">2 — Estrangeira: adquirida no mercado interno</option>
+                      <option value="3">3 — Nacional: importação superior a 40% e até 70%</option>
+                      <option value="4">4 — Nacional: processos produtivos básicos</option>
+                      <option value="5">5 — Nacional: importação até 40%</option>
+                      <option value="6">6 — Estrangeira: importação direta, sem similar nacional</option>
+                      <option value="7">7 — Estrangeira: mercado interno, sem similar nacional</option>
+                      <option value="8">8 — Nacional: importação superior a 70%</option>
+                    </select>
+                  </label>
+                  {newProductError && <div role="alert" className="space-y-2 text-[11px] text-red-700 dark:text-red-400">
+                    <p>{newProductError}</p>
+                    <p>Corrija o campo indicado e confirme novamente. Se o SKU já existir, vincule o cadastro existente; não crie outro produto igual.</p>
+                    <button type="button" disabled={isCreatingBlingProduct} onClick={() => { setCatalogSearch(newProductSku.trim()); setShowNewProductForm(false); }} className="underline">Buscar SKU no catálogo</button>
+                    <button type="button" disabled={isCreatingBlingProduct} onClick={() => setNewProductSku(`FM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`)} className="ml-3 underline">Gerar novo SKU para produto diferente</button>
+                  </div>}
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => setShowNewProductForm(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300">Cancelar</button>
                     <button type="submit" disabled={isCreatingBlingProduct} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold">

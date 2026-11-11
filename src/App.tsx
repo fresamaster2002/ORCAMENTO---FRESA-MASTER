@@ -923,6 +923,10 @@ export default function App() {
         onUpdateClient={handleUpdateClientFromBling}
         onUpdateBling={(quoteId, bling, items, client) => handlePersistBlingUpdate(quoteId, { bling, ...(items ? { items } : {}), ...(client ? { client } : {}) })}
         onUpdateItems={(quoteId, items) => handlePersistBlingUpdate(quoteId, { items })}
+        onRestoreQuote={async (restored) => {
+          await persistQuote(restored);
+          if (!supabase || !supabaseUser) throw new Error('Correção salva neste navegador. Entre na conta para salvá-la na nuvem antes de continuar.');
+        }}
         onContinueShipping={() => openOnly('production')}
         onSelectProduct={(itemId) => {
           setIsBlingOpen(false);

@@ -30,7 +30,7 @@ export function BlingOrderDifferences({ quote }: { quote: QuoteData }) {
       {differences.map((path) => <li key={path}>{path.split('.').map((part) => /^\d+$/.test(part) ? `Item ${Number(part) + 1}` : labels[part] || part).join(' → ')}</li>)}
     </ul>
     <p>Entrega diferente do endereço do CNPJ é permitida. O bloqueio compara o orçamento com a venda salva, não os dois endereços entre si.</p>
-    <p>Confira estes campos no pedido e no rascunho já existentes no Bling. Não exclua o vínculo nem crie outra venda para contornar o bloqueio.</p>
+    <p>Use a correção abaixo para restaurar a versão salva no app. Se a venda mudou no ERP, confira o pedido e o rascunho existentes no Bling. Não exclua o vínculo nem crie outra venda para contornar o bloqueio.</p>
     {quote.bling?.orderId && <a className="underline" href={quote.bling.orderUrl || `https://www.bling.com.br/b/vendas.php#edit/${quote.bling.orderId}`} target="_blank" rel="noopener noreferrer">Abrir pedido vinculado no Bling</a>}
   </div>;
 }

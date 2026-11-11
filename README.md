@@ -190,6 +190,12 @@ Depois de confirmar o cadastro fiscal, a etapa de criar pedido/gerar NF-e mostra
 
 ### Emissão guiada da NF-e
 
+Se os itens divergirem do pedido salvo, o aviso oferece **Conferir e corrigir itens do pedido**. O app consulta o pedido vinculado, confere o CPF/CNPJ e mostra uma prévia para corrigir descrição, SKU e ID do produto no orçamento. Quantidades e preços diferentes continuam bloqueados, sem gravações no ERP. Se o orçamento foi editado depois da venda, **Conferir versão salva para restaurar** permite revisar e recuperar cadastro, itens, entrega e valores da referência salva. **Aplicar correção no orçamento** persiste a escolha sem remover o vínculo, criar outra venda ou transmitir NF-e. Depois, use **Preparar NF-e** novamente.
+
+No cadastro de ferramenta, a mensagem de rejeição inclui os campos e motivos enviados pelo Bling. A API valida descrição (até 120 caracteres), preço, NCM e origem informada, e consulta o SKU antes de cadastrar. SKU já existente oferece **Buscar SKU no catálogo**; só gere outro SKU para um produto realmente diferente. A origem fiscal pode ser informada conforme a nota de compra, sem assumir origem nacional/importada automaticamente. Publique o frontend e o backend utilizado (Express ou função `api` do Supabase) para disponibilizar as correções.
+
+As correções foram verificadas com testes automatizados, TypeScript, build e uma fixture isolada no navegador a 390 px: restauração, prévia/aplicação dos itens, erro de SKU com ação de busca e cadastro/vínculo simulados preservando preço e quantidade negociados. Nenhuma venda, ferramenta ou NF-e real foi criada ou transmitida nessa validação.
+
 **Preparar NF-e** cria e salva o vínculo do pedido, gera e salva o rascunho, e abre a conferência. Se já houver pedido ou nota vinculados, reutiliza-os. Falhas de persistência interrompem a sequência; não há repetição automática de gravações. **Criar somente o pedido** permanece como opção avançada. Preparar não transmite à SEFAZ.
 
 A conferência prioriza destinatário, natureza, ferramentas, valores, pagamento e entrega. **Mostrar detalhes fiscais / editar** abre NCM, CFOP, impostos e observações; pendências retornadas pelo backend abrem esses detalhes automaticamente. Atalhos levam ao cadastro fiscal, consulta de produtos ou nota no Bling. As regras tributárias continuam no ERP.

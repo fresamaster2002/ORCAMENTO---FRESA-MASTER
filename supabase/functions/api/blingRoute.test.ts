@@ -15,6 +15,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     else Reflect.deleteProperty(globalThis, 'Deno');
   });
   const calls: { url: string; method: string; body: Record<string, unknown> }[] = [];
+  let productFailure = false;
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : {} });
@@ -27,7 +28,9 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     if (url.endsWith('/nfe/33')) return Response.json({ data: { id: 33, situacao: 1, itens: [{ descricao: 'Fresa', classificacaoFiscal: '0000.00.00' }], parcelas: [{ formaPagamento: { id: 17 } }] } });
     if (url.endsWith('/produtos/123')) return Response.json({ data: { id: 123, nome: 'Fresa de topo', codigo: 'FM-TCT-6X22', tributacao: { ncm: '8207.70.10' } } });
     if (url.endsWith('/produtos/456')) return Response.json({ data: { id: 456, nome: 'Fresa sem SKU', codigo: '', tributacao: { ncm: '8207.70.10' } } });
-    if (url.endsWith('/produtos') && init?.method === 'POST') return Response.json({ data: { id: 789 } }, { status: 201 });
+    if (url.endsWith('/produtos') && init?.method === 'POST') return productFailure
+      ? Response.json({ error: { description: 'O Produto não pode ser salvo.', fields: [{ element: 'tributacao.origem', msg: 'Informe a origem fiscal' }] } }, { status: 400 })
+      : Response.json({ data: { id: 789 } }, { status: 201 });
     if (url.includes('/produtos?')) return Response.json({ data: [] });
     throw new Error(`Requisição inesperada: ${url}`);
   });
@@ -46,7 +49,7 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
   Object.assign(quote.client, client);
   await t.test('exige autenticação nas rotas fiscais', async () => {
     assert.equal((await post('nfe/send', { nfeId: 33 }, false)).status, 401);
-    for (const action of ['review', 'update-draft', 'update-number', 'send-reviewed', 'adopt-recipient', 'danfe-document']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
+    for (const action of ['review', 'update-draft', 'update-number', 'send-reviewed', 'adopt-recipient', 'danfe-document', 'reconcile-items']) assert.equal((await post(`nfe/${action}`, { nfeId: 33 }, false)).status, 401);
   });
   await t.test('consulta o NCM no detalhe do produto sem depender da listagem resumida', async () => {
     const response = await handler(new Request('https://supabase.test/functions/v1/api/bling/products/123', { headers: { Authorization: 'Bearer test-session' } }));
@@ -74,6 +77,18 @@ test('rotas Bling aplicam pagamento/NCM e não enviam notas inválidas', async (
     assert.equal(creation[0].body.codigo, 'FM-NOVA');
     assert.equal(creation[0].body.preco, 140);
     assert.deepEqual(creation[0].body.tributacao, { ncm: '82077010' });
+  });
+  await t.test('rejeição de produto exibe campo e motivo para correção, sem repetir POST', async () => {
+    calls.length = 0;
+    productFailure = true;
+    try {
+      const response = await post('products', { product: { name: 'Fresa nova', sku: 'FM-NOVA', price: 140, ncm: '8207.70.10', origin: 2 } });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /tributacao.origem: Informe a origem fiscal/);
+      const writes = calls.filter((call) => call.method === 'POST' && call.url.includes('api.bling.com.br'));
+      assert.equal(writes.length, 1);
+      assert.deepEqual(writes[0].body.tributacao, { ncm: '82077010', origem: 2 });
+    } finally { productFailure = false; }
   });
   await t.test('NCM genérico é substituído pelo cadastro confirmado antes da venda', async () => {
     calls.length = 0;

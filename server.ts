@@ -17,6 +17,7 @@ import { completeDeliveryByCep, deliveryExtractionInstruction, deliveryExtractio
 import { CnpjLookupError, lookupCnpj } from "./supabase/functions/_shared/cnpjLookup";
 import { formatBlingError } from "./supabase/functions/_shared/blingErrors";
 import { BlingFiscalError, blingFreight, buildSaleItems, buildSalePayment, handleBlingNfe, resolveSaleContact } from "./supabase/functions/_shared/blingFiscal";
+import { prepareBlingProduct } from "./supabase/functions/_shared/blingProductCreate";
 import { listBlingNatures, selectedBlingNature } from "./supabase/functions/_shared/blingNature";
 import { resolveBlingProducts } from "./supabase/functions/_shared/blingProducts";
 import { resolveToolNcm } from "./supabase/functions/_shared/toolNcm";
@@ -1888,16 +1889,7 @@ app.post("/api/bling/products", async (req, res) => {
       || persistedBlingToken
       || process.env.BLING_API_TOKEN;
     const product = req.body?.product || {};
-    const name = String(product.name || "").trim();
-    const sku = String(product.sku || "").trim();
-    const price = Number(product.price);
-    const ncm = String(product.ncm || "").replace(/\D/g, "");
-
-    if (!token) return res.status(401).json({ success: false, error: "Conecte o Bling antes de cadastrar o produto." });
-    if (!name || !sku || !Number.isFinite(price) || price <= 0 || ncm.length !== 8) {
-      return res.status(400).json({ success: false, error: "Informe descrição, SKU, preço maior que zero e NCM com 8 dígitos." });
-    }
-    if (["00000000", "82077000"].includes(ncm)) return res.status(400).json({ success: false, error: "NCM zerado ou 8207.70.00 não é aceito. Confirme a classificação fiscal do produto antes de cadastrá-lo." });
+    const payload = await prepareBlingProduct(token || "", product);
 
     const response = await fetchBlingApi("https://api.bling.com.br/Api/v3/produtos", {
       method: "POST",
@@ -1906,30 +1898,21 @@ app.post("/api/bling/products", async (req, res) => {
         "Accept": "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        nome: name,
-        codigo: sku,
-        preco: price,
-        tipo: "P",
-        situacao: "A",
-        formato: "S",
-        unidade: "UN",
-        pesoLiquido: 0,
-        pesoBruto: 0,
-        tributacao: { ncm },
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return res.status(response.status).json({
         success: false,
-        error: data.error?.description || data.message || "O Bling recusou o cadastro do produto.",
+        error: formatBlingError(data, "O Bling recusou o cadastro do produto."),
         details: data,
       });
     }
 
-    return res.status(201).json({ success: true, product: data.data });
+    if (!/^[1-9]\d*$/.test(String(data.data?.id || ""))) return res.status(502).json({ success: false, error: "O Bling não retornou o ID do produto. Atualize o catálogo e confira o cadastro antes de tentar criar novamente." });
+    return res.status(201).json({ success: true, product: { ...payload, ...data.data } });
   } catch (error: any) {
+    if (error instanceof BlingFiscalError) return res.status(error.status).json({ success: false, error: error.message, details: error.details });
     console.error("Erro ao cadastrar produto no Bling:", error);
     return res.status(500).json({ success: false, error: `Erro ao cadastrar produto no Bling: ${error.message}` });
   }

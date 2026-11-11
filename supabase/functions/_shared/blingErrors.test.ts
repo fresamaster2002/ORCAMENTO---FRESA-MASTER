@@ -36,3 +36,10 @@ test('preserva erros sem campos e ignora estruturas inesperadas', () => {
   assert.equal(formatBlingError({ error: { fields: [null, { msg: 5 }] } }), 'O Bling recusou o pedido de venda.');
   assert.equal(isDuplicateBlingSale(null), false);
 });
+
+test('rejeição de produto mostra descrição geral e campos acionáveis', () => {
+  const response = { error: { description: 'O Produto não pode ser salvo, pois ocorrerão problemas em sua validação.', fields: [
+    { element: 'codigo', msg: 'Código já cadastrado' }, { element: 'tributacao.origem', description: 'Informe a origem' },
+  ] } };
+  assert.equal(formatBlingError(response), 'O Produto não pode ser salvo, pois ocorrerão problemas em sua validação. codigo: Código já cadastrado tributacao.origem: Informe a origem');
+});

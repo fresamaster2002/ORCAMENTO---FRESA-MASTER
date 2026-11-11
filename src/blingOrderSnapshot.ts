@@ -1,5 +1,31 @@
 import type { QuoteData } from './types';
 
+export function restoreBlingOrderSnapshot(quote: QuoteData): QuoteData {
+  if (!quote.bling?.orderId || !quote.bling.orderSnapshot) throw new Error('Não há uma versão salva do pedido. Use a conferência dos itens no Bling.');
+  const saved: Partial<QuoteData> & { date?: string } = JSON.parse(quote.bling.orderSnapshot);
+  if (!saved.client?.name || !Array.isArray(saved.items) || !saved.items.length || !saved.shipping
+    || !saved.financials || !Number.isFinite(saved.financials.totalAmount) || typeof saved.date !== 'string'
+    || saved.items.some((item) => !item.description || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice <= 0)) {
+    throw new Error('A versão salva está incompleta. Confira o pedido no Bling antes de restaurar.');
+  }
+  const date = saved.date;
+  const items = saved.items.map((item, index) => ({
+    ...quote.items[index], ...item, id: quote.items[index]?.id || `restored-${index}`,
+    blingProductId: item.blingProductId, totalPrice: Number((item.quantity * item.unitPrice).toFixed(2)),
+  }));
+  return { ...quote, client: saved.client, project: { ...quote.project, date }, items, shipping: saved.shipping, financials: saved.financials };
+}
+
+export function adoptBlingOrderItems(quote: QuoteData, items: QuoteData['items']): QuoteData {
+  if (blingOrderChanged(quote)) throw new Error('Restaure primeiro a versão salva do orçamento para não ocultar outras diferenças.');
+  if (!items.length || items.length !== quote.items.length || items.some((item, index) =>
+    !item.description?.trim() || item.quantity !== quote.items[index].quantity || item.unitPrice !== quote.items[index].unitPrice)) {
+    throw new Error('A correção deve preservar as quantidades e os preços negociados.');
+  }
+  const next = { ...quote, items };
+  return { ...next, bling: { ...quote.bling, orderSnapshot: blingOrderSnapshot(next) } };
+}
+
 export function adoptBlingRecipient(quote: QuoteData, client: QuoteData['client']): string {
   if (blingOrderChanged(quote)) throw new Error('O orçamento mudou após salvar a venda. Não é possível adotar apenas o destinatário; confira todas as diferenças.');
   const saved = quote.bling?.orderSnapshot;

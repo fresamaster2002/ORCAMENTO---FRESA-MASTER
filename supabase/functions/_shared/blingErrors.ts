@@ -9,11 +9,11 @@ function text(value: unknown): string {
 export function formatBlingError(value: unknown, fallback = 'O Bling recusou o pedido de venda.'): string {
   const response = record(value);
   const error = record(response.error);
-  const message = text(error.message) || text(response.message) || fallback;
+  const message = text(error.message) || text(error.description) || text(response.message) || fallback;
   const fields = Array.isArray(error.fields) ? error.fields : [];
   const details = fields.flatMap((value) => {
     const field = record(value);
-    const message = text(field.msg) || text(field.message);
+    const message = text(field.msg) || text(field.message) || text(field.description);
     if (!message) return [];
     const element = text(field.element);
     return [element ? `${element}: ${message}` : message];

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adoptBlingRecipient, blingOrderChanged, blingOrderDifferences, blingOrderSnapshot } from './blingOrderSnapshot.ts';
+import { adoptBlingOrderItems, adoptBlingRecipient, blingOrderChanged, blingOrderDifferences, blingOrderSnapshot, restoreBlingOrderSnapshot } from './blingOrderSnapshot.ts';
 import type { QuoteData } from './types';
 
 function savedQuote(): QuoteData {
@@ -72,4 +72,46 @@ test('adoção explícita altera somente destinatário do mesmo documento, sem o
   assert.throws(() => adoptBlingRecipient(quote, { ...client, document: '456' }), /CPF\/CNPJ/);
   quote.items[0].unitPrice = 210;
   assert.throws(() => adoptBlingRecipient(quote, client), /orçamento mudou/);
+});
+
+test('restauração recupera a venda salva e preserva vínculos, NF e controle comercial', () => {
+  const quote = savedQuote();
+  quote.bling!.nfe = { id: 99, situacao: 1 };
+  quote.commercial = { notes: 'Não perder acompanhamento' };
+  quote.items[0].quantity = 8;
+  quote.items[0].totalPrice = 1760;
+  quote.items[0].blingProductId = 'outro-produto';
+  quote.client.name = 'Nome alterado';
+  quote.financials.totalAmount = 1760;
+  const restored = restoreBlingOrderSnapshot(quote);
+  assert.equal(blingOrderChanged(restored), false);
+  assert.equal(restored.items[0].quantity, 1);
+  assert.equal(restored.items[0].totalPrice, 220);
+  assert.equal(restored.items[0].blingProductId, undefined);
+  assert.equal(restored.financials.totalAmount, 220);
+  assert.deepEqual(restored.bling, quote.bling);
+  assert.deepEqual(restored.commercial, quote.commercial);
+  assert.equal(quote.items[0].quantity, 8);
+});
+
+test('correção explícita dos itens muda apenas identificação e não mascara alterações comerciais', () => {
+  const quote = savedQuote();
+  const items = [{ ...quote.items[0], description: 'Descrição do pedido', sku: 'FM-1', blingProductId: '123' }];
+  const fixed = adoptBlingOrderItems(quote, items);
+  assert.equal(blingOrderChanged(fixed), false);
+  assert.equal(fixed.items[0].sku, 'FM-1');
+  assert.equal(fixed.bling!.orderId, 123);
+  assert.deepEqual(fixed.financials, quote.financials);
+  assert.throws(() => adoptBlingOrderItems(quote, [{ ...items[0], quantity: 2 }]), /quantidades/);
+  assert.throws(() => adoptBlingOrderItems(quote, []), /quantidades/);
+  quote.client.document = 'outro';
+  assert.throws(() => adoptBlingOrderItems(quote, items), /Restaure primeiro/);
+});
+
+test('não restaura referência ausente, inválida ou incompleta', () => {
+  const quote = savedQuote();
+  for (const snapshot of [undefined, '{', '{}']) {
+    quote.bling!.orderSnapshot = snapshot;
+    assert.throws(() => restoreBlingOrderSnapshot(quote));
+  }
 });

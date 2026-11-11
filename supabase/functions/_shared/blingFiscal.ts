@@ -220,6 +220,36 @@ function validateOrderMatchesQuote(order: Data, quote: Data): void {
   })) throw new BlingFiscalError('O orçamento não corresponde aos itens do pedido salvo. Confira antes de gerar a nota.', 409);
 }
 
+async function reconcileOrderItems(token: string, input: Data): Promise<Data> {
+  const orderId = String(input.orderId || '');
+  const quote = object(input.quote);
+  if (!validId(orderId) || String(object(quote.bling).orderId) !== orderId) throw new BlingFiscalError('Informe o pedido já vinculado ao orçamento.');
+  const order = object((await requestBling(token, `/pedidos/vendas/${orderId}`)).data);
+  if (String(order.id) !== orderId) throw new BlingFiscalError('O Bling não retornou o pedido solicitado.', 502);
+  let contact = object(order.contato);
+  if (!contact.numeroDocumento && validId(contact.id)) contact = object((await requestBling(token, `/contatos/${contact.id}`)).data);
+  const document = String(object(quote.client).document || '').replace(/\D/g, '');
+  if (!document || document !== String(contact.numeroDocumento || '').replace(/\D/g, '')) throw new BlingFiscalError('O CPF/CNPJ do pedido difere do cliente. Confira o vínculo no Bling; nenhum dado foi alterado.', 409);
+  const linkedId = object(order.notaFiscal).id;
+  const savedNfe = object(object(quote.bling).nfe);
+  if (savedNfe.id && String(savedNfe.id) !== String(linkedId)) throw new BlingFiscalError('A NF-e salva não corresponde à nota do pedido. Confira os vínculos no Bling.', 409);
+  const sales = records(order.itens);
+  const supplied = records(quote.items);
+  if (!sales.length || sales.length !== supplied.length) throw new BlingFiscalError('A quantidade de linhas do pedido mudou. Restaure a versão salva no app ou confira o pedido no Bling.', 409);
+  const items = sales.map((sale, index) => {
+    const item = supplied[index];
+    if (Number(sale.quantidade) !== Number(item.quantity) || Number(sale.valor) !== Number(item.unitPrice)) throw new BlingFiscalError(`Quantidade ou preço do item ${index + 1} mudou. Restaure a versão salva no app ou confira os valores no pedido Bling; não foi aplicado ajuste automático.`, 409);
+    if (!String(sale.descricao || '').trim()) throw new BlingFiscalError(`O pedido retornou o item ${index + 1} sem descrição.`, 502);
+    return {
+      ...item, description: String(sale.descricao), sku: String(sale.codigo || ''),
+      blingProductId: validId(object(sale.produto).id) ? String(object(sale.produto).id) : undefined,
+      unit: String(sale.unidade || item.unit || 'UN'),
+    };
+  });
+  validateOrderMatchesQuote(order, { ...quote, items });
+  return { success: true, orderId, items, message: 'Confira os itens do pedido abaixo. A correção altera somente o orçamento no app, sem criar venda ou NF-e e sem mudar quantidades ou preços.' };
+}
+
 async function prepareDraft(token: string, nfeId: string, order: Data, input: Data): Promise<Data> {
   const draft = await readNfe(token, nfeId);
   if (Number(draft.situacao) !== 1) throw new BlingFiscalError('A NF-e vinculada não está pendente. Confira a nota existente no Bling; ela não será alterada.', 409);
@@ -400,6 +430,7 @@ export async function handleBlingNfe(action: string, input: Data, token: string)
   let transmissionAttempted = false;
   try {
     if (!token) throw new BlingFiscalError('Conecte o Bling antes de emitir a NF-e.', 401);
+    if (action === 'reconcile-items') return { status: 200, body: await reconcileOrderItems(token, input) };
     if (action === 'danfe-document') {
       if (!validId(nfeId) || !validId(input.orderId)) throw new BlingFiscalError('Informe a NF-e e o pedido vinculado para baixar o DANFE.');
       const order = object((await requestBling(token, `/pedidos/vendas/${input.orderId}`)).data);

@@ -8,6 +8,7 @@ import { monitorNfe, nfeSituationLabel, nfeWithTransmissionRequest } from '../nf
 import { formatBlingError } from '../../supabase/functions/_shared/blingErrors';
 import { NfeSuccessBanner } from './NfeSuccessBanner';
 import { BlingOrderDifferences } from './BlingOrderDifferences';
+import { BlingOrderRepair } from './BlingOrderRepair';
 import { DanfeDownloadButton } from './DanfeDownloadButton';
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   onClose: () => void;
   onReviewClient: () => void;
   onContinueShipping: () => void;
+  onRestoreQuote: (quote: QuoteData) => Promise<void>;
 }
 
 interface ReviewResponse {
@@ -47,7 +49,7 @@ function taxLines(value: Record<string, unknown>, prefix = ''): string[] {
   });
 }
 
-export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onPersist, onAdoptRecipient, onClose, onReviewClient, onContinueShipping }: Props) {
+export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onPersist, onAdoptRecipient, onClose, onReviewClient, onContinueShipping, onRestoreQuote }: Props) {
   const [review, setReview] = useState<NfeReview | null>(null);
   const [edits, setEdits] = useState<Array<{ ncm: string; cfop: string }>>([]);
   const [observations, setObservations] = useState('');
@@ -253,6 +255,10 @@ export function NfeReviewModal({ quote, nfeId, orderId, token, orderChanged, onP
           {message && <p role="status" className="p-3 bg-emerald-50 text-emerald-800 rounded-lg">{message}</p>}
           {orderChanged && <p role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg">{review?.situacao === 5 ? 'O orçamento atual difere da venda desta nota já autorizada. Essa diferença não altera a NF-e emitida e não permite nova transmissão.' : 'O orçamento mudou depois de criar o pedido. A transmissão fica bloqueada até revisar os dados da venda vinculada. Não crie outro pedido para esta nota.'}</p>}
           {orderChanged && <BlingOrderDifferences quote={quote} />}
+          {(orderChanged || issues.some((issue) => /itens.*pedido|orçamento não corresponde/.test(issue))) && <BlingOrderRepair
+            quote={quote} token={token} changed={orderChanged} disabled={busy !== null || awaitingResult}
+            onPersist={onRestoreQuote} onCorrected={onClose}
+          />}
           {clientReviewIssue && review?.situacao !== 5 && <div role="alert" className="p-3 bg-amber-50 text-amber-900 rounded-lg"><p>{clientReviewIssue}</p><button type="button" onClick={onReviewClient} disabled={busy !== null} className="underline">Conferir cadastro fiscal</button></div>}
           {review && <>
             <NfeSuccessBanner situation={review.situacao} number={review.numero} series={review.serie} />
